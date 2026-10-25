@@ -1,4 +1,5 @@
 #include "wad_picker.h"
+#include "i_main.h"
 #include <3ds.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -409,7 +410,8 @@ static void WP_ScanDirectory(const char *dir_path, int depth)
         if (stat(full_path, &st) != 0) continue;
 
         if (S_ISDIR(st.st_mode)) {
-            WP_ScanDirectory(full_path, depth + 1);
+            // Don't recurse into subdirectories
+            continue;
         } else if (S_ISREG(st.st_mode)) {
             const char *ext = strrchr(entry->d_name, '.');
             if (ext && !strcasecmp(ext, ".wad")) {
@@ -639,15 +641,14 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
 {
     s_wad_count = 0;
 
-    // Scan standard directories (prefer sdmc: path)
+    // Scan ONLY the designated WAD folder (no redundant scans)
     WP_ScanDirectory("sdmc:/3ds/Boom3DS/wads", 0);
-    WP_ScanDirectory("sdmc:/3ds/Boom3DS", 0);
-    WP_ScanDirectory("sdmc:/3ds/doom/wads", 0);
-    WP_ScanDirectory("sdmc:/3ds/doom", 0);
-    WP_ScanDirectory("sdmc:/roms/doom", 0);
-    WP_ScanDirectory("/3ds/Boom3DS/wads", 0);
-    WP_ScanDirectory("/3ds/Boom3DS", 0);
-    WP_ScanDirectory(".", 0);
+    if (s_wad_count == 0) {
+        WP_ScanDirectory("/3ds/Boom3DS/wads", 0);
+    }
+    if (s_wad_count == 0) {
+        WP_ScanDirectory("sdmc:/3ds/Boom3DS", 0);
+    }
 
     if (s_wad_count == 0) {
         // Render informational notice if no WADs found
@@ -796,7 +797,11 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
     }
 
     WP_FreeCover();
-    if (s_wad_count == 0) return false;
+    if (!confirmed || s_wad_count == 0) {
+        // User exited via Home menu without confirming
+        I_SafeExit(0);
+        return false;
+    }
 
     wad_info_t *chosen = &s_wads[s_selected_idx];
 
