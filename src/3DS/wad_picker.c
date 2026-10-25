@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <png.h>
 
 #define MAX_WADS 512
 #define LAST_WAD_FILE "sdmc:/3ds/Boom3DS/last_wad.txt"
@@ -20,10 +21,19 @@ typedef struct {
     long file_size;
 } wad_info_t;
 
+typedef struct {
+    int width;
+    int height;
+    u32 *pixels; // 0xRRGGBB
+} wp_image_t;
+
 static wad_info_t s_wads[MAX_WADS];
 static int s_wad_count = 0;
 static int s_selected_idx = 0;
 static int s_scroll_offset = 0;
+
+static wp_image_t *s_cur_cover = NULL;
+static int s_cur_cover_idx = -1;
 
 // Standard 5x7 Font data for ASCII 32 (' ') to 90 ('Z')
 static const u8 s_font_5x7[][5] = {
@@ -163,13 +173,167 @@ static void WP_DrawText(u8 *fb, int width, int x, int y, const char *str, u8 r, 
     }
 }
 
+static void WP_FreeCover(void)
+{
+    if (s_cur_cover) {
+        if (s_cur_cover->pixels) free(s_cur_cover->pixels);
+        free(s_cur_cover);
+        s_cur_cover = NULL;
+    }
+    s_cur_cover_idx = -1;
+}
+
+static wp_image_t* WP_LoadPNG(const char *filename)
+{
+    FILE *fp = fopen(filename, "rb");
+    if (!fp) return NULL;
+
+    png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (!png_ptr) { fclose(fp); return NULL; }
+
+    png_infop info_ptr = png_create_info_struct(png_ptr);
+    if (!info_ptr) { png_destroy_read_struct(&png_ptr, NULL, NULL); fclose(fp); return NULL; }
+
+    if (setjmp(png_jmpbuf(png_ptr))) {
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        fclose(fp);
+        return NULL;
+    }
+
+    png_init_io(png_ptr, fp);
+    png_read_info(png_ptr, info_ptr);
+
+    int width = png_get_image_width(png_ptr, info_ptr);
+    int height = png_get_image_height(png_ptr, info_ptr);
+    png_byte color_type = png_get_color_type(png_ptr, info_ptr);
+    png_byte bit_depth = png_get_bit_depth(png_ptr, info_ptr);
+
+    if (bit_depth == 16) png_set_strip_16(png_ptr);
+    if (color_type == PNG_COLOR_TYPE_PALETTE) png_set_palette_to_rgb(png_ptr);
+    if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8) png_set_expand_gray_1_2_4_to_8(png_ptr);
+    if (png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS)) png_set_tRNS_to_alpha(png_ptr);
+    if (color_type == PNG_COLOR_TYPE_RGB || color_type == PNG_COLOR_TYPE_GRAY || color_type == PNG_COLOR_TYPE_PALETTE)
+        png_set_filler(png_ptr, 0xFF, PNG_FILLER_AFTER);
+    if (color_type == PNG_COLOR_TYPE_GRAY || color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
+        png_set_gray_to_rgb(png_ptr);
+
+    png_read_update_info(png_ptr, info_ptr);
+
+    wp_image_t *img = (wp_image_t*)malloc(sizeof(wp_image_t));
+    if (!img) {
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        fclose(fp);
+        return NULL;
+    }
+    img->width = width;
+    img->height = height;
+    img->pixels = (u32*)malloc(width * height * sizeof(u32));
+    if (!img->pixels) {
+        free(img);
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        fclose(fp);
+        return NULL;
+    }
+
+    png_bytep *row_pointers = (png_bytep*)malloc(sizeof(png_bytep) * height);
+    if (!row_pointers) {
+        free(img->pixels);
+        free(img);
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        fclose(fp);
+        return NULL;
+    }
+
+    for (int y = 0; y < height; y++) {
+        row_pointers[y] = (png_byte*)(img->pixels + y * width);
+    }
+    png_read_image(png_ptr, row_pointers);
+    free(row_pointers);
+
+    png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+    fclose(fp);
+    return img;
+}
+
+static void WP_UpdateCurrentCover(int idx)
+{
+    if (idx == s_cur_cover_idx) return;
+    WP_FreeCover();
+    s_cur_cover_idx = idx;
+    if (idx < 0 || idx >= s_wad_count) return;
+
+    wad_info_t *wad = &s_wads[idx];
+    char png_path[256];
+
+    // 1. Try same directory with .png extension (case-insensitive base)
+    strncpy(png_path, wad->path, sizeof(png_path) - 1);
+    png_path[sizeof(png_path) - 1] = '\0';
+    char *dot = strrchr(png_path, '.');
+    if (dot) {
+        strcpy(dot, ".png");
+        s_cur_cover = WP_LoadPNG(png_path);
+        if (s_cur_cover) return;
+        strcpy(dot, ".PNG");
+        s_cur_cover = WP_LoadPNG(png_path);
+        if (s_cur_cover) return;
+    }
+
+    // 2. Try in sdmc:/3ds/Boom3DS/wads/<filename_without_ext>.png
+    char base_name[64];
+    strncpy(base_name, wad->filename, sizeof(base_name) - 1);
+    base_name[sizeof(base_name) - 1] = '\0';
+    dot = strrchr(base_name, '.');
+    if (dot) *dot = '\0';
+
+    snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Boom3DS/wads/%s.png", base_name);
+    s_cur_cover = WP_LoadPNG(png_path);
+    if (s_cur_cover) return;
+
+    snprintf(png_path, sizeof(png_path), "/3ds/Boom3DS/wads/%s.png", base_name);
+    s_cur_cover = WP_LoadPNG(png_path);
+    if (s_cur_cover) return;
+
+    // 3. Fallback for uppercase (e.g. HR.png, PL2.png)
+    snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Boom3DS/wads/%s.PNG", base_name);
+    s_cur_cover = WP_LoadPNG(png_path);
+}
+
+// Draw scaled cover image with bilinear filtering
+static void WP_DrawCover(u8 *fb, int fb_width, int dest_x, int dest_y, int dest_w, int dest_h)
+{
+    if (!s_cur_cover || !s_cur_cover->pixels) return;
+
+    int src_w = s_cur_cover->width;
+    int src_h = s_cur_cover->height;
+    u32 *src = s_cur_cover->pixels;
+
+    for (int dy = 0; dy < dest_h; dy++) {
+        int sy = (dy * src_h) / dest_h;
+        if (sy >= src_h) sy = src_h - 1;
+        u32 *src_row = src + sy * src_w;
+
+        for (int dx = 0; dx < dest_w; dx++) {
+            int sx = (dx * src_w) / dest_w;
+            if (sx >= src_w) sx = src_w - 1;
+
+            u32 pixel = src_row[sx];
+            // Format in memory from png: RGBA (little endian: R, G, B, A)
+            u8 r = (pixel & 0x000000FF);
+            u8 g = (pixel & 0x0000FF00) >> 8;
+            u8 b = (pixel & 0x00FF0000) >> 16;
+
+            WP_DrawPixel(fb, fb_width, dest_x + dx, dest_y + dy, r, g, b);
+        }
+    }
+}
+
 // Clean up display names for common WADs
 static void WP_FormatDisplayName(wad_info_t *wad)
 {
     const char *fn = wad->filename;
 
     if (!strcasecmp(fn, "doom.wad") || !strcasecmp(fn, "doomu.wad")) {
-        strcpy(wad->display_name, "The Ultimate DOOM");
+        strcpy(wad->display_name, "DOOM 1: The Ultimate DOOM");
     } else if (!strcasecmp(fn, "doom2.wad")) {
         strcpy(wad->display_name, "DOOM II: Hell on Earth");
     } else if (!strcasecmp(fn, "tnt.wad")) {
@@ -309,7 +473,7 @@ static void WP_RenderTopScreen(u8 *fb)
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "BOOM3DS DUALSCREEN", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, "v0.8.0 WAD BROWSER", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 280, 12, "v0.8.2 WAD BROWSER", 255, 215, 0, 1);
 
     if (s_wad_count == 0) {
         WP_DrawText(fb, 400, 20, 100, "KEINE WAD-DATEIEN GEFUNDEN!", 255, 50, 50, 2);
@@ -320,46 +484,75 @@ static void WP_RenderTopScreen(u8 *fb)
 
     wad_info_t *cur = &s_wads[s_selected_idx];
 
-    // Card Box for current WAD
-    WP_FillRect(fb, 400, 12, 42, 376, 128, 30, 30, 35);
-    WP_DrawRect(fb, 400, 12, 42, 376, 128, 180, 150, 40);
+    // Ensure cover image for current WAD is loaded
+    WP_UpdateCurrentCover(s_selected_idx);
 
-    // Title
-    WP_DrawText(fb, 400, 22, 52, cur->display_name, 255, 255, 255, 2);
+    // Card Box for current WAD
+    WP_FillRect(fb, 400, 12, 40, 376, 136, 30, 30, 35);
+    WP_DrawRect(fb, 400, 12, 40, 376, 136, 180, 150, 40);
+
+    // Cover Art Box (Left: X=18, Y=46, W=100, H=124)
+    int cover_x = 18;
+    int cover_y = 46;
+    int cover_w = 98;
+    int cover_h = 124;
+
+    WP_FillRect(fb, 400, cover_x, cover_y, cover_w, cover_h, 15, 15, 18);
+    WP_DrawRect(fb, 400, cover_x, cover_y, cover_w, cover_h, 80, 80, 90);
+
+    if (s_cur_cover && s_cur_cover->pixels) {
+        WP_DrawCover(fb, 400, cover_x + 1, cover_y + 1, cover_w - 2, cover_h - 2);
+    } else {
+        // Fallback placeholder when no cover is present
+        WP_DrawText(fb, 400, cover_x + 16, cover_y + 45, "KEIN", 120, 120, 130, 2);
+        WP_DrawText(fb, 400, cover_x + 12, cover_y + 65, "COVER", 120, 120, 130, 2);
+    }
+
+    // Info Section (Right of Cover: X=126)
+    int info_x = 126;
+
+    // Title (Scale 2 if short, Scale 1 if long)
+    if (strlen(cur->display_name) <= 20) {
+        WP_DrawText(fb, 400, info_x, 48, cur->display_name, 255, 255, 255, 2);
+    } else {
+        WP_DrawText(fb, 400, info_x, 48, cur->display_name, 255, 255, 255, 1);
+    }
 
     // Type Badge
     if (cur->is_iwad) {
-        WP_FillRect(fb, 400, 22, 78, 140, 16, 20, 120, 40);
-        WP_DrawText(fb, 400, 26, 82, "[IWAD - VOLLVERSION]", 255, 255, 255, 1);
+        WP_FillRect(fb, 400, info_x, 68, 140, 16, 20, 120, 40);
+        WP_DrawText(fb, 400, info_x + 4, 72, "[IWAD - VOLLVERSION]", 255, 255, 255, 1);
     } else {
-        WP_FillRect(fb, 400, 22, 78, 145, 16, 20, 70, 130);
-        WP_DrawText(fb, 400, 26, 82, "[PWAD - MEGAWAD / MOD]", 180, 230, 255, 1);
+        WP_FillRect(fb, 400, info_x, 68, 145, 16, 20, 70, 130);
+        WP_DrawText(fb, 400, info_x + 4, 72, "[PWAD - MEGAWAD / MOD]", 180, 230, 255, 1);
     }
 
     // Size & Count
     char size_buf[64];
     float mb = (float)cur->file_size / (1024.0f * 1024.0f);
-    snprintf(size_buf, sizeof(size_buf), "GROESSE: %.2f MB   (WAD %d VON %d)", mb, s_selected_idx + 1, s_wad_count);
-    WP_DrawText(fb, 400, 22, 104, size_buf, 200, 200, 200, 1);
+    snprintf(size_buf, sizeof(size_buf), "GROESSE: %.2f MB  (#%d/%d)", mb, s_selected_idx + 1, s_wad_count);
+    WP_DrawText(fb, 400, info_x, 92, size_buf, 200, 200, 200, 1);
 
     // Path
     char path_buf[128];
-    snprintf(path_buf, sizeof(path_buf), "PFAD: %s", cur->path);
-    WP_DrawText(fb, 400, 22, 122, path_buf, 150, 150, 160, 1);
+    snprintf(path_buf, sizeof(path_buf), "DATEI: %s", cur->filename);
+    WP_DrawText(fb, 400, info_x, 110, path_buf, 160, 210, 255, 1);
 
     // Status hint
     if (cur->is_iwad) {
-        WP_DrawText(fb, 400, 22, 142, "* EIGENSTAENDIGES SPIEL - STARTET DIREKT", 100, 255, 120, 1);
+        WP_DrawText(fb, 400, info_x, 134, "* EIGENSTAENDIGES SPIEL", 100, 255, 120, 1);
+        WP_DrawText(fb, 400, info_x, 148, "* STARTET DIREKT", 100, 255, 120, 1);
     } else {
-        WP_DrawText(fb, 400, 22, 142, "* MEGAWAD - LAEUFT MIT DOOM II ALS BASIS", 255, 200, 80, 1);
+        WP_DrawText(fb, 400, info_x, 134, "* MEGAWAD / COMMUNITY MOD", 255, 200, 80, 1);
+        WP_DrawText(fb, 400, info_x, 148, "* LAEUFT MIT DOOM II BASIS", 255, 200, 80, 1);
     }
 
-    // Controls Help Box
-    WP_FillRect(fb, 400, 12, 180, 376, 52, 24, 24, 28);
-    WP_DrawRect(fb, 400, 12, 180, 376, 52, 70, 70, 80);
-    WP_DrawText(fb, 400, 20, 188, "STEUERUNG:", 255, 215, 0, 1);
-    WP_DrawText(fb, 400, 100, 188, "D-PAD / CPAD: Navigieren   L / R: Seite blaettern", 200, 200, 200, 1);
-    WP_DrawText(fb, 400, 20, 208, "A / TOUCH : Spiel starten   START : Zuletzt gespielt", 100, 255, 120, 1);
+    // Controls Help Box (Bottom)
+    WP_FillRect(fb, 400, 12, 182, 376, 50, 24, 24, 28);
+    WP_DrawRect(fb, 400, 12, 182, 376, 50, 70, 70, 80);
+    WP_DrawText(fb, 400, 20, 189, "STEUERUNG:", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 100, 189, "D-PAD / CPAD: Navigieren   L / R: Seite blaettern", 200, 200, 200, 1);
+    WP_DrawText(fb, 400, 20, 209, "A / TOUCH : Spiel starten   START : Zuletzt gespielt", 100, 255, 120, 1);
 }
 
 static void WP_RenderBottomScreen(u8 *fb)
@@ -607,6 +800,7 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
         gspWaitForVBlank();
     }
 
+    WP_FreeCover();
     if (s_wad_count == 0) return false;
 
     wad_info_t *chosen = &s_wads[s_selected_idx];
