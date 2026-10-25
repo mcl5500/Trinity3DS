@@ -635,14 +635,8 @@ void I_InitSound(void)
   sound_inited_once = true;//e6y
 
 #ifdef __3DS__
-  // Autoload Roland SC-55 SoundFont if present
-  if (access("sdmc:/3ds/Boom3DS/sc55.sf2", R_OK) == 0) {
-    Mix_SetSoundFonts("sdmc:/3ds/Boom3DS/sc55.sf2");
-    lprintf(LO_INFO, "Boom3DS: Loaded Roland SC-55 SoundFont (sdmc:/3ds/Boom3DS/sc55.sf2)\n");
-  } else if (access("/3ds/Boom3DS/sc55.sf2", R_OK) == 0) {
-    Mix_SetSoundFonts("/3ds/Boom3DS/sc55.sf2");
-    lprintf(LO_INFO, "Boom3DS: Loaded Roland SC-55 SoundFont (/3ds/Boom3DS/sc55.sf2)\n");
-  }
+  // SoundFont configuration: SDL_mixer on 3DS only supports sf2 with FluidSynth backend,
+  // which is not in portlibs. Revert to stable internal MIDI synthesis.
 #endif
   sound_inited = true;
   Mix_SetPostMix(I_UpdateSound, NULL);

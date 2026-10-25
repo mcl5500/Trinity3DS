@@ -57,13 +57,7 @@ if [ -f "$DIR/prboom-plus.wad" ]; then
     echo "    Upload complete!"
 fi
 
-if [ -f "$DIR/sc55.sf2" ]; then
-    echo "--> Uploading Roland SC-55 SoundFont to /3ds/Boom3DS/sc55.sf2..."
-    curl -s -X PUT -H "$HDR" \
-      --data-binary @"$DIR/sc55.sf2" \
-      "http://$IP/api/file?path=%2F3ds%2FBoom3DS%2Fsc55.sf2&replace=1" >/dev/null
-    echo "    Upload complete!"
-fi
+
 
 # 2. Upload and install CIA
 if [ -f "$DIR/Boom3DS-Dualscreen.cia" ]; then
