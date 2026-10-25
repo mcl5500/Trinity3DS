@@ -327,10 +327,13 @@ void I_SwapBuffers(void)
   gl_wrapper_swap_buffers();
 }
 
+void I_ShutdownJoystick(void);
+
 void I_ShutdownGraphics(void)
 {
   // SDL_FreeCursor(cursors[1]);
   DeactivateMouse();
+  I_ShutdownJoystick();
 }
 
 //

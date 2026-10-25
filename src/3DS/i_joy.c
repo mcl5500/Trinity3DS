@@ -48,6 +48,25 @@
 
 #include <3ds.h>
 
+static bool irrst_initialized = false;
+
+void I_InitJoystick(void)
+{
+  if (!irrst_initialized) {
+    if (R_SUCCEEDED(irrstInit())) {
+      irrst_initialized = true;
+    }
+  }
+}
+
+void I_ShutdownJoystick(void)
+{
+  if (irrst_initialized) {
+    irrstExit();
+    irrst_initialized = false;
+  }
+}
+
 void I_PollJoystick(void)
 {
   event_t ev;
@@ -68,9 +87,9 @@ void I_PollJoystick(void)
     ev.data1 |= (1 << 2);
   if (kHeld & KEY_Y)
     ev.data1 |= (1 << 3);
-  if (kHeld & KEY_L)
+  if (kHeld & (KEY_L | KEY_ZL))
     ev.data1 |= (1 << 4);
-  if (kHeld & KEY_R)
+  if (kHeld & (KEY_R | KEY_ZR))
     ev.data1 |= (1 << 5);
   if (kHeld & KEY_START)
     ev.data1 |= (1 << 6);
@@ -88,28 +107,29 @@ void I_PollJoystick(void)
   circlePosition cpos;
   hidCircleRead(&cpos);
 
+  // Circle Pad X (Strafe)
   axis_value = (cpos.dx * 192) / 3000;
-  if (abs(axis_value)<2) axis_value=0;
+  if (abs(axis_value) < 2) axis_value = 0;
   ev.data2 = axis_value;
 
+  // Circle Pad Y (Walk forward/backward)
   axis_value = (cpos.dy * 192) / 3000;
-  if (abs(axis_value)<2) axis_value=0;
+  if (abs(axis_value) < 2) axis_value = 0;
   ev.data3 = axis_value;
 
-  circlePosition cstickpos;
-  irrstCstickRead(&cstickpos);
+  // C-Stick (Camera turning / look)
+  circlePosition cstickpos = {0, 0};
+  if (irrst_initialized) {
+    irrstCstickRead(&cstickpos);
+  }
 
   axis_value = (cstickpos.dx * 192) / 3000;
-  if (abs(axis_value)<2) axis_value=0;
+  if (abs(axis_value) < 2) axis_value = 0;
   ev.data4 = axis_value;
 
   axis_value = (cstickpos.dy * 192) / 3000;
-  if (abs(axis_value)<2) axis_value=0;
+  if (abs(axis_value) < 2) axis_value = 0;
   ev.data5 = axis_value;
 
   D_PostEvent(&ev);
-}
-
-void I_InitJoystick(void)
-{
 }
