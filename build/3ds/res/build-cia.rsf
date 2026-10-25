@@ -1,11 +1,11 @@
 BasicInfo:
-  Title                   : "PRBOOM2"
-  ProductCode             : "CTR-H-PRB2"
+  Title                   : "BOOM3DS"
+  ProductCode             : "CTR-H-BOOM"
   Logo                    : Homebrew # Nintendo / Licensed / Distributed / iQue / iQueForSystem
 
 TitleInfo:
   Category                : Application
-  UniqueId                : 0x5A9BB
+  UniqueId                : 0xB003D
 
 Option:
   UseOnSD                 : true # true if App is to be installed to SD

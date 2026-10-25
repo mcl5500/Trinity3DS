@@ -238,17 +238,14 @@ static void I_GetEvent(void)
   }
 }
 
-// These are just raw BGR8 bitmap images
-extern const unsigned char _acbottom_off[];
-extern const unsigned char _acbottom_on[];
+#include "ds_screen.h"
 
 //
 // I_DrawBottomScreen
 //
 static void I_DrawBottomScreen (void)
 {
-  u8 *framebuf = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
-  memcpy(framebuf, ctr_input_mode ? _acbottom_on : _acbottom_off, 240*320*3);
+  DS_UpdateBottomScreen();
 }
 
 //
