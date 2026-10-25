@@ -428,24 +428,31 @@ static void DS_DrawTacticalAutomap(u8 *fb)
         }
     }
 
-    // 5. Draw Player Arrow (Wolfenstein-style White / Green arrow)
+    // 5. Draw Player Marker: Small Pure White Arrow (Wolfenstein style)
     angle_t angle = plr->mo->angle;
     double rad = (double)angle * (3.14159265358979323846 / (double)ANG180);
 
-    int tip_x = center_x + (int)(11.0 * cos(rad));
-    int tip_y = center_y - (int)(11.0 * sin(rad));
+    // 3x3 white center core
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            DS_DrawPixel(fb, center_x + dx, center_y + dy, 255, 255, 255);
+        }
+    }
 
-    int l_x = center_x + (int)(7.0 * cos(rad + 2.5));
-    int l_y = center_y - (int)(7.0 * sin(rad + 2.5));
+    // Small sharp white directional pointer tip (distance 2 to 5)
+    for (int d = 2; d <= 5; d++) {
+        int tx = center_x + (int)round(d * cos(rad));
+        int ty = center_y - (int)round(d * sin(rad));
+        DS_DrawPixel(fb, tx, ty, 255, 255, 255);
+    }
 
-    int r_x = center_x + (int)(7.0 * cos(rad - 2.5));
-    int r_y = center_y - (int)(7.0 * sin(rad - 2.5));
-
-    // Player arrow (Bright White core, Green outline)
-    DS_DrawLine(fb, center_x, center_y, tip_x, tip_y, 255, 255, 255, 2, 205, 1);
-    DS_DrawLine(fb, tip_x, tip_y, l_x, l_y, 40, 255, 60, 2, 205, 1);
-    DS_DrawLine(fb, tip_x, tip_y, r_x, r_y, 40, 255, 60, 2, 205, 1);
-    DS_DrawLine(fb, l_x, l_y, center_x, center_y, 40, 255, 60, 2, 205, 1);
+    // Small side fins for clean mini-arrow shape
+    int fin_l_x = center_x + (int)round(3.5 * cos(rad + 2.3));
+    int fin_l_y = center_y - (int)round(3.5 * sin(rad + 2.3));
+    int fin_r_x = center_x + (int)round(3.5 * cos(rad - 2.3));
+    int fin_r_y = center_y - (int)round(3.5 * sin(rad - 2.3));
+    DS_DrawPixel(fb, fin_l_x, fin_l_y, 255, 255, 255);
+    DS_DrawPixel(fb, fin_r_x, fin_r_y, 255, 255, 255);
 
     // 6. Tactical Header Bar (Kills, Items, Secrets, Zoom)
     char stats_buf[64];
