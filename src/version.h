@@ -35,8 +35,8 @@
 #ifndef __DOOMVERSION__
 #define __DOOMVERSION__
 
-#define BOOM3DS_DUALSCREEN_VERSION "0.6.4"
-#define BOOM3DS_DUALSCREEN_VERSION_STR "v0.6.4"
+#define BOOM3DS_DUALSCREEN_VERSION "0.6.5"
+#define BOOM3DS_DUALSCREEN_VERSION_STR "v0.6.5"
 
 extern const char version_date[];
 

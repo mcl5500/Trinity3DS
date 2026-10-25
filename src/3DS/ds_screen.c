@@ -18,7 +18,7 @@
 #include <stdio.h>
 #include <math.h>
 
-static int ds_map_zoom = 5; // Zoom scale shift
+static int ds_map_zoom = 2; // Default 3x tactical zoom (much larger & clearer)
 
 // Cached 256-color palette (768 bytes: R, G, B)
 static u8 ds_palette[768];
@@ -113,11 +113,11 @@ static void DS_DrawLine(u8 *fb, int x0, int y0, int x1, int y1, u8 r, u8 g, u8 b
     int err = dx + dy, e2;
 
     while (1) {
-        if (y0 >= min_y && y0 <= max_y && x0 >= 0 && x0 < 320) {
+        if (y0 >= min_y && y0 <= max_y && x0 >= 2 && x0 < 318) {
             DS_DrawPixel(fb, x0, y0, r, g, b);
             if (thick == 2) {
-                DS_DrawPixel(fb, x0 + 1, y0, r, g, b);
-                DS_DrawPixel(fb, x0, y0 + 1, r, g, b);
+                if (x0 + 1 < 318) DS_DrawPixel(fb, x0 + 1, y0, r, g, b);
+                if (y0 + 1 <= max_y) DS_DrawPixel(fb, x0, y0 + 1, r, g, b);
             }
         }
         if (x0 == x1 && y0 == y1) break;
@@ -345,20 +345,31 @@ static void DS_DrawTacticalAutomap(u8 *fb)
             (y0 < -60 && y1 < -60) || (y0 > 260 && y1 > 260))
             continue;
 
+        // Calculate distance from player to line midpoint
+        fixed_t lmx = (ld->v1->x + ld->v2->x) >> 1;
+        fixed_t lmy = (ld->v1->y + ld->v2->y) >> 1;
+        int dx = (lmx - px) >> FRACBITS;
+        int dy = (lmy - py) >> FRACBITS;
+        bool is_nearby = (dx * dx + dy * dy) <= (550 * 550); // ~550 map units
+
+        bool is_secret = (ld->flags & ML_SECRET) ||
+                         (ld->frontsector && P_IsSecret(ld->frontsector)) ||
+                         (ld->backsector && P_IsSecret(ld->backsector));
+        bool is_discovered = (ld->special == 0 && ld->backsector && (ld->flags & ML_SECRET)) ||
+                             (ld->frontsector && P_WasSecret(ld->frontsector) && !P_IsSecret(ld->frontsector)) ||
+                             (ld->backsector && P_WasSecret(ld->backsector) && !P_IsSecret(ld->backsector));
+
         u8 r = 175, g = 180, b = 195; // Wolfenstein Solid Wall: Crisp Slate Gray
         int thick = 2;
 
-        if (ld->flags & ML_SECRET) {
-            // Secret Wall / Door:
-            // Must stay DISGUISED as a normal wall until discovered or opened!
-            if ((ld->backsector && ld->special == 0) ||
-                (ld->frontsector && P_WasSecret(ld->frontsector) && !P_IsSecret(ld->frontsector)) ||
-                (ld->backsector && P_WasSecret(ld->backsector) && !P_IsSecret(ld->backsector))) {
-                // Discovered secret passage: subtle gold portal
-                r = 240; g = 200; b = 60;
-                thick = 1;
+        if (is_secret) {
+            // Secret wall / door:
+            // Highlighted distinctly when nearby (in der Nähe), discovered, or with allmap powerup!
+            if (is_nearby || is_discovered || plr->powers[pw_allmap]) {
+                r = 235; g = 60; b = 255; // Distinct Bright Magenta/Purple Secret
+                thick = 2;
             } else {
-                // Unopened secret: identical to standard solid wall (no spoilers!)
+                // Far away: disguised as regular solid wall until player approaches
                 r = 175; g = 180; b = 195;
                 thick = 2;
             }
@@ -443,8 +454,13 @@ static void DS_DrawTacticalAutomap(u8 *fb)
     DS_DrawString(fb, 8, 6, stats_buf, 170, 205, 240, 1);
 
     char zoom_buf[16];
-    snprintf(zoom_buf, sizeof(zoom_buf), "ZOOM %dx", 10 - ds_map_zoom);
-    DS_DrawString(fb, 264, 6, zoom_buf, 170, 205, 240, 1);
+    const char *zoom_str = "3x";
+    if (ds_map_zoom == 1) zoom_str = "4x";
+    else if (ds_map_zoom == 2) zoom_str = "3x";
+    else if (ds_map_zoom == 3) zoom_str = "2x";
+    else if (ds_map_zoom == 4) zoom_str = "1x";
+    snprintf(zoom_buf, sizeof(zoom_buf), "ZOOM %s", zoom_str);
+    DS_DrawString(fb, 260, 6, zoom_buf, 170, 205, 240, 1);
 }
 
 // Draw Dashboard when in Menu or Title screen
@@ -476,7 +492,7 @@ static void DS_DrawDashboard(u8 *fb)
 
 void DS_Init(void)
 {
-    ds_map_zoom = 5;
+    ds_map_zoom = 2;
     ds_pal_loaded = false;
 }
 
@@ -484,9 +500,9 @@ void DS_HandleTouch(int touch_x, int touch_y)
 {
     if (gamestate == GS_LEVEL) {
         if (touch_y < 208) {
-            ds_map_zoom--;
-            if (ds_map_zoom < 3) {
-                ds_map_zoom = 7;
+            ds_map_zoom++;
+            if (ds_map_zoom > 4) {
+                ds_map_zoom = 1;
             }
         }
     }
@@ -497,14 +513,16 @@ void DS_UpdateBottomScreen(void)
     u8 *framebuf = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
     if (!framebuf) return;
 
+    static bool was_touched = false;
     touchPosition touch;
     hidTouchRead(&touch);
     if (touch.px > 0 || touch.py > 0) {
-        static bool was_touched = false;
         if (!was_touched) {
             DS_HandleTouch(touch.px, touch.py);
             was_touched = true;
         }
+    } else {
+        was_touched = false;
     }
 
     if (gamestate == GS_LEVEL) {
