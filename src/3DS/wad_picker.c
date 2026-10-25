@@ -426,14 +426,44 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
 {
     s_wad_count = 0;
 
-    // Scan standard directories
+    // Scan standard directories (both with and without sdmc: prefix)
+    WP_ScanDirectory("/3ds/PrBoom-Plus", 0);
     WP_ScanDirectory("sdmc:/3ds/PrBoom-Plus", 0);
+    WP_ScanDirectory("/3ds/doom", 0);
     WP_ScanDirectory("sdmc:/3ds/doom", 0);
+    WP_ScanDirectory("/3ds/doom/wads", 0);
     WP_ScanDirectory("sdmc:/3ds/doom/wads", 0);
+    WP_ScanDirectory("/roms/doom", 0);
     WP_ScanDirectory("sdmc:/roms/doom", 0);
     WP_ScanDirectory(".", 0);
 
     if (s_wad_count == 0) {
+        // Render informational notice if no WADs found
+        u8 *top_fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+        u8 *bot_fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+        if (top_fb) {
+            WP_FillRect(top_fb, 400, 0, 0, 400, 240, 20, 20, 22);
+            WP_FillRect(top_fb, 400, 0, 0, 400, 32, 130, 20, 20);
+            WP_DrawText(top_fb, 400, 16, 8, "BOOM3DS WAD BROWSER", 255, 255, 255, 2);
+            WP_DrawText(top_fb, 400, 20, 60, "KEINE WADS IM SCAN GEFUNDEN!", 255, 80, 80, 2);
+            WP_DrawText(top_fb, 400, 20, 95, "Bitte kopiere WADs in einen dieser Ordner:", 200, 200, 200, 1);
+            WP_DrawText(top_fb, 400, 20, 115, "* sdmc:/3ds/PrBoom-Plus/", 100, 220, 255, 1);
+            WP_DrawText(top_fb, 400, 20, 130, "* sdmc:/3ds/doom/wads/", 100, 220, 255, 1);
+            WP_DrawText(top_fb, 400, 20, 160, "Druecke [A] um mit Standard-IWAD zu starten", 255, 215, 0, 1);
+        }
+        if (bot_fb) {
+            WP_FillRect(bot_fb, 320, 0, 0, 320, 240, 16, 16, 18);
+            WP_DrawText(bot_fb, 320, 20, 100, "Tippe hier oder druecke [A]...", 200, 200, 200, 1);
+        }
+        gfxFlushBuffers();
+        gfxSwapBuffers();
+        gspWaitForVBlank();
+
+        for (int timer = 0; timer < 180 && aptMainLoop(); timer++) {
+            hidScanInput();
+            if (hidKeysDown() & (KEY_A | KEY_START | KEY_TOUCH)) break;
+            gspWaitForVBlank();
+        }
         return false;
     }
 
@@ -459,13 +489,6 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
                 break;
             }
         }
-    }
-
-    // If only 1 IWAD and no PWADs, launch directly
-    if (s_wad_count == 1 && s_wads[0].is_iwad) {
-        strncpy(out_iwad, s_wads[0].path, iwad_len - 1);
-        if (out_pwad) out_pwad[0] = '\0';
-        return true;
     }
 
     // Check if START is held for instant launch of last played WAD
