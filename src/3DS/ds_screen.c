@@ -428,31 +428,47 @@ static void DS_DrawTacticalAutomap(u8 *fb)
         }
     }
 
-    // 5. Draw Player Marker: Small Pure White Arrow (Wolfenstein style)
-    angle_t angle = plr->mo->angle;
-    double rad = (double)angle * (3.14159265358979323846 / (double)ANG180);
+    // 5. Draw Player Marker: Exact 8-direction Wolf4SDL Arrow (3x3 core + pointer nose)
+    int dir = (int)(((unsigned int)(plr->mo->angle + (ANG45 / 2))) >> 29) & 7;
 
-    // 3x3 white center core
+    // 3x3 pure white center core
     for (int dy = -1; dy <= 1; dy++) {
         for (int dx = -1; dx <= 1; dx++) {
             DS_DrawPixel(fb, center_x + dx, center_y + dy, 255, 255, 255);
         }
     }
 
-    // Small sharp white directional pointer tip (distance 2 to 5)
-    for (int d = 2; d <= 5; d++) {
-        int tx = center_x + (int)round(d * cos(rad));
-        int ty = center_y - (int)round(d * sin(rad));
-        DS_DrawPixel(fb, tx, ty, 255, 255, 255);
+    // Pointer tip based on direction (0=East, 1=NE, 2=North, 3=NW, 4=West, 5=SW, 6=South, 7=SE)
+    switch (dir) {
+        case 0: // East (+X)
+            DS_DrawPixel(fb, center_x + 2, center_y, 255, 255, 255);
+            DS_DrawPixel(fb, center_x + 3, center_y, 255, 255, 255);
+            break;
+        case 1: // North-East (+X, -Y)
+            DS_DrawPixel(fb, center_x + 2, center_y - 2, 255, 255, 255);
+            break;
+        case 2: // North (-Y)
+            DS_DrawPixel(fb, center_x, center_y - 2, 255, 255, 255);
+            DS_DrawPixel(fb, center_x, center_y - 3, 255, 255, 255);
+            break;
+        case 3: // North-West (-X, -Y)
+            DS_DrawPixel(fb, center_x - 2, center_y - 2, 255, 255, 255);
+            break;
+        case 4: // West (-X)
+            DS_DrawPixel(fb, center_x - 2, center_y, 255, 255, 255);
+            DS_DrawPixel(fb, center_x - 3, center_y, 255, 255, 255);
+            break;
+        case 5: // South-West (-X, +Y)
+            DS_DrawPixel(fb, center_x - 2, center_y + 2, 255, 255, 255);
+            break;
+        case 6: // South (+Y)
+            DS_DrawPixel(fb, center_x, center_y + 2, 255, 255, 255);
+            DS_DrawPixel(fb, center_x, center_y + 3, 255, 255, 255);
+            break;
+        case 7: // South-East (+X, +Y)
+            DS_DrawPixel(fb, center_x + 2, center_y + 2, 255, 255, 255);
+            break;
     }
-
-    // Small side fins for clean mini-arrow shape
-    int fin_l_x = center_x + (int)round(3.5 * cos(rad + 2.3));
-    int fin_l_y = center_y - (int)round(3.5 * sin(rad + 2.3));
-    int fin_r_x = center_x + (int)round(3.5 * cos(rad - 2.3));
-    int fin_r_y = center_y - (int)round(3.5 * sin(rad - 2.3));
-    DS_DrawPixel(fb, fin_l_x, fin_l_y, 255, 255, 255);
-    DS_DrawPixel(fb, fin_r_x, fin_r_y, 255, 255, 255);
 
     // 6. Tactical Header Bar (Kills, Items, Secrets, Zoom)
     char stats_buf[64];
