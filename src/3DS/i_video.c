@@ -246,6 +246,7 @@ static void I_GetEvent(void)
 static void I_DrawBottomScreen (void)
 {
   DS_UpdateBottomScreen();
+  gfxScreenSwapBuffers(GFX_BOTTOM, false);
 }
 
 //
@@ -438,7 +439,7 @@ static void I_ShutdownSDL(void)
 void I_PreInitGraphics(void)
 {
   gfxInitDefault();
-  gfxSetDoubleBuffering(GFX_BOTTOM, false);
+  gfxSetDoubleBuffering(GFX_BOTTOM, true);
 
   I_AtExit(I_ShutdownSDL, true);
 }

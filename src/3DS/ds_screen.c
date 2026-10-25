@@ -8,6 +8,8 @@
 #include "z_zone.h"
 #include "p_tick.h"
 #include "p_mobj.h"
+#include "p_map.h"
+#include "p_spec.h"
 #include "version.h"
 
 #include <3ds.h>
@@ -183,7 +185,13 @@ static void DS_DrawWadPatch(u8 *fb, int dest_x, int dest_y, const char *patch_na
 
     short w = *(const short *)(data + 0);
     short h = *(const short *)(data + 2);
+    short leftoffset = *(const short *)(data + 4);
+    short topoffset = *(const short *)(data + 6);
     const int *columnofs = (const int *)(data + 8);
+
+    // Apply Doom patch offsets so elements (like Doomguy face) center correctly
+    dest_x -= leftoffset;
+    dest_y -= topoffset;
 
     for (int col = 0; col < w; col++) {
         int sx = dest_x + col;
@@ -299,14 +307,14 @@ static void DS_DrawAuthenticStatusBar(u8 *fb)
 // Render the Wolfenstein-style Tactical Live-Automap (Y: 0 to 207)
 static void DS_DrawTacticalAutomap(u8 *fb)
 {
-    // Clean, crisp dark radar background (Wolfenstein-style)
-    DS_FillRect(fb, 0, 0, 320, 208, 10, 12, 16);
+    // 1. Pure Black Background (authentic Wolfenstein style)
+    DS_FillRect(fb, 0, 0, 320, 208, 0, 0, 0);
 
-    // Outer border (Dark Slate)
-    DS_FillRect(fb, 0, 0, 320, 2, 40, 48, 60);
-    DS_FillRect(fb, 0, 206, 320, 2, 40, 48, 60);
-    DS_FillRect(fb, 0, 0, 2, 208, 40, 48, 60);
-    DS_FillRect(fb, 318, 0, 2, 208, 40, 48, 60);
+    // 2. Crisp Outer Border (Dark Slate Gray)
+    DS_FillRect(fb, 0, 0, 320, 2, 50, 55, 65);
+    DS_FillRect(fb, 0, 206, 320, 2, 50, 55, 65);
+    DS_FillRect(fb, 0, 0, 2, 208, 50, 55, 65);
+    DS_FillRect(fb, 318, 0, 2, 208, 50, 55, 65);
 
     player_t *plr = &players[consoleplayer];
     if (!plr || !plr->mo) return;
@@ -318,20 +326,13 @@ static void DS_DrawTacticalAutomap(u8 *fb)
     const int center_y = 104;
     const int shift = FRACBITS + ds_map_zoom;
 
-    // Subtle radar grid
-    for (int gx = 40; gx < 320; gx += 40) {
-        for (int gy = 20; gy < 206; gy += 40) {
-            DS_DrawPixel(fb, gx, gy, 25, 30, 42);
-        }
-    }
-
-    // Draw all visible map walls with Wolfenstein-like solid presence
+    // 3. Draw all visible map walls with authentic Wolfenstein styling
     for (int i = 0; i < numlines; i++) {
         line_t *ld = &lines[i];
 
         if (!(ld->flags & ML_MAPPED) && !(plr->powers[pw_allmap]))
             continue;
-        if (ld->flags & ML_DONTDRAW)
+        if ((ld->flags & ML_DONTDRAW) && !(plr->powers[pw_allmap]))
             continue;
 
         int x0 = center_x + ((ld->v1->x - px) >> shift);
@@ -344,44 +345,68 @@ static void DS_DrawTacticalAutomap(u8 *fb)
             (y0 < -60 && y1 < -60) || (y0 > 260 && y1 > 260))
             continue;
 
-        u8 r = 230, g = 50, b = 50; // Solid outer wall: Bright Red
-        int thick = 2; // Solid 2-pixel thickness!
+        u8 r = 175, g = 180, b = 195; // Wolfenstein Solid Wall: Crisp Slate Gray
+        int thick = 2;
 
         if (ld->flags & ML_SECRET) {
-            r = 190; g = 60; b = 230; // Secret wall: Bright Purple
+            // Secret Wall / Door:
+            // Must stay DISGUISED as a normal wall until discovered or opened!
+            if ((ld->backsector && ld->special == 0) ||
+                (ld->frontsector && P_WasSecret(ld->frontsector) && !P_IsSecret(ld->frontsector)) ||
+                (ld->backsector && P_WasSecret(ld->backsector) && !P_IsSecret(ld->backsector))) {
+                // Discovered secret passage: subtle gold portal
+                r = 240; g = 200; b = 60;
+                thick = 1;
+            } else {
+                // Unopened secret: identical to standard solid wall (no spoilers!)
+                r = 175; g = 180; b = 195;
+                thick = 2;
+            }
+        } else if (ld->special == 11 || ld->special == 51 || ld->special == 52 ||
+                   ld->special == 124 || ld->special == 197 || ld->special == 198) {
+            // Exit switch / line: Light Green (like elevator in Wolfenstein)
+            r = 50; g = 220; b = 80;
             thick = 2;
         } else if (ld->special) {
-            // Door or interactive switch
+            // Interactive doors & switches
             if (ld->special == 26 || ld->special == 32 || ld->special == 99 || ld->special == 133) {
-                r = 40; g = 140; b = 255; // Blue key door
+                r = 60; g = 140; b = 255;  // Blue key door
             } else if (ld->special == 27 || ld->special == 34 || ld->special == 135 || ld->special == 137) {
-                r = 255; g = 210; b = 0;   // Yellow key door
+                r = 255; g = 215; b = 0;   // Yellow key door
             } else if (ld->special == 28 || ld->special == 33 || ld->special == 134 || ld->special == 136) {
-                r = 255; g = 40; b = 40;   // Red key door
+                r = 255; g = 50; b = 50;   // Red key door
             } else {
-                r = 255; g = 140; b = 30;  // Standard door / switch: Orange
+                r = 70; g = 150; b = 255;  // Standard door: Light Blue (Wolfenstein style)
             }
             thick = 2;
         } else if (ld->backsector != NULL) {
-            r = 160; g = 130; b = 50; // Step / ledge / window: Ochre
+            // 2-sided open ledge / window / floor step: Subtle Dark Slate
+            r = 90; g = 95; b = 110;
             thick = 1;
         }
 
         DS_DrawLine(fb, x0, y0, x1, y1, r, g, b, 2, 205, thick);
     }
 
-    // Draw active enemies & pickups as tactical radar blips (Wolfenstein-style!)
+    // 4. Draw active enemies & pickups ONLY when in visual range (Wolfenstein-style line of sight)
     if (thinkercap.next) {
         for (thinker_t *th = thinkercap.next; th != &thinkercap; th = th->next) {
             if (th->function == P_MobjThinker) {
                 mobj_t *mo = (mobj_t *)th;
+                if (!mo) continue;
+
+                // Only reveal if within line of sight (im sichtbaren Bereich) or allmap cheat
+                if (!plr->powers[pw_allmap] && !P_CheckSight(plr->mo, mo)) {
+                    continue;
+                }
+
                 int mx = center_x + ((mo->x - px) >> shift);
                 int my = center_y - ((mo->y - py) >> shift);
 
                 if (mx >= 4 && mx < 316 && my >= 4 && my < 204) {
-                    // 1. Active Enemy: Bright 3x3 Red Blip
+                    // 1. Active Alive Enemy: Bright 3x3 Red Blip
                     if ((mo->flags & MF_COUNTKILL) && mo->health > 0) {
-                        DS_FillRect(fb, mx - 1, my - 1, 3, 3, 240, 20, 20);
+                        DS_FillRect(fb, mx - 1, my - 1, 3, 3, 240, 30, 30);
                     }
                     // 2. Pickups / Items: Bright 2x2 Yellow Blip
                     else if (mo->flags & MF_SPECIAL) {
@@ -392,7 +417,7 @@ static void DS_DrawTacticalAutomap(u8 *fb)
         }
     }
 
-    // Draw Player Arrow (Wolfenstein-style White / Green arrow)
+    // 5. Draw Player Arrow (Wolfenstein-style White / Green arrow)
     angle_t angle = plr->mo->angle;
     double rad = (double)angle * (3.14159265358979323846 / (double)ANG180);
 
@@ -411,15 +436,15 @@ static void DS_DrawTacticalAutomap(u8 *fb)
     DS_DrawLine(fb, tip_x, tip_y, r_x, r_y, 40, 255, 60, 2, 205, 1);
     DS_DrawLine(fb, l_x, l_y, center_x, center_y, 40, 255, 60, 2, 205, 1);
 
-    // Tactical Header Bar (Kills, Items, Secrets, Zoom)
+    // 6. Tactical Header Bar (Kills, Items, Secrets, Zoom)
     char stats_buf[64];
-    snprintf(stats_buf, sizeof(stats_buf), "KILLS: %d/%d  SECRETS: %d/%d",
-             plr->killcount, totalkills, plr->secretcount, totalsecret);
-    DS_DrawString(fb, 8, 6, stats_buf, 200, 210, 225, 1);
+    snprintf(stats_buf, sizeof(stats_buf), "KILLS: %d/%d  ITEMS: %d/%d  SECRETS: %d/%d",
+             plr->killcount, totalkills, plr->itemcount, totalitems, plr->secretcount, totalsecret);
+    DS_DrawString(fb, 8, 6, stats_buf, 170, 205, 240, 1);
 
     char zoom_buf[16];
     snprintf(zoom_buf, sizeof(zoom_buf), "ZOOM %dx", 10 - ds_map_zoom);
-    DS_DrawString(fb, 264, 6, zoom_buf, 90, 180, 255, 1);
+    DS_DrawString(fb, 264, 6, zoom_buf, 170, 205, 240, 1);
 }
 
 // Draw Dashboard when in Menu or Title screen
