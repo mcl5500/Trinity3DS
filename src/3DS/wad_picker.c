@@ -13,6 +13,9 @@
 
 #define MAX_WADS 512
 #define LAST_WAD_FILE "sdmc:/3ds/Boom3DS/last_wad.txt"
+#define WAD_CACHE_FILE "sdmc:/3ds/Boom3DS/wads_cache.bin"
+#define CACHE_MAGIC 0x44415742 // 'BWAD'
+#define CACHE_VERSION 2
 
 typedef struct {
     char path[256];
@@ -21,6 +24,12 @@ typedef struct {
     bool is_iwad;
     long file_size;
 } wad_info_t;
+
+typedef struct {
+    u32 magic;
+    u32 version;
+    int wad_count;
+} cache_header_t;
 
 typedef struct {
     int width;
@@ -266,37 +275,29 @@ static void WP_UpdateCurrentCover(int idx)
     wad_info_t *wad = &s_wads[idx];
     char png_path[256];
 
-    // 1. Try same directory with .png extension (case-insensitive base)
-    strncpy(png_path, wad->path, sizeof(png_path) - 1);
-    png_path[sizeof(png_path) - 1] = '\0';
-    char *dot = strrchr(png_path, '.');
-    if (dot) {
-        strcpy(dot, ".png");
-        s_cur_cover = WP_LoadPNG(png_path);
-        if (s_cur_cover) return;
-        strcpy(dot, ".PNG");
-        s_cur_cover = WP_LoadPNG(png_path);
-        if (s_cur_cover) return;
-    }
-
-    // 2. Try in sdmc:/3ds/Boom3DS/wads/<filename_without_ext>.png
+    // 1. Direct path in sdmc:/3ds/Boom3DS/wads/<filename_without_ext>.png
     char base_name[64];
     strncpy(base_name, wad->filename, sizeof(base_name) - 1);
     base_name[sizeof(base_name) - 1] = '\0';
-    dot = strrchr(base_name, '.');
+    char *dot = strrchr(base_name, '.');
     if (dot) *dot = '\0';
 
     snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Boom3DS/wads/%s.png", base_name);
     s_cur_cover = WP_LoadPNG(png_path);
     if (s_cur_cover) return;
 
-    snprintf(png_path, sizeof(png_path), "/3ds/Boom3DS/wads/%s.png", base_name);
+    snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Boom3DS/wads/%s.PNG", base_name);
     s_cur_cover = WP_LoadPNG(png_path);
     if (s_cur_cover) return;
 
-    // 3. Fallback for uppercase (e.g. HR.png, PL2.png)
-    snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Boom3DS/wads/%s.PNG", base_name);
-    s_cur_cover = WP_LoadPNG(png_path);
+    // 2. Try relative to wad path
+    strncpy(png_path, wad->path, sizeof(png_path) - 1);
+    png_path[sizeof(png_path) - 1] = '\0';
+    dot = strrchr(png_path, '.');
+    if (dot) {
+        strcpy(dot, ".png");
+        s_cur_cover = WP_LoadPNG(png_path);
+    }
 }
 
 // Draw scaled cover image with bilinear filtering
@@ -452,6 +453,49 @@ static void WP_ScanDirectory(const char *dir_path, int depth)
         }
     }
     closedir(dir);
+}
+
+// Load or Save WAD Cache for instant startup
+static bool WP_LoadCache(void)
+{
+    FILE *fp = fopen(WAD_CACHE_FILE, "rb");
+    if (!fp) return false;
+
+    cache_header_t hdr;
+    if (fread(&hdr, sizeof(hdr), 1, fp) != 1) {
+        fclose(fp);
+        return false;
+    }
+
+    if (hdr.magic != CACHE_MAGIC || hdr.version != CACHE_VERSION || hdr.wad_count <= 0 || hdr.wad_count > MAX_WADS) {
+        fclose(fp);
+        return false;
+    }
+
+    if (fread(s_wads, sizeof(wad_info_t), hdr.wad_count, fp) != (size_t)hdr.wad_count) {
+        fclose(fp);
+        return false;
+    }
+
+    fclose(fp);
+    s_wad_count = hdr.wad_count;
+    return true;
+}
+
+static void WP_SaveCache(void)
+{
+    if (s_wad_count <= 0) return;
+    FILE *fp = fopen(WAD_CACHE_FILE, "wb");
+    if (!fp) return;
+
+    cache_header_t hdr;
+    hdr.magic = CACHE_MAGIC;
+    hdr.version = CACHE_VERSION;
+    hdr.wad_count = s_wad_count;
+
+    fwrite(&hdr, sizeof(hdr), 1, fp);
+    fwrite(s_wads, sizeof(wad_info_t), s_wad_count, fp);
+    fclose(fp);
 }
 
 // Compare function: IWADs first, then alphabetical
@@ -641,13 +685,37 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
 {
     s_wad_count = 0;
 
-    // Scan ONLY the designated WAD folder (no redundant scans)
-    WP_ScanDirectory("sdmc:/3ds/Boom3DS/wads", 0);
-    if (s_wad_count == 0) {
-        WP_ScanDirectory("/3ds/Boom3DS/wads", 0);
-    }
-    if (s_wad_count == 0) {
-        WP_ScanDirectory("sdmc:/3ds/Boom3DS", 0);
+    // Fast Path: Try loading pre-built cache first
+    hidScanInput();
+    bool force_rescan = (hidKeysHeld() & KEY_X); // Hold X on boot to force full re-scan
+
+    if (!force_rescan && WP_LoadCache()) {
+        // Cache loaded instantly!
+    } else {
+        // Show "Scanne WADs..." notification while scanning
+        u8 *top_fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+        if (top_fb) {
+            WP_FillRect(top_fb, 400, 0, 0, 400, 240, 20, 20, 22);
+            WP_FillRect(top_fb, 400, 0, 0, 400, 32, 130, 20, 20);
+            WP_DrawText(top_fb, 400, 16, 8, "BOOM3DS DUALSCREEN", 255, 255, 255, 2);
+            WP_DrawText(top_fb, 400, 20, 100, "SCANNE WAD-DATEIEN...", 255, 215, 0, 2);
+            WP_DrawText(top_fb, 400, 20, 130, "Bitte einen kurzen Moment Geduld...", 200, 200, 200, 1);
+            gfxFlushBuffers();
+            gfxSwapBuffers();
+        }
+
+        // Scan ONLY the designated WAD folder (no redundant scans)
+        WP_ScanDirectory("sdmc:/3ds/Boom3DS/wads", 0);
+        if (s_wad_count == 0) {
+            WP_ScanDirectory("/3ds/Boom3DS/wads", 0);
+        }
+
+        if (s_wad_count > 0) {
+            // Sort WADs
+            qsort(s_wads, s_wad_count, sizeof(wad_info_t), WP_CompareWads);
+            // Save cache for next instantaneous boot
+            WP_SaveCache();
+        }
     }
 
     if (s_wad_count == 0) {
