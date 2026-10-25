@@ -68,15 +68,21 @@ int lprintf(OutputLevels pri, const char *s, ...)
 
 #ifdef __3DS__
   FILE *logfile = fopen("sdmc:/3ds/Boom3DS/log.txt", "a");
-
-  if (lvl&cons_output_mask)               /* mask output as specified */
-  {
-    r=fprintf(logfile,"%s",msg);
+  if (!logfile) {
+    logfile = fopen("/3ds/Boom3DS/log.txt", "a");
   }
-  if (!isatty(1) && lvl&cons_error_mask)  /* if stdout redirected     */
-    r=fprintf(logfile,"%s",msg);           /* select output at console */
 
-  fclose(logfile);
+  if (logfile)
+  {
+    if (lvl&cons_output_mask)               /* mask output as specified */
+    {
+      r=fprintf(logfile,"%s",msg);
+    }
+    if (!isatty(1) && lvl&cons_error_mask)  /* if stdout redirected     */
+      r=fprintf(logfile,"%s",msg);           /* select output at console */
+
+    fclose(logfile);
+  }
 #else
   if (lvl&cons_output_mask)               /* mask output as specified */
   {
