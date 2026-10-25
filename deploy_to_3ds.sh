@@ -49,6 +49,14 @@ if [ -f "$DIR/Boom3DS.smdh" ]; then
     echo "    Upload complete!"
 fi
 
+if [ -f "$DIR/prboom-plus.wad" ]; then
+    echo "--> Uploading prboom-plus.wad to /3ds/Boom3DS/prboom-plus.wad..."
+    curl -s -X PUT -H "$HDR" \
+      --data-binary @"$DIR/prboom-plus.wad" \
+      "http://$IP/api/file?path=%2F3ds%2FBoom3DS%2Fprboom-plus.wad&replace=1" >/dev/null
+    echo "    Upload complete!"
+fi
+
 # 2. Upload and install CIA
 if [ -f "$DIR/Boom3DS-Dualscreen.cia" ]; then
     echo "--> Uploading Boom3DS-Dualscreen.cia to /cias/..."
