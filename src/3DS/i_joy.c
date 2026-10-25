@@ -48,10 +48,20 @@
 
 #include <3ds.h>
 
+extern int joybfire;
+extern int joybuse;
+extern int joybspeed;
+extern int joybnextweapon;
+
 static bool irrst_initialized = false;
 
 void I_InitJoystick(void)
 {
+  joybfire = 0;
+  joybuse = 1;
+  joybnextweapon = 2;
+  joybspeed = 3;
+
   if (!irrst_initialized) {
     if (R_SUCCEEDED(irrstInit())) {
       irrst_initialized = true;
@@ -79,18 +89,18 @@ void I_PollJoystick(void)
 
   unsigned int kHeld = hidKeysHeld();
 
-  if (kHeld & KEY_A)
+  // A, R, ZR: Fire (Button 0)
+  if (kHeld & (KEY_A | KEY_R | KEY_ZR))
     ev.data1 |= (1 << 0);
-  if (kHeld & KEY_B)
+  // B, Y: Use / Open Doors & Switches (Button 1)
+  if (kHeld & (KEY_B | KEY_Y))
     ev.data1 |= (1 << 1);
+  // X: Next Weapon (Button 2)
   if (kHeld & KEY_X)
     ev.data1 |= (1 << 2);
-  if (kHeld & KEY_Y)
-    ev.data1 |= (1 << 3);
+  // L, ZL: Sprint / Speed (Button 3)
   if (kHeld & (KEY_L | KEY_ZL))
-    ev.data1 |= (1 << 4);
-  if (kHeld & (KEY_R | KEY_ZR))
-    ev.data1 |= (1 << 5);
+    ev.data1 |= (1 << 3);
   if (kHeld & KEY_START)
     ev.data1 |= (1 << 6);
   if (kHeld & KEY_SELECT)
