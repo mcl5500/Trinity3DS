@@ -37,13 +37,15 @@ $BANNERTOOL makesmdh -i "$RES/icon.png" -s "Boom3DS" -l "Boom3DS Dualscreen v0.8
 echo "=== Packaging CIA with makerom ==="
 $MAKEROM -f cia -target t -exefslogo \
     -o "$DIR/Boom3DS-Dualscreen.cia" \
-    -elf "$DIR/build/3ds/PrBoom-Plus.elf" \
+    -elf "$DIR/build/3ds/Boom3DS.elf" \
     -rsf "$RES/build-cia.rsf" \
     -banner "$RES/banner.bin" \
     -icon "$RES/icon.bin" \
     -logo "$RES/logo.bcma.lz"
 
-cp "$DIR/build/3ds/PrBoom-Plus.3dsx" "$DIR/Boom3DS-Dualscreen.3dsx"
+cp "$DIR/build/3ds/Boom3DS.3dsx" "$DIR/Boom3DS-Dualscreen.3dsx"
+cp "$DIR/build/3ds/Boom3DS.3dsx" "$DIR/Boom3DS.3dsx"
+cp "$RES/icon.bin" "$DIR/Boom3DS.smdh"
 
 echo "=== Build Complete! ==="
 echo "Artifacts:"

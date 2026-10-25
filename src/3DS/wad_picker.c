@@ -10,7 +10,7 @@
 #include <unistd.h>
 
 #define MAX_WADS 512
-#define LAST_WAD_FILE "sdmc:/3ds/PrBoom-Plus/last_wad.txt"
+#define LAST_WAD_FILE "sdmc:/3ds/Boom3DS/last_wad.txt"
 
 typedef struct {
     char path[256];
@@ -190,6 +190,26 @@ static void WP_FormatDisplayName(wad_info_t *wad)
         strcpy(wad->display_name, "HACX: Twitch 'n Kill");
     } else if (!strcasecmp(fn, "chex.wad")) {
         strcpy(wad->display_name, "Chex Quest");
+    } else if (!strcasecmp(fn, "scythe.wad")) {
+        strcpy(wad->display_name, "Scythe (Erik Alm)");
+    } else if (!strcasecmp(fn, "scythe2.wad")) {
+        strcpy(wad->display_name, "Scythe 2 (Erik Alm)");
+    } else if (!strcasecmp(fn, "av.wad")) {
+        strcpy(wad->display_name, "Alien Vendetta");
+    } else if (!strcasecmp(fn, "hr.wad")) {
+        strcpy(wad->display_name, "Hell Revealed");
+    } else if (!strcasecmp(fn, "hr2final.wad") || !strcasecmp(fn, "hr2.wad")) {
+        strcpy(wad->display_name, "Hell Revealed II");
+    } else if (!strcasecmp(fn, "mm.wad")) {
+        strcpy(wad->display_name, "Memento Mori");
+    } else if (!strcasecmp(fn, "mm2.wad")) {
+        strcpy(wad->display_name, "Memento Mori II");
+    } else if (!strcasecmp(fn, "1klinecp.wad")) {
+        strcpy(wad->display_name, "1000 Lines Community Project");
+    } else if (!strcasecmp(fn, "pl2.wad")) {
+        strcpy(wad->display_name, "Plutonia 2");
+    } else if (!strcasecmp(fn, "tntr.wad")) {
+        strcpy(wad->display_name, "TNT: Revilution");
     } else {
         // Strip .wad extension and clean underscores
         char buf[64];
@@ -294,7 +314,7 @@ static void WP_RenderTopScreen(u8 *fb)
     if (s_wad_count == 0) {
         WP_DrawText(fb, 400, 20, 100, "KEINE WAD-DATEIEN GEFUNDEN!", 255, 50, 50, 2);
         WP_DrawText(fb, 400, 20, 130, "Bitte kopiere .wad Dateien nach:", 200, 200, 200, 1);
-        WP_DrawText(fb, 400, 20, 145, "/3ds/PrBoom-Plus/ oder /3ds/doom/wads/", 100, 220, 255, 1);
+        WP_DrawText(fb, 400, 20, 145, "/3ds/Boom3DS/wads/ oder /3ds/Boom3DS/", 100, 220, 255, 1);
         return;
     }
 
@@ -427,12 +447,16 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
     s_wad_count = 0;
 
     // Scan standard directories (both with and without sdmc: prefix)
+    WP_ScanDirectory("/3ds/Boom3DS/wads", 0);
+    WP_ScanDirectory("sdmc:/3ds/Boom3DS/wads", 0);
+    WP_ScanDirectory("/3ds/Boom3DS", 0);
+    WP_ScanDirectory("sdmc:/3ds/Boom3DS", 0);
     WP_ScanDirectory("/3ds/PrBoom-Plus", 0);
     WP_ScanDirectory("sdmc:/3ds/PrBoom-Plus", 0);
-    WP_ScanDirectory("/3ds/doom", 0);
-    WP_ScanDirectory("sdmc:/3ds/doom", 0);
     WP_ScanDirectory("/3ds/doom/wads", 0);
     WP_ScanDirectory("sdmc:/3ds/doom/wads", 0);
+    WP_ScanDirectory("/3ds/doom", 0);
+    WP_ScanDirectory("sdmc:/3ds/doom", 0);
     WP_ScanDirectory("/roms/doom", 0);
     WP_ScanDirectory("sdmc:/roms/doom", 0);
     WP_ScanDirectory(".", 0);
@@ -447,8 +471,8 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
             WP_DrawText(top_fb, 400, 16, 8, "BOOM3DS WAD BROWSER", 255, 255, 255, 2);
             WP_DrawText(top_fb, 400, 20, 60, "KEINE WADS IM SCAN GEFUNDEN!", 255, 80, 80, 2);
             WP_DrawText(top_fb, 400, 20, 95, "Bitte kopiere WADs in einen dieser Ordner:", 200, 200, 200, 1);
-            WP_DrawText(top_fb, 400, 20, 115, "* sdmc:/3ds/PrBoom-Plus/", 100, 220, 255, 1);
-            WP_DrawText(top_fb, 400, 20, 130, "* sdmc:/3ds/doom/wads/", 100, 220, 255, 1);
+            WP_DrawText(top_fb, 400, 20, 115, "* sdmc:/3ds/Boom3DS/wads/", 100, 220, 255, 1);
+            WP_DrawText(top_fb, 400, 20, 130, "* sdmc:/3ds/Boom3DS/", 100, 220, 255, 1);
             WP_DrawText(top_fb, 400, 20, 160, "Druecke [A] um mit Standard-IWAD zu starten", 255, 215, 0, 1);
         }
         if (bot_fb) {

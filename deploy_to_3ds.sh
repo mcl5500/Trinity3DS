@@ -27,20 +27,29 @@ if [ "$ACCESS" != "allowed" ]; then
     done
 fi
 
-# Ensure directories exist
-curl -s -X POST -H "$HDR" -d "path=/3ds/PrBoom-Plus" "http://$IP/api/folder" >/dev/null || true
+# Ensure folders exist
+curl -s -X POST -H "$HDR" -d "path=/3ds/Boom3DS" "http://$IP/api/folder" >/dev/null || true
+curl -s -X POST -H "$HDR" -d "path=/3ds/Boom3DS/wads" "http://$IP/api/folder" >/dev/null || true
 curl -s -X POST -H "$HDR" -d "path=/cias" "http://$IP/api/folder" >/dev/null || true
 
-# 1. Upload .3dsx
-if [ -f "$DIR/Boom3DS-Dualscreen.3dsx" ]; then
-    echo "--> Uploading Boom3DS-Dualscreen.3dsx to /3ds/PrBoom-Plus/prboom-plus.3dsx..."
+# 1. Upload .3dsx and .smdh to /3ds/Boom3DS/
+if [ -f "$DIR/Boom3DS.3dsx" ]; then
+    echo "--> Uploading Boom3DS.3dsx to /3ds/Boom3DS/Boom3DS.3dsx..."
     curl -s -X PUT -H "$HDR" \
-      --data-binary @"$DIR/Boom3DS-Dualscreen.3dsx" \
-      "http://$IP/api/file?path=%2F3ds%2FPrBoom-Plus%2Fprboom-plus.3dsx&replace=1" >/dev/null
+      --data-binary @"$DIR/Boom3DS.3dsx" \
+      "http://$IP/api/file?path=%2F3ds%2FBoom3DS%2FBoom3DS.3dsx&replace=1" >/dev/null
     echo "    Upload complete!"
 fi
 
-# 2. Upload .cia
+if [ -f "$DIR/Boom3DS.smdh" ]; then
+    echo "--> Uploading Boom3DS.smdh to /3ds/Boom3DS/Boom3DS.smdh..."
+    curl -s -X PUT -H "$HDR" \
+      --data-binary @"$DIR/Boom3DS.smdh" \
+      "http://$IP/api/file?path=%2F3ds%2FBoom3DS%2FBoom3DS.smdh&replace=1" >/dev/null
+    echo "    Upload complete!"
+fi
+
+# 2. Upload and install CIA
 if [ -f "$DIR/Boom3DS-Dualscreen.cia" ]; then
     echo "--> Uploading Boom3DS-Dualscreen.cia to /cias/..."
     curl -s -X PUT -H "$HDR" \
@@ -50,7 +59,7 @@ if [ -f "$DIR/Boom3DS-Dualscreen.cia" ]; then
 
     echo "--> Triggering CIA install on 3DS..."
     curl -s -X POST -H "$HDR" \
-      -d "paths=/cias/Boom3DS-Dualscreen.cia" \
+      -d "path=/cias/Boom3DS-Dualscreen.cia" \
       "http://$IP/api/install" >/dev/null
     echo "    Installation command sent to 3DS!"
 fi

@@ -237,7 +237,7 @@ int I_Filelength(int handle)
 const char *I_DoomExeDir(void)
 {
 #ifdef __3DS__
-  return "sdmc:/3ds/PrBoom-Plus";
+  return "sdmc:/3ds/Boom3DS";
 #else
   static const char current_dir_dummy[] = {"."}; // proff - rem extra slash 8/21/03
   static char *base;

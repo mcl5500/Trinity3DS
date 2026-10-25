@@ -31,7 +31,7 @@ include $(DEVKITARM)/3ds_rules
 #     - icon.png
 #     - <libctru folder>/default_icon.png
 #---------------------------------------------------------------------------------
-TARGET		:=	PrBoom-Plus
+TARGET		:=	Boom3DS
 BUILD		:=	build
 
 SOURCES     :=  ../../src \

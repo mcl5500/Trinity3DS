@@ -67,7 +67,7 @@ int lprintf(OutputLevels pri, const char *s, ...)
   va_end(v);
 
 #ifdef __3DS__
-  FILE *logfile = fopen("sdmc:/3ds/PrBoom-Plus/log.txt", "a");
+  FILE *logfile = fopen("sdmc:/3ds/Boom3DS/log.txt", "a");
 
   if (lvl&cons_output_mask)               /* mask output as specified */
   {
