@@ -576,6 +576,10 @@ static void D_DoomLoop(void)
       D_Display(I_GetTimeFrac());
     }
   }
+
+#ifdef __3DS__
+  I_SafeExit(0);
+#endif
 }
 
 //

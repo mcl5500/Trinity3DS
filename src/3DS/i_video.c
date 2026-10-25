@@ -448,8 +448,20 @@ void I_FinishUpdate (void)
   gspWaitForVBlank();
 }
 
+void I_ShutdownSound(void);
+void I_ShutdownMusic(void);
+void I_ShutdownJoystick(void);
+
 static void I_ShutdownSDL(void)
 {
+  static bool was_shutdown = false;
+  if (was_shutdown) return;
+  was_shutdown = true;
+
+  I_ShutdownMusic();
+  I_ShutdownSound();
+  I_ShutdownJoystick();
+
   gfxExit();
 }
 

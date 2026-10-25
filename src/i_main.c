@@ -378,6 +378,13 @@ static void I_Quit (void)
   I_DemoExShutdown();
 }
 
+#ifdef __3DS__
+static void CTR_CleanShutdown(void)
+{
+  I_SafeExit(0);
+}
+#endif
+
 //int main(int argc, const char * const * argv)
 int main(int argc, char **argv)
 {
@@ -445,6 +452,11 @@ int main(int argc, char **argv)
   /* cphipps - call to video specific startup code */
   I_PreInitGraphics();
 
+#ifdef __3DS__
+  atexit(CTR_CleanShutdown);
+#endif
+
   D_DoomMain ();
+  I_SafeExit(0);
   return 0;
 }
