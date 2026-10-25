@@ -941,7 +941,9 @@ void ST_Drawer(dboolean statusbaron, dboolean refresh, dboolean fullmenu)
 
   // Boom3DS Dualscreen: Status bar is exclusively drawn on bottom screen!
   // Top screen must always remain full widescreen 3D view.
+  st_statusbaron = false;
   statusbaron = false;
+  return;
 
   if (statusbaron) {
     if (st_firsttime || (V_GetMode() == VID_MODEGL))

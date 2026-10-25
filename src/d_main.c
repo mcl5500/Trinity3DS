@@ -313,8 +313,8 @@ void D_Display (fixed_t frac)
     return;
 
   extern int screenblocks;
-  if (gamestate == GS_LEVEL && screenblocks < 10) {
-    screenblocks = 10;
+  if (gamestate == GS_LEVEL && screenblocks != 11) {
+    screenblocks = 11;
     R_SetViewSize(screenblocks);
   }
 
@@ -451,8 +451,7 @@ void D_Display (fixed_t frac)
       R_RestoreInterpolations();
 
       ST_Drawer(
-          ((viewheight != SCREENHEIGHT)
-          || ((automapmode & am_active) && !(automapmode & am_overlay))),
+          false,
           redrawborderstuff || BorderNeedRefresh,
           (menuactive == mnact_full));
 

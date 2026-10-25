@@ -614,31 +614,31 @@ void DS_SelectWeaponSlot(int slot)
 void DS_HandleTouch(int touch_x, int touch_y)
 {
     if (gamestate == GS_LEVEL) {
-        if (touch_y < 205) {
+        if (touch_y < 200) {
             // Automap: toggle zoom
             ds_map_zoom++;
             if (ds_map_zoom > 4) {
                 ds_map_zoom = 1;
             }
         } else {
-            // Status bar touch (Y: 205..239)
-            // 1. Classic ARMS Box (X: 95 to 142)
-            if (touch_x >= 95 && touch_x <= 142) {
+            // Status bar touch (Y: 200..239)
+            // 1. Classic ARMS Box (X: 96 to 142)
+            if (touch_x >= 96 && touch_x <= 142) {
                 int col = 0;
-                if (touch_x < 114) col = 0;
-                else if (touch_x < 128) col = 1;
+                if (touch_x < 115) col = 0;
+                else if (touch_x < 129) col = 1;
                 else col = 2;
 
-                int row = (touch_y >= 222) ? 1 : 0; // 0=Top row (2, 3, 4), 1=Bottom row (5, 6, 7)
+                int row = (touch_y >= 220) ? 1 : 0; // 0=Top row (2, 3, 4), 1=Bottom row (5, 6, 7)
                 int slot = (row == 0) ? (2 + col) : (5 + col);
                 DS_SelectWeaponSlot(slot);
             }
-            // 2. Doomguy Face (X: 143 to 175) -> Fist / Chainsaw
-            else if (touch_x >= 143 && touch_x <= 175) {
+            // 2. Doomguy Face (X: 143 to 180) -> Fist / Chainsaw
+            else if (touch_x >= 143 && touch_x <= 180) {
                 DS_SelectWeaponSlot(1);
             }
-            // 3. Ammo box (X: 0 to 94) -> Quick Melee / Fist toggle
-            else if (touch_x >= 0 && touch_x < 95) {
+            // 3. Ammo box (X: 0 to 95) -> Quick Melee / Fist toggle
+            else if (touch_x >= 0 && touch_x < 96) {
                 DS_SelectWeaponSlot(1);
             }
         }
