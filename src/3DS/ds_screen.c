@@ -11,16 +11,22 @@
 #include "p_map.h"
 #include "p_spec.h"
 #include "version.h"
+#include "g_game.h"
+#include "s_sound.h"
+#include "sounds.h"
 
 #include <3ds.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include <unistd.h>
 
 int ds_touch_weapon = wp_nochange;
 
 static int ds_map_zoom = 2; // Default 3x tactical zoom (much larger & clearer)
+static int ds_save_flash = 0;
+static int ds_load_flash = 0;
 
 // Cached 256-color palette (768 bytes: R, G, B)
 static u8 ds_palette[768];
@@ -104,6 +110,53 @@ static void DS_FillRect(u8 *fb, int x, int y, int w, int h, u8 r, u8 g, u8 b)
         for (int cx = x; cx < x + w; cx++) {
             DS_DrawPixel(fb, cx, cy, r, g, b);
         }
+    }
+}
+
+static void DS_DrawRect(u8 *fb, int x, int y, int w, int h, u8 r, u8 g, u8 b)
+{
+    for (int cx = x; cx < x + w; cx++) {
+        DS_DrawPixel(fb, cx, y, r, g, b);
+        DS_DrawPixel(fb, cx, y + h - 1, r, g, b);
+    }
+    for (int cy = y; cy < y + h; cy++) {
+        DS_DrawPixel(fb, x, cy, r, g, b);
+        DS_DrawPixel(fb, x + w - 1, cy, r, g, b);
+    }
+}
+
+void DS_QuickSave(void)
+{
+    if (gamestate != GS_LEVEL) return;
+    if (players[consoleplayer].playerstate == PST_DEAD) {
+        S_StartSound(NULL, sfx_oof);
+        players[consoleplayer].message = "CAN'T SAVE WHILE DEAD!";
+        return;
+    }
+
+    char desc[24];
+    snprintf(desc, sizeof(desc), "QUICKSAVE %s", lumpinfo[maplumpnum].name);
+    G_SaveGame(0, desc);
+    S_StartSound(NULL, sfx_swtchx);
+    players[consoleplayer].message = "GAME SAVED (QUICKSAVE)";
+    ds_save_flash = 12;
+}
+
+void DS_QuickLoad(void)
+{
+    if (gamestate != GS_LEVEL) return;
+
+    char path[256];
+    G_SaveGameName(path, sizeof(path), 0, false);
+    if (access(path, R_OK) == 0) {
+        G_LoadGame(0, false);
+        S_StartSound(NULL, sfx_swtchx);
+        players[consoleplayer].message = "GAME LOADED (QUICKSAVE)";
+        ds_load_flash = 12;
+    } else {
+        S_StartSound(NULL, sfx_oof);
+        players[consoleplayer].message = "NO QUICKSAVE FOUND!";
+        ds_load_flash = -12;
     }
 }
 
@@ -505,20 +558,56 @@ static void DS_DrawTacticalAutomap(u8 *fb)
             break;
     }
 
-    // 6. Tactical Header Bar (Kills, Items, Secrets, Zoom)
-    char stats_buf[64];
-    snprintf(stats_buf, sizeof(stats_buf), "KILLS: %d/%d  ITEMS: %d/%d  SECRETS: %d/%d",
-             plr->killcount, totalkills, plr->itemcount, totalitems, plr->secretcount, totalsecret);
-    DS_DrawString(fb, 8, 6, stats_buf, 170, 205, 240, 1);
+    // 6. Tactical Header Bar (Kills/Items/Secrets stats + [SAVE] + [LOAD] + [ZOOM])
+    DS_FillRect(fb, 0, 0, 320, 20, 18, 20, 26);
+    DS_FillRect(fb, 0, 19, 320, 1, 40, 45, 55);
 
-    char zoom_buf[16];
+    // Stats string (compact format: K: 12/34 I: 5/10 S: 1/3)
+    char stats_buf[64];
+    snprintf(stats_buf, sizeof(stats_buf), "K:%d/%d I:%d/%d S:%d/%d",
+             plr->killcount, totalkills, plr->itemcount, totalitems, plr->secretcount, totalsecret);
+    DS_DrawString(fb, 4, 6, stats_buf, 180, 210, 245, 1);
+
+    // [SAVE] Button (X: 148 to 198, width: 50, height: 15)
+    if (ds_save_flash > 0) {
+        DS_FillRect(fb, 148, 2, 50, 15, 60, 220, 80);
+        DS_DrawRect(fb, 148, 2, 50, 15, 255, 255, 255);
+        DS_DrawString(fb, 158, 6, "SAVED", 10, 50, 10, 1);
+        ds_save_flash--;
+    } else {
+        DS_FillRect(fb, 148, 2, 50, 15, 25, 65, 30);
+        DS_DrawRect(fb, 148, 2, 50, 15, 45, 140, 55);
+        DS_DrawString(fb, 161, 6, "SAVE", 160, 255, 170, 1);
+    }
+
+    // [LOAD] Button (X: 204 to 254, width: 50, height: 15)
+    if (ds_load_flash > 0) {
+        DS_FillRect(fb, 204, 2, 50, 15, 60, 160, 240);
+        DS_DrawRect(fb, 204, 2, 50, 15, 255, 255, 255);
+        DS_DrawString(fb, 213, 6, "LOADED", 10, 20, 60, 1);
+        ds_load_flash--;
+    } else if (ds_load_flash < 0) {
+        DS_FillRect(fb, 204, 2, 50, 15, 180, 40, 40);
+        DS_DrawRect(fb, 204, 2, 50, 15, 255, 100, 100);
+        DS_DrawString(fb, 216, 6, "EMPTY", 255, 255, 255, 1);
+        ds_load_flash++;
+    } else {
+        DS_FillRect(fb, 204, 2, 50, 15, 25, 45, 75);
+        DS_DrawRect(fb, 204, 2, 50, 15, 50, 100, 170);
+        DS_DrawString(fb, 217, 6, "LOAD", 170, 220, 255, 1);
+    }
+
+    // [ZOOM] Button (X: 260 to 316, width: 56, height: 15)
+    DS_FillRect(fb, 260, 2, 56, 15, 35, 38, 46);
+    DS_DrawRect(fb, 260, 2, 56, 15, 80, 90, 110);
     const char *zoom_str = "3x";
     if (ds_map_zoom == 1) zoom_str = "4x";
     else if (ds_map_zoom == 2) zoom_str = "3x";
     else if (ds_map_zoom == 3) zoom_str = "2x";
     else if (ds_map_zoom == 4) zoom_str = "1x";
+    char zoom_buf[16];
     snprintf(zoom_buf, sizeof(zoom_buf), "ZOOM %s", zoom_str);
-    DS_DrawString(fb, 260, 6, zoom_buf, 170, 205, 240, 1);
+    DS_DrawString(fb, 266, 6, zoom_buf, 200, 210, 225, 1);
 }
 
 // Draw Dashboard when in Menu or Title screen
@@ -614,8 +703,19 @@ void DS_SelectWeaponSlot(int slot)
 void DS_HandleTouch(int touch_x, int touch_y)
 {
     if (gamestate == GS_LEVEL) {
-        if (touch_y < 200) {
-            // Automap: toggle zoom
+        if (touch_y < 24) {
+            // Header bar action buttons
+            if (touch_x >= 144 && touch_x <= 198) {
+                DS_QuickSave();
+            } else if (touch_x >= 200 && touch_x <= 256) {
+                DS_QuickLoad();
+            } else if (touch_x >= 258 && touch_x <= 320) {
+                // Zoom button
+                ds_map_zoom++;
+                if (ds_map_zoom > 4) ds_map_zoom = 1;
+            }
+        } else if (touch_y < 200) {
+            // Automap area: toggle zoom
             ds_map_zoom++;
             if (ds_map_zoom > 4) {
                 ds_map_zoom = 1;

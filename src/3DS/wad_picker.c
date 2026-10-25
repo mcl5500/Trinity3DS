@@ -537,7 +537,7 @@ static void WP_RenderTopScreen(u8 *fb)
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "BOOM3DS DUALSCREEN", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, "v0.9.1 WAD BROWSER", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 280, 12, "v0.9.3 WAD BROWSER", 255, 215, 0, 1);
 
     if (s_wad_count == 0) {
         WP_DrawText(fb, 400, 20, 100, "KEINE WAD-DATEIEN GEFUNDEN!", 255, 50, 50, 2);
@@ -615,7 +615,7 @@ static void WP_RenderTopScreen(u8 *fb)
     WP_FillRect(fb, 400, 12, 182, 376, 50, 24, 24, 28);
     WP_DrawRect(fb, 400, 12, 182, 376, 50, 70, 70, 80);
     WP_DrawText(fb, 400, 20, 189, "STEUERUNG:", 255, 215, 0, 1);
-    WP_DrawText(fb, 400, 100, 189, "D-PAD / CPAD: Navigieren   L / R: Seite blaettern", 200, 200, 200, 1);
+    WP_DrawText(fb, 400, 100, 189, "D-PAD: Scrollen   L / R: A-Z Buchstabensprung", 200, 200, 200, 1);
     WP_DrawText(fb, 400, 20, 209, "A / TOUCH : Spiel starten   START : Zuletzt gespielt", 100, 255, 120, 1);
 }
 
@@ -831,13 +831,44 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
         if (kDown & (KEY_DDOWN | KEY_CPAD_DOWN)) {
             if (s_selected_idx < s_wad_count - 1) s_selected_idx++;
         }
-        if (kDown & (KEY_L | KEY_DLEFT)) {
+        if (kDown & (KEY_DLEFT | KEY_CPAD_LEFT)) {
             s_selected_idx -= 5;
             if (s_selected_idx < 0) s_selected_idx = 0;
         }
-        if (kDown & (KEY_R | KEY_DRIGHT)) {
+        if (kDown & (KEY_DRIGHT | KEY_CPAD_RIGHT)) {
             s_selected_idx += 5;
             if (s_selected_idx >= s_wad_count) s_selected_idx = s_wad_count - 1;
+        }
+        if (kDown & KEY_R) {
+            // Jump to next letter (A -> B -> C ...)
+            char cur_ch = toupper((unsigned char)s_wads[s_selected_idx].display_name[0]);
+            int target = -1;
+            for (int i = s_selected_idx + 1; i < s_wad_count; i++) {
+                char next_ch = toupper((unsigned char)s_wads[i].display_name[0]);
+                if (next_ch > cur_ch) {
+                    target = i;
+                    break;
+                }
+            }
+            if (target >= 0) s_selected_idx = target;
+        }
+        if (kDown & KEY_L) {
+            // Jump to previous letter
+            char cur_ch = toupper((unsigned char)s_wads[s_selected_idx].display_name[0]);
+            int cur_first = s_selected_idx;
+            while (cur_first > 0 && toupper((unsigned char)s_wads[cur_first - 1].display_name[0]) == cur_ch) {
+                cur_first--;
+            }
+            if (cur_first < s_selected_idx) {
+                s_selected_idx = cur_first;
+            } else if (cur_first > 0) {
+                char prev_ch = toupper((unsigned char)s_wads[cur_first - 1].display_name[0]);
+                int target = cur_first - 1;
+                while (target > 0 && toupper((unsigned char)s_wads[target - 1].display_name[0]) == prev_ch) {
+                    target--;
+                }
+                s_selected_idx = target;
+            }
         }
 
         // Touch Input

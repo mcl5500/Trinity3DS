@@ -13,6 +13,8 @@ void DS_Init(void);
 void DS_UpdateBottomScreen(void);
 void DS_HandleTouch(int touch_x, int touch_y);
 void DS_SelectWeaponSlot(int slot);
+void DS_QuickSave(void);
+void DS_QuickLoad(void);
 
 #ifdef __cplusplus
 }
