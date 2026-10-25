@@ -416,10 +416,10 @@ static void WP_ScanDirectory(const char *dir_path, int depth)
                 // Ignore prboom-plus.wad system wad
                 if (!strcasecmp(entry->d_name, "prboom-plus.wad")) continue;
 
-                // Check for duplicates
+                // Check for duplicates by filename (case-insensitive)
                 bool dup = false;
                 for (int i = 0; i < s_wad_count; i++) {
-                    if (!strcasecmp(s_wads[i].path, full_path)) {
+                    if (!strcasecmp(s_wads[i].filename, entry->d_name)) {
                         dup = true;
                         break;
                     }
@@ -639,19 +639,14 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
 {
     s_wad_count = 0;
 
-    // Scan standard directories (both with and without sdmc: prefix)
-    WP_ScanDirectory("/3ds/Boom3DS/wads", 0);
+    // Scan standard directories (prefer sdmc: path)
     WP_ScanDirectory("sdmc:/3ds/Boom3DS/wads", 0);
-    WP_ScanDirectory("/3ds/Boom3DS", 0);
     WP_ScanDirectory("sdmc:/3ds/Boom3DS", 0);
-    WP_ScanDirectory("/3ds/PrBoom-Plus", 0);
-    WP_ScanDirectory("sdmc:/3ds/PrBoom-Plus", 0);
-    WP_ScanDirectory("/3ds/doom/wads", 0);
     WP_ScanDirectory("sdmc:/3ds/doom/wads", 0);
-    WP_ScanDirectory("/3ds/doom", 0);
     WP_ScanDirectory("sdmc:/3ds/doom", 0);
-    WP_ScanDirectory("/roms/doom", 0);
     WP_ScanDirectory("sdmc:/roms/doom", 0);
+    WP_ScanDirectory("/3ds/Boom3DS/wads", 0);
+    WP_ScanDirectory("/3ds/Boom3DS", 0);
     WP_ScanDirectory(".", 0);
 
     if (s_wad_count == 0) {
