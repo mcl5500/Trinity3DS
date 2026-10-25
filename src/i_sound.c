@@ -623,6 +623,17 @@ void I_InitSound(void)
   audio_channels = 2;
   audio_buffers = getSliceSize();
 
+#ifdef __3DS__
+  // Point Timidity to the eawpats soundfont/patch directory before Mix_OpenAudio
+  if (access("sdmc:/3ds/Boom3DS/eawpats/timidity.cfg", R_OK) == 0) {
+    setenv("TIMIDITY_CFG", "sdmc:/3ds/Boom3DS/eawpats/timidity.cfg", 1);
+  } else if (access("/3ds/Boom3DS/eawpats/timidity.cfg", R_OK) == 0) {
+    setenv("TIMIDITY_CFG", "/3ds/Boom3DS/eawpats/timidity.cfg", 1);
+  } else if (access("/etc/timidity.cfg", R_OK) == 0) {
+    setenv("TIMIDITY_CFG", "/etc/timidity.cfg", 1);
+  }
+#endif
+
   if (Mix_OpenAudio(audio_rate, MIX_DEFAULT_FORMAT, audio_channels, audio_buffers) < 0)
   {
     lprintf(LO_INFO,"couldn't open audio with desired format (%s)\n", SDL_GetError());
@@ -779,7 +790,11 @@ void I_ShutdownMusic(void)
 void I_InitMusic(void)
 {
   if (!music_tmp) {
+#ifdef __3DS__
+    music_tmp = strdup("sdmc:/3ds/Boom3DS/doom.tmp");
+#else
     music_tmp = strdup("doom.tmp");
+#endif
     I_AtExit(I_ShutdownMusic, true);
   }
 }

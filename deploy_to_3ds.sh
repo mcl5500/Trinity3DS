@@ -69,7 +69,7 @@ if [ -f "$DIR/Boom3DS-Dualscreen.cia" ]; then
 
     echo "--> Triggering CIA install on 3DS..."
     curl -s -X POST -H "$HDR" \
-      -d "path=/cias/Boom3DS-Dualscreen.cia" \
+      -d "paths=/cias/Boom3DS-Dualscreen.cia" \
       "http://$IP/api/install" >/dev/null
     echo "    Installation command sent to 3DS!"
 fi
