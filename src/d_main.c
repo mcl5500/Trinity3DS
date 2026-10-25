@@ -1964,6 +1964,28 @@ static void D_DoomMainSetup(void)
     modifiedgame = true;
     D_AddFile(ds_picked_pwad, source_pwad);
     lprintf(LO_CONFIRM, "Boom3DS: Loaded Megawad/PWAD: %s\n", ds_picked_pwad);
+
+    // Check for matching companion .wad (e.g. SIGIL_SHREDS.wad or <name>_music.wad)
+    char companion_wad[256];
+    strncpy(companion_wad, ds_picked_pwad, sizeof(companion_wad) - 1);
+    companion_wad[sizeof(companion_wad) - 1] = '\0';
+    char *dot = strrchr(companion_wad, '.');
+    if (dot) {
+      // Check for SIGIL -> SIGIL_SHREDS.wad
+      char lower_pwad[256];
+      strncpy(lower_pwad, ds_picked_pwad, sizeof(lower_pwad) - 1);
+      lower_pwad[sizeof(lower_pwad) - 1] = '\0';
+      for (int k = 0; lower_pwad[k]; k++) lower_pwad[k] = tolower(lower_pwad[k]);
+
+      if (strstr(lower_pwad, "sigil.wad")) {
+        char shreds_path[256];
+        snprintf(shreds_path, sizeof(shreds_path), "sdmc:/3ds/Boom3DS/wads/SIGIL_SHREDS.wad");
+        if (access(shreds_path, R_OK) == 0) {
+          D_AddFile(shreds_path, source_pwad);
+          lprintf(LO_CONFIRM, "Boom3DS: Autoloaded companion SIGIL_SHREDS soundtrack!\n");
+        }
+      }
+    }
   }
 #endif
 
@@ -2178,6 +2200,29 @@ static void D_DoomMainSetup(void)
 		  umapinfo_loaded = true;
 	  }
   }
+
+#ifdef __3DS__
+  // Autoload matching .deh or .bex patch for currently loaded PWAD if present
+  if (ds_picked_pwad && *ds_picked_pwad) {
+    char deh_path[256];
+    strncpy(deh_path, ds_picked_pwad, sizeof(deh_path) - 1);
+    deh_path[sizeof(deh_path) - 1] = '\0';
+    char *dot = strrchr(deh_path, '.');
+    if (dot) {
+      strcpy(dot, ".deh");
+      if (access(deh_path, R_OK) == 0) {
+        lprintf(LO_CONFIRM, "Boom3DS: Autoloading companion DeHackEd patch: %s\n", deh_path);
+        ProcessDehFile(deh_path, D_dehout(), 0);
+      } else {
+        strcpy(dot, ".bex");
+        if (access(deh_path, R_OK) == 0) {
+          lprintf(LO_CONFIRM, "Boom3DS: Autoloading companion BEX patch: %s\n", deh_path);
+          ProcessDehFile(deh_path, D_dehout(), 0);
+        }
+      }
+    }
+  }
+#endif
 
 
   V_InitColorTranslation(); //jff 4/24/98 load color translation lumps

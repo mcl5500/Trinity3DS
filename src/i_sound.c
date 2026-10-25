@@ -633,6 +633,17 @@ void I_InitSound(void)
   // [FG] feed actual sample frequency back into config variable
   Mix_QuerySpec(&snd_samplerate, NULL, NULL);
   sound_inited_once = true;//e6y
+
+#ifdef __3DS__
+  // Autoload Roland SC-55 SoundFont if present
+  if (access("sdmc:/3ds/Boom3DS/sc55.sf2", R_OK) == 0) {
+    Mix_SetSoundFonts("sdmc:/3ds/Boom3DS/sc55.sf2");
+    lprintf(LO_INFO, "Boom3DS: Loaded Roland SC-55 SoundFont (sdmc:/3ds/Boom3DS/sc55.sf2)\n");
+  } else if (access("/3ds/Boom3DS/sc55.sf2", R_OK) == 0) {
+    Mix_SetSoundFonts("/3ds/Boom3DS/sc55.sf2");
+    lprintf(LO_INFO, "Boom3DS: Loaded Roland SC-55 SoundFont (/3ds/Boom3DS/sc55.sf2)\n");
+  }
+#endif
   sound_inited = true;
   Mix_SetPostMix(I_UpdateSound, NULL);
   lprintf(LO_INFO," configured audio device with %d samples/slice\n", audio_buffers);
