@@ -312,6 +312,12 @@ void D_Display (fixed_t frac)
   if (!I_StartDisplay())
     return;
 
+  extern int screenblocks;
+  if (gamestate == GS_LEVEL && screenblocks < 10) {
+    screenblocks = 10;
+    R_SetViewSize(screenblocks);
+  }
+
   if (setsizeneeded) {               // change the view size if needed
     R_ExecuteSetViewSize();
     oldgamestate = -1;            // force background redraw

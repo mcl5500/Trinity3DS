@@ -602,7 +602,13 @@ void G_BuildTiccmd(ticcmd_t* cmd)
   }
   else
     {                                 // phares 02/26/98: Added gamemode checks
-      if (next_weapon)
+      extern int ds_touch_weapon;
+      if (ds_touch_weapon != wp_nochange)
+      {
+        newweapon = ds_touch_weapon;
+        ds_touch_weapon = wp_nochange;
+      }
+      else if (next_weapon)
       {
         newweapon = G_NextWeapon(next_weapon);
         next_weapon = 0;

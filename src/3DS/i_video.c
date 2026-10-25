@@ -42,6 +42,7 @@
 #include "doomstat.h"
 #include "doomdef.h"
 #include "doomtype.h"
+#include "ds_screen.h"
 #include "v_video.h"
 #include "r_draw.h"
 #include "r_things.h"
@@ -185,6 +186,25 @@ static void I_GetEvent(void)
   }
   else // Mouse
   {
+    if (gamestate == GS_LEVEL)
+    {
+      static bool was_ds_touched = false;
+      u32 keys_held = hidKeysHeld();
+      if (keys_held & KEY_TOUCH)
+      {
+        if (!was_ds_touched && (touch.px > 0 || touch.py > 0))
+        {
+          DS_HandleTouch(touch.px, touch.py);
+          was_ds_touched = true;
+        }
+      }
+      else
+      {
+        was_ds_touched = false;
+      }
+      return;
+    }
+
     if(mouse_currently_grabbed)
     {
       // Reset mouse buttons state
@@ -238,10 +258,7 @@ static void I_GetEvent(void)
   }
 }
 
-#include "ds_screen.h"
 
-//
-// I_DrawBottomScreen
 //
 static void I_DrawBottomScreen (void)
 {

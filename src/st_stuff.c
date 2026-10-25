@@ -939,6 +939,10 @@ void ST_Drawer(dboolean statusbaron, dboolean refresh, dboolean fullmenu)
 
   ST_doPaletteStuff();  // Do red-/gold-shifts from damage/items
 
+  // Boom3DS Dualscreen: Status bar is exclusively drawn on bottom screen!
+  // Top screen must always remain full widescreen 3D view.
+  statusbaron = false;
+
   if (statusbaron) {
     if (st_firsttime || (V_GetMode() == VID_MODEGL))
     {

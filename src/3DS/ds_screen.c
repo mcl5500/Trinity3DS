@@ -18,6 +18,8 @@
 #include <stdio.h>
 #include <math.h>
 
+int ds_touch_weapon = wp_nochange;
+
 static int ds_map_zoom = 2; // Default 3x tactical zoom (much larger & clearer)
 
 // Cached 256-color palette (768 bytes: R, G, B)
@@ -553,7 +555,7 @@ void DS_Init(void)
 }
 
 // Interactive Touch Weapon Selection
-static void DS_SelectWeaponSlot(int slot)
+void DS_SelectWeaponSlot(int slot)
 {
     player_t *plr = &players[consoleplayer];
     if (!plr) return;
@@ -605,28 +607,29 @@ static void DS_SelectWeaponSlot(int slot)
 
     if (target != wp_nochange && plr->weaponowned[target]) {
         plr->pendingweapon = target;
+        ds_touch_weapon = target;
     }
 }
 
 void DS_HandleTouch(int touch_x, int touch_y)
 {
     if (gamestate == GS_LEVEL) {
-        if (touch_y < 208) {
+        if (touch_y < 205) {
             // Automap: toggle zoom
             ds_map_zoom++;
             if (ds_map_zoom > 4) {
                 ds_map_zoom = 1;
             }
         } else {
-            // Status bar touch (Y: 208..239)
-            // 1. Classic ARMS Box (X: 100 to 142)
-            if (touch_x >= 100 && touch_x <= 142) {
+            // Status bar touch (Y: 205..239)
+            // 1. Classic ARMS Box (X: 95 to 142)
+            if (touch_x >= 95 && touch_x <= 142) {
                 int col = 0;
                 if (touch_x < 114) col = 0;
                 else if (touch_x < 128) col = 1;
                 else col = 2;
 
-                int row = (touch_y >= 224) ? 1 : 0; // 0=Top row (2, 3, 4), 1=Bottom row (5, 6, 7)
+                int row = (touch_y >= 222) ? 1 : 0; // 0=Top row (2, 3, 4), 1=Bottom row (5, 6, 7)
                 int slot = (row == 0) ? (2 + col) : (5 + col);
                 DS_SelectWeaponSlot(slot);
             }
@@ -634,8 +637,8 @@ void DS_HandleTouch(int touch_x, int touch_y)
             else if (touch_x >= 143 && touch_x <= 175) {
                 DS_SelectWeaponSlot(1);
             }
-            // 3. Ammo box (X: 0 to 48) -> Quick Melee / Fist toggle
-            else if (touch_x >= 0 && touch_x <= 48) {
+            // 3. Ammo box (X: 0 to 94) -> Quick Melee / Fist toggle
+            else if (touch_x >= 0 && touch_x < 95) {
                 DS_SelectWeaponSlot(1);
             }
         }
@@ -646,18 +649,6 @@ void DS_UpdateBottomScreen(void)
 {
     u8 *framebuf = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
     if (!framebuf) return;
-
-    static bool was_touched = false;
-    touchPosition touch;
-    hidTouchRead(&touch);
-    if (touch.px > 0 || touch.py > 0) {
-        if (!was_touched) {
-            DS_HandleTouch(touch.px, touch.py);
-            was_touched = true;
-        }
-    } else {
-        was_touched = false;
-    }
 
     if (gamestate == GS_LEVEL) {
         DS_DrawTacticalAutomap(framebuf);
