@@ -148,7 +148,7 @@ static void I_GetEvent(void)
   touchPosition touch;
   hidTouchRead(&touch);
 
-  if((keys_down & KEY_TOUCH) && I_IsPointInRect(touch.px, touch.py, 32, 208, 120, 240))
+  if(gamestate != GS_LEVEL && (keys_down & KEY_TOUCH) && I_IsPointInRect(touch.px, touch.py, 32, 208, 120, 240))
   {
     ctr_input_mode = !ctr_input_mode;
     return;

@@ -257,8 +257,41 @@ static void DS_DrawAuthenticStatusBar(u8 *fb)
     DS_DrawDoomNumber(fb, 90, ST_Y + 3, plr->health, 3);
     DS_DrawWadPatch(fb, 90, ST_Y + 3, "STTPRCNT"); // % symbol
 
-    // 4. Arms background (X: 104, Y: ST_Y)
+    // 4. Arms background & owned weapon numbers (X: 104, Y: ST_Y)
     DS_DrawWadPatch(fb, 104, ST_Y, "STARMS");
+
+    static const int arms_x[6] = { 111, 123, 135, 111, 123, 135 };
+    static const int arms_y[6] = { 212, 212, 212, 222, 222, 222 };
+    static const weapontype_t arms_wp[6] = {
+        wp_pistol, wp_shotgun, wp_chaingun,
+        wp_missile, wp_plasma, wp_bfg
+    };
+
+    for (int i = 0; i < 6; i++) {
+        int w_num = i + 2;
+        bool owned = plr->weaponowned[arms_wp[i]];
+        if (i == 1 && plr->weaponowned[wp_supershotgun]) owned = true;
+
+        char num_patch[10];
+        if (owned) {
+            snprintf(num_patch, sizeof(num_patch), "STYSNUM%d", w_num);
+        } else {
+            snprintf(num_patch, sizeof(num_patch), "STGNUM%d", w_num);
+        }
+        DS_DrawWadPatch(fb, arms_x[i], arms_y[i], num_patch);
+
+        // Highlight currently active weapon with a clean white bracket box
+        bool active = (plr->readyweapon == arms_wp[i]) ||
+                      (i == 1 && plr->readyweapon == wp_supershotgun);
+        if (active) {
+            int hx = arms_x[i] - 1;
+            int hy = arms_y[i] - 1;
+            DS_DrawLine(fb, hx, hy, hx + 5, hy, 255, 255, 255, 208, 239, 1);
+            DS_DrawLine(fb, hx, hy + 7, hx + 5, hy + 7, 255, 255, 255, 208, 239, 1);
+            DS_DrawLine(fb, hx, hy, hx, hy + 7, 255, 255, 255, 208, 239, 1);
+            DS_DrawLine(fb, hx + 5, hy, hx + 5, hy + 7, 255, 255, 255, 208, 239, 1);
+        }
+    }
 
     // 5. Doomguy Face (X: 143, Y: ST_Y)
     char face_name[9] = "STFST01";
@@ -519,13 +552,91 @@ void DS_Init(void)
     ds_pal_loaded = false;
 }
 
+// Interactive Touch Weapon Selection
+static void DS_SelectWeaponSlot(int slot)
+{
+    player_t *plr = &players[consoleplayer];
+    if (!plr) return;
+
+    weapontype_t target = wp_nochange;
+
+    switch (slot) {
+        case 1:
+            // Slot 1: Fist / Chainsaw toggle
+            if (plr->weaponowned[wp_chainsaw] && plr->weaponowned[wp_fist]) {
+                target = (plr->readyweapon == wp_chainsaw) ? wp_fist : wp_chainsaw;
+            } else if (plr->weaponowned[wp_chainsaw]) {
+                target = wp_chainsaw;
+            } else if (plr->weaponowned[wp_fist]) {
+                target = wp_fist;
+            }
+            break;
+        case 2:
+            // Slot 2: Pistol
+            if (plr->weaponowned[wp_pistol]) target = wp_pistol;
+            break;
+        case 3:
+            // Slot 3: Shotgun / Super Shotgun toggle
+            if (plr->weaponowned[wp_supershotgun] && plr->weaponowned[wp_shotgun]) {
+                target = (plr->readyweapon == wp_supershotgun) ? wp_shotgun : wp_supershotgun;
+            } else if (plr->weaponowned[wp_supershotgun]) {
+                target = wp_supershotgun;
+            } else if (plr->weaponowned[wp_shotgun]) {
+                target = wp_shotgun;
+            }
+            break;
+        case 4:
+            // Slot 4: Chaingun
+            if (plr->weaponowned[wp_chaingun]) target = wp_chaingun;
+            break;
+        case 5:
+            // Slot 5: Rocket Launcher
+            if (plr->weaponowned[wp_missile]) target = wp_missile;
+            break;
+        case 6:
+            // Slot 6: Plasma Rifle
+            if (plr->weaponowned[wp_plasma] && gamemode != shareware) target = wp_plasma;
+            break;
+        case 7:
+            // Slot 7: BFG 9000
+            if (plr->weaponowned[wp_bfg] && gamemode != shareware) target = wp_bfg;
+            break;
+    }
+
+    if (target != wp_nochange && plr->weaponowned[target]) {
+        plr->pendingweapon = target;
+    }
+}
+
 void DS_HandleTouch(int touch_x, int touch_y)
 {
     if (gamestate == GS_LEVEL) {
         if (touch_y < 208) {
+            // Automap: toggle zoom
             ds_map_zoom++;
             if (ds_map_zoom > 4) {
                 ds_map_zoom = 1;
+            }
+        } else {
+            // Status bar touch (Y: 208..239)
+            // 1. Classic ARMS Box (X: 100 to 142)
+            if (touch_x >= 100 && touch_x <= 142) {
+                int col = 0;
+                if (touch_x < 114) col = 0;
+                else if (touch_x < 128) col = 1;
+                else col = 2;
+
+                int row = (touch_y >= 224) ? 1 : 0; // 0=Top row (2, 3, 4), 1=Bottom row (5, 6, 7)
+                int slot = (row == 0) ? (2 + col) : (5 + col);
+                DS_SelectWeaponSlot(slot);
+            }
+            // 2. Doomguy Face (X: 143 to 175) -> Fist / Chainsaw
+            else if (touch_x >= 143 && touch_x <= 175) {
+                DS_SelectWeaponSlot(1);
+            }
+            // 3. Ammo box (X: 0 to 48) -> Quick Melee / Fist toggle
+            else if (touch_x >= 0 && touch_x <= 48) {
+                DS_SelectWeaponSlot(1);
             }
         }
     }
