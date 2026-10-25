@@ -56,7 +56,7 @@ ICON			:=	res/icon.png
 #---------------------------------------------------------------------------------
 ARCH	:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 
-CFLAGS	:=	$(ARCH) $(INCLUDE) -O3 -mword-relocations -ffunction-sections -ffast-math -fno-short-enums \
+CFLAGS	:=	$(ARCH) $(INCLUDE) -std=gnu17 -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-return-mismatch -Wno-discarded-qualifiers -O3 -mword-relocations -ffunction-sections -ffast-math -fno-short-enums \
 			-D__3DS__ -DGL_DOOM -DHAVE_DIRENT_H -DHAVE_LIBZ -DPACKAGE_NAME=\"PrBoom-Plus\" -DPACKAGE_VERSION=\"2.6.2\" \
 			-DPACKAGE_TARNAME=\"prboom-plus\" -DPACKAGE_HOMEPAGE=\"https://example.com\" \
 			-DPRBOOMDATADIR=\".\" -DDOOMWADDIR=\".\"
@@ -204,7 +204,7 @@ else
 #---------------------------------------------------------------------------------
 # main targets
 #---------------------------------------------------------------------------------
-$(OUTPUT).3dsx	:	$(OUTPUT).elf $(_3DSXDEPS) $(OUTPUT).cia
+$(OUTPUT).3dsx	:	$(OUTPUT).elf $(_3DSXDEPS)
 
 $(OFILES_SOURCES) : $(HFILES)
 
