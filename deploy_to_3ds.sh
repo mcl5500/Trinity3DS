@@ -57,6 +57,14 @@ if [ -f "$DIR/prboom-plus.wad" ]; then
     echo "    Upload complete!"
 fi
 
+if [ -f "$DIR/launcher.ogg" ]; then
+    echo "--> Uploading Launcher Music (Doom 1 E1M1) to /3ds/Boom3DS/launcher.ogg..."
+    curl -s -X PUT -H "$HDR" \
+      --data-binary @"$DIR/launcher.ogg" \
+      "http://$IP/api/file?path=%2F3ds%2FBoom3DS%2Flauncher.ogg&replace=1" >/dev/null
+    echo "    Upload complete!"
+fi
+
 
 
 # 2. Upload and install CIA

@@ -10,6 +10,58 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <png.h>
+#include <SDL/SDL.h>
+#include <SDL/SDL_mixer.h>
+
+static Mix_Music *s_launcher_music = NULL;
+static bool s_music_inited = false;
+
+static void WP_StartBGM(void)
+{
+    if (s_music_inited) return;
+
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
+        return;
+    }
+    if (Mix_OpenAudio(22050, MIX_DEFAULT_FORMAT, 2, 1024) < 0) {
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        return;
+    }
+
+    s_music_inited = true;
+
+    const char *paths[] = {
+        "sdmc:/3ds/Boom3DS/launcher.ogg",
+        "/3ds/Boom3DS/launcher.ogg",
+        "sdmc:/3ds/Boom3DS/wads/launcher.ogg",
+        NULL
+    };
+
+    for (int i = 0; paths[i]; i++) {
+        if (access(paths[i], R_OK) == 0) {
+            s_launcher_music = Mix_LoadMUS(paths[i]);
+            if (s_launcher_music) {
+                Mix_VolumeMusic(85);
+                Mix_PlayMusic(s_launcher_music, -1);
+                break;
+            }
+        }
+    }
+}
+
+static void WP_StopBGM(void)
+{
+    if (s_music_inited) {
+        if (s_launcher_music) {
+            Mix_HaltMusic();
+            Mix_FreeMusic(s_launcher_music);
+            s_launcher_music = NULL;
+        }
+        Mix_CloseAudio();
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        s_music_inited = false;
+    }
+}
 
 #define MAX_WADS 512
 #define LAST_WAD_FILE "sdmc:/3ds/Boom3DS/last_wad.txt"
@@ -807,6 +859,7 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
 
     // Interactive Loop
     bool confirmed = false;
+    WP_StartBGM();
 
     while (aptMainLoop()) {
         hidScanInput();
@@ -914,6 +967,7 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
     }
 
     WP_FreeCover();
+    WP_StopBGM();
     if (!confirmed || s_wad_count == 0) {
         // User exited via Home menu without confirming
         I_SafeExit(0);
