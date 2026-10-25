@@ -83,6 +83,11 @@
 
 #include "i_glob.h"
 
+#ifdef __3DS__
+#include "wad_picker.h"
+char *ds_picked_pwad = NULL;
+#endif
+
 #include "m_io.h"
 
 void GetFirstMap(int *ep, int *map); // Ty 08/29/98 - add "-warp x" functionality
@@ -1080,7 +1085,20 @@ static void IdentifyVersion (void)
 
   // locate the IWAD and determine game mode from it
 
+#ifdef __3DS__
+  static char picked_iwad[256] = {0};
+  static char picked_pwad[256] = {0};
+  if (WAD_Picker_Run(picked_iwad, sizeof(picked_iwad), picked_pwad, sizeof(picked_pwad))) {
+    iwad = strdup(picked_iwad);
+    if (picked_pwad[0]) {
+      ds_picked_pwad = strdup(picked_pwad);
+    }
+  } else {
+    iwad = FindIWADFile();
+  }
+#else
   iwad = FindIWADFile();
+#endif
 
 #if (defined(GL_DOOM) && defined(PRBOOM_DEBUG))
   // proff 11/99: used for debugging
@@ -1936,6 +1954,14 @@ static void D_DoomMainSetup(void)
 
   // add any files specified on the command line with -file wadfile
   // to the wad list
+
+#ifdef __3DS__
+  if (ds_picked_pwad && *ds_picked_pwad) {
+    modifiedgame = true;
+    D_AddFile(ds_picked_pwad, source_pwad);
+    lprintf(LO_CONFIRM, "Boom3DS: Loaded Megawad/PWAD: %s\n", ds_picked_pwad);
+  }
+#endif
 
   // killough 1/31/98, 5/2/98: reload hack removed, -wart same as -warp now.
 
