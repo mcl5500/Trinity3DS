@@ -300,22 +300,36 @@ static void WP_UpdateCurrentCover(int idx)
     }
 }
 
-// Draw scaled cover image with bilinear filtering
+// Draw scaled cover image with aspect ratio preservation (centered inside dest box)
 static void WP_DrawCover(u8 *fb, int fb_width, int dest_x, int dest_y, int dest_w, int dest_h)
 {
     if (!s_cur_cover || !s_cur_cover->pixels) return;
 
     int src_w = s_cur_cover->width;
     int src_h = s_cur_cover->height;
+    if (src_w <= 0 || src_h <= 0) return;
+
+    // Calculate fitted dimensions preserving aspect ratio
+    int fit_w = dest_w;
+    int fit_h = (src_h * dest_w) / src_w;
+
+    if (fit_h > dest_h) {
+        fit_h = dest_h;
+        fit_w = (src_w * dest_h) / src_h;
+    }
+
+    int offset_x = dest_x + (dest_w - fit_w) / 2;
+    int offset_y = dest_y + (dest_h - fit_h) / 2;
+
     u32 *src = s_cur_cover->pixels;
 
-    for (int dy = 0; dy < dest_h; dy++) {
-        int sy = (dy * src_h) / dest_h;
+    for (int dy = 0; dy < fit_h; dy++) {
+        int sy = (dy * src_h) / fit_h;
         if (sy >= src_h) sy = src_h - 1;
         u32 *src_row = src + sy * src_w;
 
-        for (int dx = 0; dx < dest_w; dx++) {
-            int sx = (dx * src_w) / dest_w;
+        for (int dx = 0; dx < fit_w; dx++) {
+            int sx = (dx * src_w) / fit_w;
             if (sx >= src_w) sx = src_w - 1;
 
             u32 pixel = src_row[sx];
@@ -323,8 +337,12 @@ static void WP_DrawCover(u8 *fb, int fb_width, int dest_x, int dest_y, int dest_
             u8 r = (pixel & 0x000000FF);
             u8 g = (pixel & 0x0000FF00) >> 8;
             u8 b = (pixel & 0x00FF0000) >> 16;
+            u8 a = (pixel & 0xFF000000) >> 24;
 
-            WP_DrawPixel(fb, fb_width, dest_x + dx, dest_y + dy, r, g, b);
+            // Only draw non-transparent pixels
+            if (a > 32) {
+                WP_DrawPixel(fb, fb_width, offset_x + dx, offset_y + dy, r, g, b);
+            }
         }
     }
 }
