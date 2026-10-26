@@ -608,10 +608,8 @@ void WP_RescanWads(void)
     s_wad_count = 0;
     unlink(WAD_CACHE_FILE);
     WP_ScanDirectory("sdmc:/3ds/Trinity3DS/wads", 0);
-    WP_ScanDirectory("sdmc:/3ds/Boom3DS/wads", 0);
     if (s_wad_count == 0) {
         WP_ScanDirectory("/3ds/Trinity3DS/wads", 0);
-        WP_ScanDirectory("/3ds/Boom3DS/wads", 0);
     }
     if (s_wad_count > 0) {
         qsort(s_wads, s_wad_count, sizeof(wad_info_t), WP_CompareWads);
@@ -796,8 +794,59 @@ static const char* WP_FindBaseIWAD(void)
     return NULL;
 }
 
+static void WP_MigrateLegacyFolder(void)
+{
+    // If legacy /3ds/Boom3DS/wads exists, migrate all files to /3ds/Trinity3DS/wads/
+    const char *legacy_wads = "sdmc:/3ds/Boom3DS/wads";
+    const char *target_wads = "sdmc:/3ds/Trinity3DS/wads";
+
+    mkdir("sdmc:/3ds/Trinity3DS", 0777);
+    mkdir("sdmc:/3ds/Trinity3DS/wads", 0777);
+    mkdir("sdmc:/3ds/Trinity3DS/downloads", 0777);
+    mkdir("sdmc:/3ds/Trinity3DS/autoload", 0777);
+    mkdir("sdmc:/3ds/Trinity3DS/eawpats", 0777);
+
+    DIR *dir = opendir(legacy_wads);
+    if (dir) {
+        struct dirent *ent;
+        while ((ent = readdir(dir)) != NULL) {
+            if (ent->d_name[0] == '.') continue;
+            char src_path[256], dst_path[256];
+            snprintf(src_path, sizeof(src_path), "%s/%s", legacy_wads, ent->d_name);
+            snprintf(dst_path, sizeof(dst_path), "%s/%s", target_wads, ent->d_name);
+            // Rename is instantaneous on FAT32 (just moves directory entry)
+            rename(src_path, dst_path);
+        }
+        closedir(dir);
+        rmdir(legacy_wads);
+    }
+
+    // Migrate eawpats if present
+    const char *legacy_eaw = "sdmc:/3ds/Boom3DS/eawpats";
+    const char *target_eaw = "sdmc:/3ds/Trinity3DS/eawpats";
+    DIR *edir = opendir(legacy_eaw);
+    if (edir) {
+        struct dirent *ent;
+        while ((ent = readdir(edir)) != NULL) {
+            if (ent->d_name[0] == '.') continue;
+            char src_path[256], dst_path[256];
+            snprintf(src_path, sizeof(src_path), "%s/%s", legacy_eaw, ent->d_name);
+            snprintf(dst_path, sizeof(dst_path), "%s/%s", target_eaw, ent->d_name);
+            rename(src_path, dst_path);
+        }
+        closedir(edir);
+        rmdir(legacy_eaw);
+    }
+
+    // Remove old Boom3DS dir if empty
+    rmdir("sdmc:/3ds/Boom3DS");
+}
+
 bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad_len)
 {
+    // Migrate legacy files to /3ds/Trinity3DS/ once
+    WP_MigrateLegacyFolder();
+
     s_wad_count = 0;
 
     // Fast Path: Try loading pre-built cache first
@@ -819,12 +868,10 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
             gfxSwapBuffers();
         }
 
-        // Scan BOTH Trinity3DS and previous Boom3DS folders seamlessly!
+        // Scan ONLY /3ds/Trinity3DS/wads/
         WP_ScanDirectory("sdmc:/3ds/Trinity3DS/wads", 0);
-        WP_ScanDirectory("sdmc:/3ds/Boom3DS/wads", 0);
         if (s_wad_count == 0) {
             WP_ScanDirectory("/3ds/Trinity3DS/wads", 0);
-            WP_ScanDirectory("/3ds/Boom3DS/wads", 0);
         }
 
         if (s_wad_count > 0) {
