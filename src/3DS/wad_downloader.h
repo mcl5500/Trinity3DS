@@ -12,7 +12,7 @@ typedef struct {
     char title[64];
     char author[64];
     char category[32];   // "STANDALONE", "MEGAWAD", "EPISODE"
-    char base_iwad[32];  // e.g. "DOOM2.WAD", "DOOM.WAD", "KEINE"
+    char base_iwad[32];  // e.g. "DOOM2.WAD", "DOOM.WAD", "NONE"
     char desc[512];
     char url[256];
     char target_file[64];// Primary wad to check for installation

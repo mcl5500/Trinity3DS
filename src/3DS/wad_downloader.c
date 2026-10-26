@@ -229,7 +229,7 @@ static void Downloader_RenderProgress(dl_progress_t *prog)
 
     // Title
     WP_FillRect(bot_fb, 320, 15, 30, 290, 26, 35, 75, 140);
-    WP_DrawCenteredText(bot_fb, 320, 15, 30, 290, 26, "DOWNLOAD LAEUFT...", 255, 255, 255, 1);
+    WP_DrawCenteredText(bot_fb, 320, 15, 30, 290, 26, "DOWNLOADING...", 255, 255, 255, 1);
 
     // WAD Title
     if (strlen(prog->title) <= 24) {
@@ -269,14 +269,14 @@ static void Downloader_RenderProgress(dl_progress_t *prog)
     if (prog->dltotal > 0) {
         snprintf(status_str, sizeof(status_str), "%.1f%%  (%.2f / %.2f MB)", pct * 100.0f, cur_mb, tot_mb);
     } else {
-        snprintf(status_str, sizeof(status_str), "Geladen: %.2f MB", cur_mb);
+        snprintf(status_str, sizeof(status_str), "Downloaded: %.2f MB", cur_mb);
     }
     WP_DrawCenteredText(bot_fb, 320, 20, 134, 280, 16, status_str, 200, 230, 255, 1);
 
     // Cancel hint
     WP_FillRect(bot_fb, 320, 25, 165, 270, 30, 60, 20, 20);
     WP_DrawRect(bot_fb, 320, 25, 165, 270, 30, 200, 50, 50);
-    WP_DrawCenteredText(bot_fb, 320, 25, 165, 270, 30, "[B]  DOWNLOAD ABBRECHEN", 255, 255, 255, 1);
+    WP_DrawCenteredText(bot_fb, 320, 25, 165, 270, 30, "[B]  CANCEL DOWNLOAD", 255, 255, 255, 1);
 
     gfxFlushBuffers();
     gfxSwapBuffers();
@@ -330,13 +330,13 @@ static bool Downloader_ExtractZip(const char *zip_path, const char *dest_dir, ch
 {
     unzFile uf = unzOpen(zip_path);
     if (!uf) {
-        snprintf(err_msg, err_len, "ZIP-Datei konnte nicht geoeffnet werden!");
+        snprintf(err_msg, err_len, "Could not open ZIP file!");
         return false;
     }
 
     if (unzGoToFirstFile(uf) != UNZ_OK) {
         unzClose(uf);
-        snprintf(err_msg, err_len, "ZIP-Archiv ist leer!");
+        snprintf(err_msg, err_len, "ZIP archive is empty!");
         return false;
     }
 
@@ -395,7 +395,7 @@ static bool Downloader_ExtractZip(const char *zip_path, const char *dest_dir, ch
     unzClose(uf);
 
     if (extracted == 0) {
-        snprintf(err_msg, err_len, "Keine .WAD Datei im ZIP gefunden!");
+        snprintf(err_msg, err_len, "No .WAD file found in ZIP!");
         return false;
     }
 
@@ -700,7 +700,7 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
 
     FILE *fp = fopen(temp_file, "wb");
     if (!fp) {
-        snprintf(err_msg, err_len, "Konnte Zieldatei auf SD nicht erstellen!");
+        snprintf(err_msg, err_len, "Failed to create destination file on SD!");
         return false;
     }
 
@@ -751,13 +751,13 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
 
     if (ctx.abort_requested) {
         unlink(temp_file);
-        snprintf(err_msg, err_len, "Download vom Benutzer abgebrochen.");
+        snprintf(err_msg, err_len, "Download cancelled by user.");
         return false;
     }
 
     if (ctx.res != CURLE_OK) {
         unlink(temp_file);
-        snprintf(err_msg, err_len, "Netzwerkfehler: %s", curl_easy_strerror(ctx.res));
+        snprintf(err_msg, err_len, "Network error: %s", curl_easy_strerror(ctx.res));
         return false;
     }
 
@@ -766,8 +766,8 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
         if (bot_fb) {
             WP_FillRect(bot_fb, 320, 15, 70, 290, 100, 28, 28, 35);
             WP_DrawRect(bot_fb, 320, 15, 70, 290, 100, 255, 215, 0);
-            WP_DrawCenteredText(bot_fb, 320, 20, 90, 280, 20, "ENTPACKE WAD-DATEIEN...", 255, 255, 255, 1);
-            WP_DrawCenteredText(bot_fb, 320, 20, 120, 280, 20, "Bitte einen Moment Geduld...", 200, 200, 200, 1);
+            WP_DrawCenteredText(bot_fb, 320, 20, 90, 280, 20, "EXTRACTING WAD FILES...", 255, 255, 255, 1);
+            WP_DrawCenteredText(bot_fb, 320, 20, 120, 280, 20, "Please wait a moment...", 200, 200, 200, 1);
             gfxFlushBuffers();
             gfxSwapBuffers();
         }
@@ -822,8 +822,8 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
     snprintf(meta_path, sizeof(meta_path), "sdmc:/3ds/Trinity3DS/wads/%s.txt", base_name);
     FILE *mfp = fopen(meta_path, "w");
     if (mfp) {
-        fprintf(mfp, "AUTOR: %s\nBASIS: %s\nBESCHREIBUNG:\n%s\n",
-                item->author[0] ? item->author : "Unbekannt",
+        fprintf(mfp, "AUTHOR: %s\nBASE: %s\nDESCRIPTION:\n%s\n",
+                item->author[0] ? item->author : "Unknown",
                 item->base_iwad[0] ? item->base_iwad : "DOOM2.WAD",
                 item->desc);
         fclose(mfp);
@@ -878,7 +878,7 @@ void Downloader_ShowDescriptionCustom(const char *title, const char *author, con
     char lines[64][64];
     int line_count = Downloader_WordWrap(desc, lines, 64, 56);
     if (line_count == 0) {
-        strcpy(lines[0], "Keine Beschreibung verfuegbar.");
+        strcpy(lines[0], "No description available.");
         line_count = 1;
     }
 
@@ -933,12 +933,12 @@ void Downloader_ShowDescriptionCustom(const char *title, const char *author, con
             WP_FillRect(top_fb, 400, 0, 0, 400, 32, 130, 20, 20);
             WP_FillRect(top_fb, 400, 0, 30, 400, 2, 210, 40, 40);
             WP_DrawText(top_fb, 400, 16, 8, title ? title : "WAD DETAILS", 255, 255, 255, 1);
-            WP_DrawText(top_fb, 400, 280, 10, "[BESCHREIBUNG]", 255, 215, 0, 1);
+            WP_DrawText(top_fb, 400, 280, 10, "[DESCRIPTION]", 255, 215, 0, 1);
 
             // Sub-header metadata
             char sub_str[96];
-            snprintf(sub_str, sizeof(sub_str), "AUTOR: %s  |  BASIS: %s  |  GROESSE: %s",
-                     (author && author[0]) ? author : "Unbekannt",
+            snprintf(sub_str, sizeof(sub_str), "AUTHOR: %s  |  BASE: %s  |  SIZE: %s",
+                     (author && author[0]) ? author : "Unknown",
                      (base_iwad && base_iwad[0]) ? base_iwad : "DOOM2.WAD",
                      (size_str && size_str[0]) ? size_str : "-");
             WP_DrawText(top_fb, 400, 16, 36, sub_str, 180, 210, 240, 1);
@@ -969,7 +969,7 @@ void Downloader_ShowDescriptionCustom(const char *title, const char *author, con
             // Footer
             WP_FillRect(top_fb, 400, 12, 214, 376, 20, 22, 24, 28);
             WP_DrawRect(top_fb, 400, 12, 214, 376, 20, 50, 50, 60);
-            WP_DrawText(top_fb, 400, 18, 220, "D-PAD: Scrollen   [B] / [X] / [A]: Schliessen", 255, 215, 0, 1);
+            WP_DrawText(top_fb, 400, 18, 220, "D-PAD: Scroll   [B] / [X] / [A]: Close", 255, 215, 0, 1);
             if (max_scroll > 0) {
                 char page_buf[32];
                 snprintf(page_buf, sizeof(page_buf), "%d / %d", scroll_line + 1, max_scroll + 1);
@@ -984,15 +984,15 @@ void Downloader_ShowDescriptionCustom(const char *title, const char *author, con
 
             // Header bar
             WP_FillRect(bot_fb, 320, 0, 0, 320, 28, 30, 35, 45);
-            WP_DrawCenteredText(bot_fb, 320, 0, 0, 320, 28, "BESCHREIBUNG & INFOS", 255, 215, 0, 1);
+            WP_DrawCenteredText(bot_fb, 320, 0, 0, 320, 28, "DESCRIPTION & INFO", 255, 215, 0, 1);
 
             bool can_up = (scroll_line > 0);
             WP_FillRect(bot_fb, 320, 20, 36, 280, 44, can_up ? 25 : 18, can_up ? 70 : 25, can_up ? 120 : 35);
             WP_DrawRect(bot_fb, 320, 20, 36, 280, 44, can_up ? 80 : 40, can_up ? 160 : 50, can_up ? 255 : 60);
-            WP_DrawCenteredText(bot_fb, 320, 20, 36, 280, 44, "[ ▲ ]  NACH OBEN SCROLLEN", can_up ? 255 : 120, can_up ? 255 : 120, can_up ? 255 : 120, 1);
+            WP_DrawCenteredText(bot_fb, 320, 20, 36, 280, 44, "[ ▲ ]  SCROLL UP", can_up ? 255 : 120, can_up ? 255 : 120, can_up ? 255 : 120, 1);
 
             char status_str[64];
-            snprintf(status_str, sizeof(status_str), "Zeile %d bis %d von %d",
+            snprintf(status_str, sizeof(status_str), "Lines %d to %d of %d",
                      scroll_line + 1, (scroll_line + visible_lines > line_count) ? line_count : scroll_line + visible_lines, line_count);
             WP_FillRect(bot_fb, 320, 20, 86, 280, 38, 22, 24, 30);
             WP_DrawCenteredText(bot_fb, 320, 20, 86, 280, 38, status_str, 200, 220, 255, 1);
@@ -1000,11 +1000,11 @@ void Downloader_ShowDescriptionCustom(const char *title, const char *author, con
             bool can_down = (scroll_line < max_scroll);
             WP_FillRect(bot_fb, 320, 20, 130, 280, 44, can_down ? 25 : 18, can_down ? 70 : 25, can_down ? 120 : 35);
             WP_DrawRect(bot_fb, 320, 20, 130, 280, 44, can_down ? 80 : 40, can_down ? 160 : 50, can_down ? 255 : 60);
-            WP_DrawCenteredText(bot_fb, 320, 20, 130, 280, 44, "[ ▼ ]  NACH UNTEN SCROLLEN", can_down ? 255 : 120, can_down ? 255 : 120, can_down ? 255 : 120, 1);
+            WP_DrawCenteredText(bot_fb, 320, 20, 130, 280, 44, "[ ▼ ]  SCROLL DOWN", can_down ? 255 : 120, can_down ? 255 : 120, can_down ? 255 : 120, 1);
 
             WP_FillRect(bot_fb, 320, 20, 188, 280, 42, 120, 30, 30);
             WP_DrawRect(bot_fb, 320, 20, 188, 280, 42, 220, 60, 60);
-            WP_DrawCenteredText(bot_fb, 320, 20, 188, 280, 42, "[ B / X ]  ZURUECK ZUR LISTE", 255, 255, 255, 1);
+            WP_DrawCenteredText(bot_fb, 320, 20, 188, 280, 42, "[ B / X ]  BACK TO LIST", 255, 255, 255, 1);
         }
 
         gfxFlushBuffers();
@@ -1069,8 +1069,8 @@ bool Downloader_FetchMetadataForWad(const char *filename, char *out_author, size
         snprintf(meta_path, sizeof(meta_path), "sdmc:/3ds/Trinity3DS/wads/%s.txt", base_name);
         FILE *fp = fopen(meta_path, "w");
         if (fp) {
-            fprintf(fp, "AUTOR: %s\nBASIS: %s\nBESCHREIBUNG:\n%s\n",
-                    item->author[0] ? item->author : "Unbekannt",
+            fprintf(fp, "AUTHOR: %s\nBASE: %s\nDESCRIPTION:\n%s\n",
+                    item->author[0] ? item->author : "Unknown",
                     item->base_iwad[0] ? item->base_iwad : "DOOM2.WAD",
                     item->desc);
             fclose(fp);
@@ -1132,7 +1132,7 @@ bool Downloader_FetchMetadataForWad(const char *filename, char *out_author, size
                     if (entry) {
                         struct json_object *auth_obj = NULL;
                         struct json_object *desc_obj = NULL;
-                        char a_str[64] = "Unbekannt";
+                        char a_str[64] = "Unknown";
                         char d_str[512] = "";
 
                         if (json_object_object_get_ex(entry, "author", &auth_obj)) {
@@ -1153,7 +1153,7 @@ bool Downloader_FetchMetadataForWad(const char *filename, char *out_author, size
                             snprintf(meta_path, sizeof(meta_path), "sdmc:/3ds/Trinity3DS/wads/%s.txt", base_name);
                             FILE *fp = fopen(meta_path, "w");
                             if (fp) {
-                                fprintf(fp, "AUTOR: %s\nBASIS: DOOM2.WAD\nBESCHREIBUNG:\n%s\n", a_str, d_str);
+                                fprintf(fp, "AUTHOR: %s\nBASE: DOOM2.WAD\nDESCRIPTION:\n%s\n", a_str, d_str);
                                 fclose(fp);
                             }
                         }
@@ -1197,13 +1197,13 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     WP_FillRect(fb, 400, wx + 10, wy,    3, 12, wifi >= 3 ? 80 : 50, wifi >= 3 ? 255 : 50, wifi >= 3 ? 100 : 55);
 
     if (wifi > 0) {
-        WP_DrawText(fb, 400, wx + 18, wy + 3, "WLAN: OK", 100, 255, 120, 1);
+        WP_DrawText(fb, 400, wx + 18, wy + 3, "WIFI: ON", 100, 255, 120, 1);
     } else {
-        WP_DrawText(fb, 400, wx + 18, wy + 3, "WLAN: AUS", 255, 80, 80, 1);
+        WP_DrawText(fb, 400, wx + 18, wy + 3, "WIFI: OFF", 255, 80, 80, 1);
     }
 
     if (!cur || total_count == 0) {
-        WP_DrawText(fb, 400, 20, 80, "KEINE EINTRÄGE GEFUNDEN", 255, 80, 80, 2);
+        WP_DrawText(fb, 400, 20, 80, "NO ENTRIES FOUND", 255, 80, 80, 2);
         return;
     }
 
@@ -1219,12 +1219,12 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
         WP_DrawText(fb, 400, 20, 48, cur->title, 255, 255, 255, 1);
     }
 
-    // 2. Autor
+    // 2. Author
     char author_str[64];
-    snprintf(author_str, sizeof(author_str), "AUTOR: %s", cur->author[0] ? cur->author : "Unbekannt");
+    snprintf(author_str, sizeof(author_str), "AUTHOR: %s", cur->author[0] ? cur->author : "Unknown");
     WP_DrawText(fb, 400, 20, 66, author_str, 255, 215, 0, 1);
 
-    // 3. Kategorie
+    // 3. Category
     if (cur->is_iwad) {
         WP_FillRect(fb, 400, 20, 80, 125, 15, 20, 120, 40);
         WP_DrawCenteredText(fb, 400, 20, 80, 125, 15, "[STANDALONE IWAD]", 255, 255, 255, 1);
@@ -1233,29 +1233,29 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
         WP_DrawCenteredText(fb, 400, 20, 80, 140, 15, "[COMMUNITY MOD/WAD]", 180, 230, 255, 1);
     }
 
-    // 4. Basis
+    // 4. Base
     char req_str[64];
-    snprintf(req_str, sizeof(req_str), "BASIS: %s", cur->base_iwad);
+    snprintf(req_str, sizeof(req_str), "BASE: %s", cur->base_iwad);
     WP_DrawText(fb, 400, 20, 98, req_str, 180, 215, 245, 1);
 
-    // 5. Groesse
+    // 5. Size
     char sz_str[64];
-    snprintf(sz_str, sizeof(sz_str), "GROESSE: %s", cur->size_str);
+    snprintf(sz_str, sizeof(sz_str), "SIZE: %s", cur->size_str);
     WP_DrawText(fb, 400, 20, 112, sz_str, 200, 200, 200, 1);
 
-    // 6. Installationsstatus
+    // 6. Installation Status
     if (installed) {
         WP_FillRect(fb, 400, 20, 128, 145, 16, 20, 105, 30);
-        WP_DrawCenteredText(fb, 400, 20, 128, 145, 16, "BEREITS INSTALLIERT", 100, 255, 120, 1);
+        WP_DrawCenteredText(fb, 400, 20, 128, 145, 16, "ALREADY INSTALLED", 100, 255, 120, 1);
     } else {
         WP_FillRect(fb, 400, 20, 128, 145, 16, 90, 70, 15);
-        WP_DrawCenteredText(fb, 400, 20, 128, 145, 16, "NICHT INSTALLIERT", 255, 215, 0, 1);
+        WP_DrawCenteredText(fb, 400, 20, 128, 145, 16, "NOT INSTALLED", 255, 215, 0, 1);
     }
 
-    // 7. [X] BESCHREIBUNG Button & Position
+    // 7. [X] DESCRIPTION Button & Position
     WP_FillRect(fb, 400, 20, 150, 145, 18, 40, 60, 95);
     WP_DrawRect(fb, 400, 20, 150, 145, 18, 80, 140, 220);
-    WP_DrawCenteredText(fb, 400, 20, 150, 145, 18, "[X] BESCHREIBUNG", 255, 255, 255, 1);
+    WP_DrawCenteredText(fb, 400, 20, 150, 145, 18, "[X] DESCRIPTION", 255, 255, 255, 1);
 
     char pos_buf[32];
     snprintf(pos_buf, sizeof(pos_buf), "#%d/%d", sel_idx + 1, total_count);
@@ -1273,17 +1273,17 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     if (WP_HasCover()) {
         WP_DrawCover(fb, 400, cover_x + 1, cover_y + 1, cover_w - 2, cover_h - 2);
     } else {
-        WP_DrawCenteredText(fb, 400, cover_x, cover_y + 35, cover_w, 18, "KEIN", 110, 120, 135, 2);
+        WP_DrawCenteredText(fb, 400, cover_x, cover_y + 35, cover_w, 18, "NO", 110, 120, 135, 2);
         WP_DrawCenteredText(fb, 400, cover_x, cover_y + 57, cover_w, 18, "COVER", 110, 120, 135, 2);
-        WP_DrawCenteredText(fb, 400, cover_x, cover_y + 85, cover_w, 14, "[Y] LADEN", 255, 215, 0, 1);
+        WP_DrawCenteredText(fb, 400, cover_x, cover_y + 85, cover_w, 14, "[Y] GET", 255, 215, 0, 1);
     }
 
     // Controls Help Box (Bottom)
     WP_FillRect(fb, 400, 12, 182, 376, 50, 24, 24, 28);
     WP_DrawRect(fb, 400, 12, 182, 376, 50, 70, 70, 80);
-    WP_DrawText(fb, 400, 20, 189, "STEUERUNG:", 255, 215, 0, 1);
-    WP_DrawText(fb, 400, 100, 189, "D-PAD: Scrollen   L / R: A-Z Sprung", 200, 200, 200, 1);
-    WP_DrawText(fb, 400, 20, 209, "A: Download  X: Details  Y: Cover holen  B: Zurueck", 100, 255, 120, 1);
+    WP_DrawText(fb, 400, 20, 189, "CONTROLS:", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 100, 189, "D-PAD: Scroll   L / R: A-Z Jump", 200, 200, 200, 1);
+    WP_DrawText(fb, 400, 20, 209, "A: Download  X: Details  Y: Fetch Cover  B: Back", 100, 255, 120, 1);
 }
 static void Downloader_RenderBottomScreen(u8 *fb, const repo_item_t *items, const bool *installed_flags, int count, int sel_idx, int scroll_offset)
 {
@@ -1292,7 +1292,7 @@ static void Downloader_RenderBottomScreen(u8 *fb, const repo_item_t *items, cons
 
     // Header bar
     WP_FillRect(fb, 320, 0, 0, 320, 24, 30, 35, 45);
-    WP_DrawText(fb, 320, 8, 8, "VERFUEGBARE WADS & MEGAWADS:", 255, 215, 0, 1);
+    WP_DrawText(fb, 320, 8, 8, "AVAILABLE WADS & MEGAWADS:", 255, 215, 0, 1);
 
     // List of 5 items
     int visible_items = 5;
@@ -1349,11 +1349,11 @@ static void Downloader_RenderBottomScreen(u8 *fb, const repo_item_t *items, cons
     if (already_inst) {
         WP_FillRect(fb, 320, 6, 202, 96, 34, 30, 70, 40);
         WP_DrawRect(fb, 320, 6, 202, 96, 34, 60, 150, 70);
-        WP_DrawCenteredText(fb, 320, 6, 202, 96, 34, "NEU [A]", 200, 255, 200, 1);
+        WP_DrawCenteredText(fb, 320, 6, 202, 96, 34, "RE-DL [A]", 200, 255, 200, 1);
     } else {
         WP_FillRect(fb, 320, 6, 202, 96, 34, 20, 120, 45);
         WP_DrawRect(fb, 320, 6, 202, 96, 34, 60, 230, 90);
-        WP_DrawCenteredText(fb, 320, 6, 202, 96, 34, "[A] LADEN", 255, 255, 255, 1);
+        WP_DrawCenteredText(fb, 320, 6, 202, 96, 34, "[A] DOWNLOAD", 255, 255, 255, 1);
     }
 
     // Cover Button [Y]
@@ -1393,7 +1393,7 @@ static void Downloader_ShowModal(const char *title, const char *msg1, const char
             if (msg1) WP_DrawCenteredText(bot_fb, 320, 25, 85, 270, 18, msg1, 255, 255, 255, 1);
             if (msg2) WP_DrawCenteredText(bot_fb, 320, 25, 110, 270, 18, msg2, 220, 220, 220, 1);
 
-            WP_DrawCenteredText(bot_fb, 320, 25, 150, 270, 18, "Druecke [A] oder tippe...", 255, 215, 0, 1);
+            WP_DrawCenteredText(bot_fb, 320, 25, 150, 270, 18, "Press [A] or tap...", 255, 215, 0, 1);
         }
 
         gfxFlushBuffers();
@@ -1422,7 +1422,7 @@ static void Downloader_RenderCacheFrame(int progress_pct, const char *step_title
 
         // Title Box
         WP_FillRect(top_fb, 400, 20, 46, 360, 28, 40, 60, 95);
-        WP_DrawCenteredText(top_fb, 400, 20, 46, 360, 28, "INITIALISIERE WAD-STORE CACHE", 255, 255, 255, 1);
+        WP_DrawCenteredText(top_fb, 400, 20, 46, 360, 28, "INITIALIZING WAD STORE CACHE", 255, 255, 255, 1);
 
         // Spinner / Animation Icon
         static const char *spinner_chars[] = {"[ | ]", "[ / ]", "[ - ]", "[ \\ ]"};
@@ -1456,7 +1456,7 @@ static void Downloader_RenderCacheFrame(int progress_pct, const char *step_title
         snprintf(pct_str, sizeof(pct_str), "%d %%", progress_pct);
         WP_DrawCenteredText(top_fb, 400, bar_x, bar_y + 4, bar_w, 16, pct_str, 255, 255, 255, 1);
 
-        WP_DrawCenteredText(top_fb, 400, 20, 175, 360, 16, "Einmalige Initialisierung fuer maximale Geschwindigkeit", 160, 170, 190, 1);
+        WP_DrawCenteredText(top_fb, 400, 20, 175, 360, 16, "One-time setup for maximum performance", 160, 170, 190, 1);
     }
 
     // 2. Bottom Screen (320x240)
@@ -1466,7 +1466,7 @@ static void Downloader_RenderCacheFrame(int progress_pct, const char *step_title
 
         WP_FillRect(bot_fb, 320, 10, 12, 300, 24, 25, 35, 48);
         WP_DrawRect(bot_fb, 320, 10, 12, 300, 24, 60, 120, 180);
-        WP_DrawText(bot_fb, 320, 20, 18, "DIAGNOSE & SYSTEM-STATUS", 255, 215, 0, 1);
+        WP_DrawText(bot_fb, 320, 20, 18, "DIAGNOSTICS & SYSTEM STATUS", 255, 215, 0, 1);
 
         WP_FillRect(bot_fb, 320, 10, 40, 300, 186, 18, 22, 28);
         WP_DrawRect(bot_fb, 320, 10, 40, 300, 186, 50, 70, 90);
@@ -1478,9 +1478,9 @@ static void Downloader_RenderCacheFrame(int progress_pct, const char *step_title
         }
 
         if (progress_pct < 100) {
-            WP_DrawText(bot_fb, 320, 20, 204, "> Bitte kurz warten...", 220, 220, 220, 1);
+            WP_DrawText(bot_fb, 320, 20, 204, "> Please wait a moment...", 220, 220, 220, 1);
         } else {
-            WP_DrawText(bot_fb, 320, 20, 204, "> Bereit! Starte WAD-Store...", 100, 255, 120, 1);
+            WP_DrawText(bot_fb, 320, 20, 204, "> Ready! Launching WAD Store...", 100, 255, 120, 1);
         }
     }
 
@@ -1499,11 +1499,11 @@ static void Downloader_InitStoreCacheWithAnimation(void)
 
     static char log_buf0[64], log_buf1[64], log_buf2[64], log_buf3[64], log_buf4[64];
 
-    snprintf(log_buf0, sizeof(log_buf0), "[..] SD-Karte /3ds/Trinity3DS/wads/");
+    snprintf(log_buf0, sizeof(log_buf0), "[..] SD Card: /3ds/Trinity3DS/wads/");
     logs[log_cnt++] = log_buf0;
 
     for (int f = 0; f < 10; f++) {
-        Downloader_RenderCacheFrame(10 + f, "Scanne Verzeichnisse auf SD-Karte...", logs, log_cnt, anim_frame++);
+        Downloader_RenderCacheFrame(10 + f, "Scanning SD card folders...", logs, log_cnt, anim_frame++);
     }
 
     // Step 1: Scan local files
@@ -1523,17 +1523,17 @@ static void Downloader_InitStoreCacheWithAnimation(void)
         closedir(d);
     }
 
-    snprintf(log_buf0, sizeof(log_buf0), "[OK] Verzeichnis gelesen: %d Dateien", cache_count);
+    snprintf(log_buf0, sizeof(log_buf0), "[OK] Directory scanned: %d files", cache_count);
 
     int installed_count = 0;
     int covers_count = 0;
 
     // Step 2: Match catalog items
-    snprintf(log_buf1, sizeof(log_buf1), "[..] Indiziere %d WADs...", CATALOG_COUNT);
+    snprintf(log_buf1, sizeof(log_buf1), "[..] Indexing %d WADs...", CATALOG_COUNT);
     logs[log_cnt++] = log_buf1;
 
     for (int f = 0; f < 10; f++) {
-        Downloader_RenderCacheFrame(25 + f * 2, "Indiziere Katalog & Installationsstatus...", logs, log_cnt, anim_frame++);
+        Downloader_RenderCacheFrame(25 + f * 2, "Indexing catalog & install status...", logs, log_cnt, anim_frame++);
     }
 
     memset(s_installed, 0, sizeof(s_installed));
@@ -1562,14 +1562,14 @@ static void Downloader_InitStoreCacheWithAnimation(void)
         }
     }
 
-    snprintf(log_buf1, sizeof(log_buf1), "[OK] Installiert: %d | Covers: %d", installed_count, covers_count);
+    snprintf(log_buf1, sizeof(log_buf1), "[OK] Installed: %d | Covers: %d", installed_count, covers_count);
 
     // Step 3: Check TITLEPIC extraction for installed WADs without cover
-    snprintf(log_buf2, sizeof(log_buf2), "[..] Optimiere Cover-Cache...");
+    snprintf(log_buf2, sizeof(log_buf2), "[..] Optimizing cover cache...");
     logs[log_cnt++] = log_buf2;
 
     for (int f = 0; f < 8; f++) {
-        Downloader_RenderCacheFrame(50 + f * 3, "Pruefe TITLEPICs installierter WADs...", logs, log_cnt, anim_frame++);
+        Downloader_RenderCacheFrame(50 + f * 3, "Checking TITLEPICs of installed WADs...", logs, log_cnt, anim_frame++);
     }
 
     int extracted = 0;
@@ -1594,25 +1594,25 @@ static void Downloader_InitStoreCacheWithAnimation(void)
     }
 
     if (extracted > 0) {
-        snprintf(log_buf2, sizeof(log_buf2), "[OK] %d TITLEPICs automatisch extrahiert", extracted);
+        snprintf(log_buf2, sizeof(log_buf2), "[OK] %d TITLEPICs extracted automatically", extracted);
     } else {
-        snprintf(log_buf2, sizeof(log_buf2), "[OK] Cover-Cache ist aktuell");
+        snprintf(log_buf2, sizeof(log_buf2), "[OK] Cover cache is up to date");
     }
 
     // Step 4: Finalize
-    snprintf(log_buf3, sizeof(log_buf3), "[OK] %d Megawads im RAM bereit", CATALOG_COUNT);
+    snprintf(log_buf3, sizeof(log_buf3), "[OK] %d Megawads ready in RAM", CATALOG_COUNT);
     logs[log_cnt++] = log_buf3;
 
-    snprintf(log_buf4, sizeof(log_buf4), "[OK] In-Memory Cache aktiv!");
+    snprintf(log_buf4, sizeof(log_buf4), "[OK] In-memory cache active!");
     logs[log_cnt++] = log_buf4;
 
     for (int pct = 80; pct <= 100; pct += 2) {
-        Downloader_RenderCacheFrame(pct, "Initialisierung abgeschlossen!", logs, log_cnt, anim_frame++);
+        Downloader_RenderCacheFrame(pct, "Initialization complete!", logs, log_cnt, anim_frame++);
     }
 
     // Hold 100% frame briefly for satisfying feedback (~15 frames = 250ms)
     for (int f = 0; f < 15; f++) {
-        Downloader_RenderCacheFrame(100, "Viel Spass im WAD Store!", logs, log_cnt, anim_frame++);
+        Downloader_RenderCacheFrame(100, "Enjoy the WAD Store!", logs, log_cnt, anim_frame++);
     }
 
     s_store_cache_initialized = true;
@@ -1756,11 +1756,11 @@ bool WAD_Downloader_Run(void)
             if (count > 0 && selected_idx < count) {
                 const repo_item_t *cur = &s_catalog[selected_idx];
                 if (osGetWifiStrength() == 0) {
-                    Downloader_ShowModal("KEIN WLAN", "Bitte 3DS mit dem Internet verbinden!", "Um Online-Covers zu laden.", 255, 80, 80);
+                    Downloader_ShowModal("NO WIFI CONNECTION", "Please connect your 3DS to the internet!", "Required to download covers online.", 255, 80, 80);
                     continue;
                 }
                 if (!Downloader_InitNetwork()) {
-                    Downloader_ShowModal("NETZWERKFEHLER", "Socket-Initialisierung fehlgeschlagen!", NULL, 255, 50, 50);
+                    Downloader_ShowModal("NETWORK ERROR", "Socket initialization failed!", NULL, 255, 50, 50);
                     continue;
                 }
 
@@ -1773,16 +1773,16 @@ bool WAD_Downloader_Run(void)
                 char png_path[256];
                 snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.png", base_name);
 
-                Downloader_ShowModal("COVER WIRD GELADEN...", cur->title, "Verbinde mit Online-Repository...", 80, 160, 255);
+                Downloader_ShowModal("DOWNLOADING COVER...", cur->title, "Connecting to online repository...", 80, 160, 255);
 
                 bool ok = Downloader_FetchOnlineCover(cur->target_file, png_path);
                 if (ok) {
                     s_has_cover[selected_idx] = true;
                     WP_InvalidateCoverCache();
                     WP_UpdateCoverByFilename(cur->target_file);
-                    Downloader_ShowModal("COVER ERFOLGREICH GELADEN!", cur->title, "Cover wurde auf SD-Karte gespeichert.", 50, 220, 80);
+                    Downloader_ShowModal("COVER DOWNLOADED!", cur->title, "Cover saved to SD card.", 50, 220, 80);
                 } else {
-                    Downloader_ShowModal("KEIN COVER GEFUNDEN", "Fuer diesen Eintrag existiert kein", "Cover in den Online-Repositories.", 255, 120, 80);
+                    Downloader_ShowModal("NO COVER FOUND", "No matching cover found in", "online repositories.", 255, 120, 80);
                 }
             }
         }
@@ -1791,12 +1791,12 @@ bool WAD_Downloader_Run(void)
         if (kDown & KEY_A) {
             if (count > 0 && selected_idx < count) {
                 if (osGetWifiStrength() == 0) {
-                    Downloader_ShowModal("KEIN WLAN", "Bitte 3DS mit dem Internet verbinden!", "Systemeinstellungen pruefen.", 255, 80, 80);
+                    Downloader_ShowModal("NO WIFI CONNECTION", "Please connect your 3DS to the internet!", "Check system settings.", 255, 80, 80);
                     continue;
                 }
 
                 if (!Downloader_InitNetwork()) {
-                    Downloader_ShowModal("NETZWERKFEHLER", "Socket-Initialisierung fehlgeschlagen!", "3DS unterstuetzt kein WiFi?", 255, 50, 50);
+                    Downloader_ShowModal("NETWORK ERROR", "Socket initialization failed!", "Check WiFi settings.", 255, 50, 50);
                     continue;
                 }
 
@@ -1809,9 +1809,9 @@ bool WAD_Downloader_Run(void)
                     Downloader_RefreshInstalledCache();
                     WP_InvalidateCoverCache();
                     WP_UpdateCoverByFilename(sel->target_file);
-                    Downloader_ShowModal("DOWNLOAD ERFOLGREICH!", sel->title, "Wurde erfolgreich nach /wads/ installiert!", 50, 220, 80);
+                    Downloader_ShowModal("DOWNLOAD COMPLETE!", sel->title, "Successfully installed to /wads/!", 50, 220, 80);
                 } else {
-                    Downloader_ShowModal("FEHLER BEIM DOWNLOAD", err_msg, "Bitte spaeter erneut versuchen.", 255, 60, 60);
+                    Downloader_ShowModal("DOWNLOAD FAILED", err_msg, "Please try again later.", 255, 60, 60);
                 }
             }
         }
