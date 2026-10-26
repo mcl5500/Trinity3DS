@@ -65,6 +65,14 @@ if [ -f "$DIR/launcher.ogg" ]; then
     echo "    Upload complete!"
 fi
 
+if [ -f "$DIR/cacert.pem" ]; then
+    echo "--> Uploading SSL CA Bundle to /3ds/Trinity3DS/cacert.pem..."
+    curl -s -X PUT -H "$HDR" \
+      --data-binary @"$DIR/cacert.pem" \
+      "http://$IP/api/file?path=%2F3ds%2FTrinity3DS%2Fcacert.pem&replace=1" >/dev/null
+    echo "    Upload complete!"
+fi
+
 # 2. Upload and install CIA
 if [ -f "$DIR/Trinity3DS.cia" ]; then
     echo "--> Uploading Trinity3DS.cia to /cias/..."

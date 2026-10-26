@@ -1,5 +1,6 @@
 #include "gl_wrapper.h"
 #include "gl_swizzle.h"
+#include <math.h>
 
 #include "../z_zone.h" // For malloc/free
 
@@ -140,6 +141,27 @@ static C3D_FogLut *_get_fog_lut(float density) {
 static C3D_MtxStack mtx_modelview, mtx_projection, mtx_texture;
 static C3D_MtxStack *cur_mtxstack;
 
+// Dynamic vertex buffer for batched rendering
+#define VBO_MAX_VERTS 32768
+#define MAX_PRIM_VERTS 128
+
+typedef struct {
+    float color[4];
+    float texcoord[4];
+    float pos[4];
+} c3d_vertex_t;
+
+static c3d_vertex_t *vbo_batch_buffer = NULL;
+static int vbo_buffer_offset = 0;
+static int batch_vert_count = 0;
+
+static GLenum current_prim_mode = GL_TRIANGLES;
+static c3d_vertex_t prim_verts[MAX_PRIM_VERTS];
+static int prim_vert_count = 0;
+static bool in_imm_mode = false;
+
+static void _flush_vertex_batch(void);
+
 static inline void _set_default_render_states() {
     clear_color_r = 0.0f;
     clear_color_g = 0.0f;
@@ -256,6 +278,13 @@ void gl_wrapper_init() {
     _set_default_render_states();
     dirty_flags = 0xffffffff;
 
+    // Allocate dynamic vertex buffer for batched rendering
+    vbo_batch_buffer = (c3d_vertex_t*)linearAlloc(VBO_MAX_VERTS * sizeof(c3d_vertex_t));
+    vbo_buffer_offset = 0;
+    batch_vert_count = 0;
+    prim_vert_count = 0;
+    in_imm_mode = false;
+
     // Start first frame
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
 
@@ -263,6 +292,7 @@ void gl_wrapper_init() {
 }
 
 static inline void _release_all_gl_textures() {
+    _flush_vertex_batch();
     gl_c3d_tex *gl_delete_tex = gl_c3d_tex_base;
 
     while(gl_delete_tex) {
@@ -285,8 +315,15 @@ static inline void _release_all_gl_textures() {
 }
 
 void gl_wrapper_cleanup() {
+    _flush_vertex_batch();
+
     // Release allocated textures
     _release_all_gl_textures();
+
+    if (vbo_batch_buffer) {
+        linearFree(vbo_batch_buffer);
+        vbo_batch_buffer = NULL;
+    }
 
     // Release shader objects
     shaderProgramFree(&program);
@@ -308,17 +345,24 @@ int gl_wrapper_is_initialized() {
 }
 
 void gl_wrapper_perspective(float fovy, float aspect, float znear) {
+    _flush_vertex_batch();
     Mtx_PerspStereoTilt(MtxStack_Cur(cur_mtxstack), fovy, aspect, znear, 1000.0f, hw_stereo_offset, 0.15f, false);
 }
 
 void gl_wrapper_select_screen(gfx3dSide_t side) {
+    _flush_vertex_batch();
     C3D_RenderTarget *rt = (side == GFX_LEFT) ? hw_screen_l : hw_screen_r;
     C3D_FrameDrawOn(rt);
 }
 
 void gl_wrapper_swap_buffers() {
+    _flush_vertex_batch();
+
     // End frame
     C3D_FrameEnd(0);
+
+    // Reset buffer offset for new frame (GPU is synced on C3D_FRAME_SYNCDRAW)
+    vbo_buffer_offset = 0;
 
     // Start next frame
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
@@ -328,6 +372,7 @@ void gl_wrapper_swap_buffers() {
 //========== GRAPHICS FUNCTIONS ==========
 
 static inline void _toggle_render_state(GLenum cap, int enable) {
+    _flush_vertex_batch();
     switch(cap) {
     case GL_CULL_FACE:
         cull_enable = enable;
@@ -380,6 +425,7 @@ static inline GPU_CULLMODE _gl_to_c3d_cull(GLenum mode) {
 }
 
 void glCullFace(GLenum mode) {
+    _flush_vertex_batch();
     cull_mode = mode;
     dirty_flags |= DIRTY_FLAGS_CULL;
 }
@@ -405,6 +451,7 @@ static inline GPU_BLENDFACTOR _gl_to_c3d_blend(GLenum gl_factor) {
 }
 
 void glBlendFunc(GLenum sfactor, GLenum dfactor) {
+    _flush_vertex_batch();
     blend_sfactor = sfactor;
     blend_dfactor = dfactor;
     dirty_flags |= DIRTY_FLAGS_BLEND;
@@ -428,16 +475,19 @@ static inline GPU_TESTFUNC _gl_to_c3d_testfunc(GLenum gl_testfunc) {
 }
 
 void glDepthFunc(GLenum func) {
+    _flush_vertex_batch();
     depth_func = func;
     dirty_flags |= DIRTY_FLAGS_DEPTH;
 }
 
 void glDepthMask(GLboolean flag) {
+    _flush_vertex_batch();
     depth_mask = flag;
     dirty_flags |= DIRTY_FLAGS_DEPTH;
 }
 
 void glAlphaFunc(GLenum func, GLclampf ref) {
+    _flush_vertex_batch();
     alpha_func = func;
     alpha_ref = ref;
     dirty_flags |= DIRTY_FLAGS_ALPHA;
@@ -456,6 +506,7 @@ void glClearDepth(GLclampd depth) {
 }
 
 void glClear(GLbitfield mask) {
+    _flush_vertex_batch();
     GPU_WRITEMASK write_mask = 0;
 
     if(mask & GL_COLOR_BUFFER_BIT)
@@ -514,6 +565,7 @@ void glClear(GLbitfield mask) {
 }
 
 void glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
+    _flush_vertex_batch();
     viewport_x = y;
     viewport_y = x;
     viewport_width = height;
@@ -522,6 +574,7 @@ void glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
 }
 
 void glScissor(GLint x, GLint y, GLsizei width, GLsizei height) {
+    _flush_vertex_batch();
     scissor_x = y;
     scissor_y = x;
     scissor_width = height;
@@ -628,29 +681,71 @@ static inline void _update_dirty_render_states() {
     dirty_flags = 0;
 }
 
-void glBegin(GLenum mode) {
+static void _flush_vertex_batch(void) {
+    if (batch_vert_count == 0 || !vbo_batch_buffer)
+        return;
+
     MtxStack_Update(&mtx_modelview);
     MtxStack_Update(&mtx_projection);
     MtxStack_Update(&mtx_texture);
 
     _update_dirty_render_states();
 
-    if(cur_texture && cur_texture->c3d_tex.data)
+    if (cur_texture && cur_texture->c3d_tex.data)
         C3D_TexBind(0, &cur_texture->c3d_tex);
     else
         C3D_TexBind(0, NULL);
 
-    switch(mode) {
-    case GL_TRIANGLE_STRIP:
-        C3D_ImmDrawBegin(GPU_TRIANGLE_STRIP);
-        break;
-    case GL_TRIANGLE_FAN:
-        C3D_ImmDrawBegin(GPU_TRIANGLE_FAN);
-        break;
-    default: // GL_TRIANGLES
-        C3D_ImmDrawBegin(GPU_TRIANGLES);
-        break;
+    GSPGPU_FlushDataCache(&vbo_batch_buffer[vbo_buffer_offset], batch_vert_count * sizeof(c3d_vertex_t));
+
+    C3D_BufInfo* bufInfo = C3D_GetBufInfo();
+    BufInfo_Init(bufInfo);
+    BufInfo_Add(bufInfo, vbo_batch_buffer, sizeof(c3d_vertex_t), 3, 0x210);
+
+    C3D_DrawArrays(GPU_TRIANGLES, vbo_buffer_offset, batch_vert_count);
+
+    vbo_buffer_offset += batch_vert_count;
+    batch_vert_count = 0;
+}
+
+static inline void _add_batched_triangle(const c3d_vertex_t *v0, const c3d_vertex_t *v1, const c3d_vertex_t *v2) {
+    if (!vbo_batch_buffer) return;
+
+    if (vbo_buffer_offset + batch_vert_count + 3 > VBO_MAX_VERTS) {
+        _flush_vertex_batch();
+        if (vbo_buffer_offset + 3 > VBO_MAX_VERTS) {
+            C3D_FrameSync();
+            vbo_buffer_offset = 0;
+        }
     }
+    c3d_vertex_t *dst = &vbo_batch_buffer[vbo_buffer_offset + batch_vert_count];
+    dst[0] = *v0;
+    dst[1] = *v1;
+    dst[2] = *v2;
+    batch_vert_count += 3;
+}
+
+static inline void _record_vertex(float x, float y, float z) {
+    if (prim_vert_count < MAX_PRIM_VERTS) {
+        c3d_vertex_t *v = &prim_verts[prim_vert_count++];
+        v->color[0] = cur_color[0];
+        v->color[1] = cur_color[1];
+        v->color[2] = cur_color[2];
+        v->color[3] = cur_color[3];
+        v->texcoord[0] = cur_texcoord[0];
+        v->texcoord[1] = cur_texcoord[1];
+        v->texcoord[2] = cur_texcoord[2];
+        v->texcoord[3] = cur_texcoord[3];
+        v->pos[0] = x;
+        v->pos[1] = y;
+        v->pos[2] = z;
+        v->pos[3] = 1.0f;
+    }
+}
+
+void glBegin(GLenum mode) {
+    current_prim_mode = mode;
+    prim_vert_count = 0;
 }
 
 void glColor4f(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha) {
@@ -689,31 +784,81 @@ void glTexCoord2fv(const GLfloat *v) {
 }
 
 void glVertex2i(GLint x, GLint y) {
-    C3D_ImmSendAttrib(cur_color[0], cur_color[1], cur_color[2], cur_color[3]);
-    C3D_ImmSendAttrib(cur_texcoord[0], cur_texcoord[1], cur_texcoord[2], cur_texcoord[3]);
-    C3D_ImmSendAttrib((GLfloat)x, (GLfloat)y, 0.0f, 1.0f);
+    _record_vertex((GLfloat)x, (GLfloat)y, 0.0f);
 }
 
 void glVertex2f(GLfloat x, GLfloat y) {
-    C3D_ImmSendAttrib(cur_color[0], cur_color[1], cur_color[2], cur_color[3]);
-    C3D_ImmSendAttrib(cur_texcoord[0], cur_texcoord[1], cur_texcoord[2], cur_texcoord[3]);
-    C3D_ImmSendAttrib(x, y, 0.0f, 1.0f);
+    _record_vertex(x, y, 0.0f);
 }
 
 void glVertex3f(GLfloat x,GLfloat y,GLfloat z) {
-    C3D_ImmSendAttrib(cur_color[0], cur_color[1], cur_color[2], cur_color[3]);
-    C3D_ImmSendAttrib(cur_texcoord[0], cur_texcoord[1], cur_texcoord[2], cur_texcoord[3]);
-    C3D_ImmSendAttrib(x, y, z, 1.0f);
+    _record_vertex(x, y, z);
 }
 
 void glVertex3fv(const GLfloat *v) {
-    C3D_ImmSendAttrib(cur_color[0], cur_color[1], cur_color[2], cur_color[3]);
-    C3D_ImmSendAttrib(cur_texcoord[0], cur_texcoord[1], cur_texcoord[2], cur_texcoord[3]);
-    C3D_ImmSendAttrib(v[0], v[1], v[2], 1.0f);
+    _record_vertex(v[0], v[1], v[2]);
 }
 
 void glEnd(void) {
-    C3D_ImmDrawEnd();
+    switch (current_prim_mode) {
+    case GL_TRIANGLES:
+        for (int i = 0; i + 2 < prim_vert_count; i += 3) {
+            _add_batched_triangle(&prim_verts[i], &prim_verts[i+1], &prim_verts[i+2]);
+        }
+        break;
+
+    case GL_TRIANGLE_STRIP:
+        for (int i = 0; i < prim_vert_count - 2; i++) {
+            if ((i & 1) == 0) {
+                _add_batched_triangle(&prim_verts[i], &prim_verts[i+1], &prim_verts[i+2]);
+            } else {
+                _add_batched_triangle(&prim_verts[i+1], &prim_verts[i], &prim_verts[i+2]);
+            }
+        }
+        break;
+
+    case GL_TRIANGLE_FAN:
+        for (int i = 1; i < prim_vert_count - 1; i++) {
+            _add_batched_triangle(&prim_verts[0], &prim_verts[i], &prim_verts[i+1]);
+        }
+        break;
+
+    case GL_QUADS:
+        for (int i = 0; i + 3 < prim_vert_count; i += 4) {
+            _add_batched_triangle(&prim_verts[i], &prim_verts[i+1], &prim_verts[i+2]);
+            _add_batched_triangle(&prim_verts[i], &prim_verts[i+2], &prim_verts[i+3]);
+        }
+        break;
+
+    case GL_LINES:
+        for (int i = 0; i + 1 < prim_vert_count; i += 2) {
+            float dx = prim_verts[i+1].pos[0] - prim_verts[i].pos[0];
+            float dy = prim_verts[i+1].pos[1] - prim_verts[i].pos[1];
+            float len = sqrtf(dx * dx + dy * dy);
+            float nx = 0.0f, ny = 0.5f;
+            if (len > 0.0001f) {
+                nx = -dy / len * 0.5f;
+                ny =  dx / len * 0.5f;
+            }
+            c3d_vertex_t a = prim_verts[i];
+            c3d_vertex_t b = prim_verts[i];
+            c3d_vertex_t c = prim_verts[i+1];
+            c3d_vertex_t d = prim_verts[i+1];
+            a.pos[0] -= nx; a.pos[1] -= ny;
+            b.pos[0] += nx; b.pos[1] += ny;
+            c.pos[0] += nx; c.pos[1] += ny;
+            d.pos[0] -= nx; d.pos[1] -= ny;
+
+            _add_batched_triangle(&a, &b, &c);
+            _add_batched_triangle(&a, &c, &d);
+        }
+        break;
+
+    default:
+        break;
+    }
+
+    prim_vert_count = 0;
 }
 
 static inline GLuint _gen_texture() {
@@ -770,7 +915,10 @@ static inline gl_c3d_tex *_try_find_texture(GLuint texture) {
 
 void glBindTexture(GLenum target, GLuint texture) {
     if(!texture) {
-        cur_texture = NULL;
+        if (cur_texture != NULL) {
+            _flush_vertex_batch();
+            cur_texture = NULL;
+        }
         return;
     }
 
@@ -780,7 +928,10 @@ void glBindTexture(GLenum target, GLuint texture) {
     if(!gl_bind_tex)
         return;
 
-    cur_texture = gl_bind_tex;
+    if (cur_texture != gl_bind_tex) {
+        _flush_vertex_batch();
+        cur_texture = gl_bind_tex;
+    }
 }
 
 static inline GPU_TEXTURE_WRAP_PARAM _gl_to_c3d_texwrap(GLenum mode) {
@@ -819,6 +970,8 @@ void glTexParameteri(GLenum target, GLenum pname, GLint param) {
     if(!cur_texture)
         return;
 
+    _flush_vertex_batch();
+
     switch(pname) {
     case GL_TEXTURE_WRAP_S:
         cur_texture->c3d_tex.param &= ~(GPU_TEXTURE_WRAP_S(3));
@@ -842,6 +995,8 @@ void glTexParameteri(GLenum target, GLenum pname, GLint param) {
 void glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const GLvoid *pixels) {
     if(!cur_texture)
         return;
+
+    _flush_vertex_batch();
 
     if(cur_texture->c3d_tex.data) {
         linearFree(cur_texture->c3d_tex.data);
@@ -868,6 +1023,8 @@ void glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei widt
 void glCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height) {
     if(!cur_texture || !cur_texture->c3d_tex.data)
         return;
+
+    _flush_vertex_batch();
 
     u32 *screen = (u32*)gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
     if(!screen)
@@ -939,13 +1096,14 @@ static inline void _delete_texture(GLuint texture) {
 }
 
 void glDeleteTextures(GLsizei n, const GLuint *textures) {
+    _flush_vertex_batch();
     for(int i = 0; i < n; i++)
         _delete_texture(textures[i]);
 }
 
 void glFogi(GLenum pname, GLint param) {
     // PrBoom+ always uses GL_EXP
-
+    _flush_vertex_batch();
     dirty_flags |= DIRTY_FLAGS_FOG;
 }
 
@@ -953,16 +1111,19 @@ void glFogf(GLenum pname, GLfloat param) {
     switch(pname) {
     case GL_FOG_DENSITY:
         if(fog_density != param) {
+            _flush_vertex_batch();
             fog_density = param;
             dirty_flags |= DIRTY_FLAGS_FOGLUT;
         }
         return;
     }
 
+    _flush_vertex_batch();
     dirty_flags |= DIRTY_FLAGS_FOG;
 }
 
 void glFogfv(GLenum pname, const GLfloat *params) {
+    _flush_vertex_batch();
     switch(pname) {
     case GL_FOG_COLOR:
         fog_color[0] = params[0];
@@ -976,6 +1137,7 @@ void glFogfv(GLenum pname, const GLfloat *params) {
 }
 
 void glTexEnvi(GLenum target, GLenum pname, GLint param) {
+    _flush_vertex_batch();
     if(pname == GL_TEXTURE_ENV_MODE)
     {
         switch(param) {
@@ -1041,6 +1203,8 @@ void glGetTexImage(GLenum target, GLint level, GLenum format, GLenum type, GLvoi
     if(!cur_texture)
         return;
 
+    _flush_vertex_batch();
+
     int tex_width = cur_texture->c3d_tex.width;
     int tex_height = cur_texture->c3d_tex.height;
 
@@ -1062,6 +1226,8 @@ void glGetTexImage(GLenum target, GLint level, GLenum format, GLenum type, GLvoi
 }
 
 void glFlush(void) {
+    _flush_vertex_batch();
+
     // HACK: Because C3D_FrameEnd() swaps the gfx buffers, we need to swap them
     // back straight aftwards to prevent a brief flicker of the next frame
     // (which, because we're in glFlush(), we don't want to present just yet)
@@ -1078,13 +1244,15 @@ void glFlush(void) {
 }
 
 void glFinish(void) {
-
+    _flush_vertex_batch();
+    C3D_FrameSync();
 }
 
 
 //========== MATRIX FUNCTIONS ==========
 
 void glMatrixMode(GLenum mode) {
+    _flush_vertex_batch();
     switch(mode) {
     case GL_MODELVIEW:
         cur_mtxstack = &mtx_modelview;
@@ -1099,10 +1267,12 @@ void glMatrixMode(GLenum mode) {
 }
 
 void glLoadIdentity(void) {
+    _flush_vertex_batch();
     Mtx_Identity(MtxStack_Cur(cur_mtxstack));
 }
 
 void glLoadMatrixf(const GLfloat *m) {
+    _flush_vertex_batch();
     float *out = MtxStack_Cur(cur_mtxstack)->m;
 
     // (3DS GPU expects matrix row permutation to be WZYX, not XYZW!)
@@ -1113,22 +1283,27 @@ void glLoadMatrixf(const GLfloat *m) {
 }
 
 void glPushMatrix(void) {
+    _flush_vertex_batch();
     MtxStack_Push(cur_mtxstack);
 }
 
 void glPopMatrix(void) {
+    _flush_vertex_batch();
     MtxStack_Pop(cur_mtxstack);
 }
 
 void glOrtho(GLdouble left, GLdouble right, GLdouble bottom, GLdouble top, GLdouble zNear, GLdouble zFar) {
+    _flush_vertex_batch();
     Mtx_OrthoTilt(MtxStack_Cur(cur_mtxstack), (float)left, (float)right, (float)bottom, (float)top, (float)zNear, (float)zFar, false);
 }
 
 void glTranslatef(GLfloat x, GLfloat y, GLfloat z) {
+    _flush_vertex_batch();
     Mtx_Translate(MtxStack_Cur(cur_mtxstack), x, y, z, true);
 }
 
 void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z) {
+    _flush_vertex_batch();
     // TODO: This is really lazy, but it works, and
     // Mtx_Rotate was giving me shit for some reason...
     if(x == 1.0f)
@@ -1140,5 +1315,6 @@ void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z) {
 }
 
 void glScalef(GLfloat x, GLfloat y, GLfloat z) {
+    _flush_vertex_batch();
     Mtx_Scale(MtxStack_Cur(cur_mtxstack), x, y, z);
 }

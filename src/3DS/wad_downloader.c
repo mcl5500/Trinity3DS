@@ -181,6 +181,20 @@ const repo_item_t* Downloader_FindCatalogItem(const char *filename)
     return NULL;
 }
 
+// SSL configuration: uses real Mozilla CA bundle if present on SD card
+static void Downloader_SetupSSL(CURL *curl)
+{
+    const char *ca_path = "sdmc:/3ds/Trinity3DS/cacert.pem";
+    if (access(ca_path, F_OK) == 0) {
+        curl_easy_setopt(curl, CURLOPT_CAINFO, ca_path);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+    } else {
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    }
+}
+
 // Download progress state
 typedef struct {
     curl_off_t dltotal;
@@ -189,6 +203,17 @@ typedef struct {
     bool abort_requested;
     u64 last_render_tick;
 } dl_progress_t;
+
+// Background download thread context
+typedef struct {
+    const char *url;
+    FILE *fp;
+    volatile curl_off_t dltotal;
+    volatile curl_off_t dlnow;
+    volatile bool abort_requested;
+    volatile bool finished;
+    CURLcode res;
+} dl_thread_ctx_t;
 
 static void Downloader_RenderProgress(dl_progress_t *prog)
 {
@@ -261,32 +286,44 @@ static int Downloader_XferInfo(void *clientp, curl_off_t dltotal, curl_off_t dln
 {
     (void)ultotal;
     (void)ulnow;
-    dl_progress_t *prog = (dl_progress_t*)clientp;
-    prog->dltotal = dltotal;
-    prog->dlnow = dlnow;
+    dl_thread_ctx_t *ctx = (dl_thread_ctx_t*)clientp;
+    ctx->dltotal = dltotal;
+    ctx->dlnow = dlnow;
 
-    hidScanInput();
-    u32 kDown = hidKeysDown();
-    touchPosition touch;
-    hidTouchRead(&touch);
-
-    if (kDown & KEY_B) {
-        prog->abort_requested = true;
+    if (ctx->abort_requested) {
         return 1;
     }
-    if ((kDown & KEY_TOUCH) && touch.py >= 165 && touch.py <= 195 && touch.px >= 25 && touch.px <= 295) {
-        prog->abort_requested = true;
-        return 1;
-    }
-
-    u64 now = osGetTime();
-    // Only refresh UI every 400ms (2.5 fps) during download to leave 99% CPU for WiFi throughput & disk I/O!
-    if (now - prog->last_render_tick >= 400) {
-        prog->last_render_tick = now;
-        Downloader_RenderProgress(prog);
-    }
-
     return 0;
+}
+
+static void Downloader_ThreadFunc(void *arg)
+{
+    dl_thread_ctx_t *ctx = (dl_thread_ctx_t*)arg;
+
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        ctx->res = CURLE_FAILED_INIT;
+        ctx->finished = true;
+        return;
+    }
+
+    curl_easy_setopt(curl, CURLOPT_URL, ctx->url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, ctx->fp);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, Downloader_XferInfo);
+    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, ctx);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    Downloader_SetupSSL(curl);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/" TRINITY3DS_VERSION " (Nintendo 3DS)");
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 600L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
+    curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 64 * 1024L);
+    curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1L);
+
+    ctx->res = curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
+    ctx->finished = true;
 }
 
 static bool Downloader_ExtractZip(const char *zip_path, const char *dest_dir, char *err_msg, size_t err_len)
@@ -615,8 +652,7 @@ bool Downloader_FetchOnlineCover(const char *target_filename, const char *out_pn
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+        Downloader_SetupSSL(curl);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/" TRINITY3DS_VERSION " (Nintendo 3DS)");
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
@@ -671,47 +707,57 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
     // Set 64 KB write buffer to eliminate SD FAT write stutter
     setvbuf(fp, NULL, _IOFBF, 64 * 1024);
 
-    CURL *curl = curl_easy_init();
-    if (!curl) {
-        fclose(fp);
-        unlink(temp_file);
-        snprintf(err_msg, err_len, "Curl-Initialisierung fehlgeschlagen!");
-        return false;
+    dl_thread_ctx_t ctx = {0};
+    ctx.url = item->url;
+    ctx.fp = fp;
+
+    s32 prio = 0x31;
+    svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
+    s32 thread_prio = (prio + 1 < 0x3f) ? prio + 1 : prio;
+
+    Thread dl_thread = threadCreate(Downloader_ThreadFunc, &ctx, 32 * 1024, thread_prio, -1, false);
+    if (!dl_thread) {
+        // Fallback: synchronous download if thread creation fails
+        Downloader_ThreadFunc(&ctx);
+    } else {
+        dl_progress_t prog = {0};
+        prog.title = item->title;
+
+        while (!ctx.finished) {
+            hidScanInput();
+            u32 kDown = hidKeysDown();
+            touchPosition touch;
+            hidTouchRead(&touch);
+
+            if (kDown & KEY_B) {
+                ctx.abort_requested = true;
+            }
+            if ((kDown & KEY_TOUCH) && touch.py >= 165 && touch.py <= 195 && touch.px >= 25 && touch.px <= 295) {
+                ctx.abort_requested = true;
+            }
+
+            prog.dltotal = ctx.dltotal;
+            prog.dlnow = ctx.dlnow;
+            Downloader_RenderProgress(&prog);
+
+            gspWaitForVBlank();
+        }
+
+        threadJoin(dl_thread, U64_MAX);
+        threadFree(dl_thread);
     }
 
-    dl_progress_t prog = {0};
-    prog.title = item->title;
-    prog.last_render_tick = osGetTime();
-
-    curl_easy_setopt(curl, CURLOPT_URL, item->url);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
-    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, Downloader_XferInfo);
-    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &prog);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/" TRINITY3DS_VERSION " (Nintendo 3DS)");
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 600L);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
-    // Optimized buffer sizes for faster 3DS network throughput
-    curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 64 * 1024L);
-    curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1L);
-
-    CURLcode res = curl_easy_perform(curl);
     fclose(fp);
-    curl_easy_cleanup(curl);
 
-    if (prog.abort_requested) {
+    if (ctx.abort_requested) {
         unlink(temp_file);
         snprintf(err_msg, err_len, "Download vom Benutzer abgebrochen.");
         return false;
     }
 
-    if (res != CURLE_OK) {
+    if (ctx.res != CURLE_OK) {
         unlink(temp_file);
-        snprintf(err_msg, err_len, "Netzwerkfehler: %s", curl_easy_strerror(res));
+        snprintf(err_msg, err_len, "Netzwerkfehler: %s", curl_easy_strerror(ctx.res));
         return false;
     }
 
@@ -1061,6 +1107,7 @@ bool Downloader_FetchMetadataForWad(const char *filename, char *out_author, size
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteMemoryCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    Downloader_SetupSSL(curl);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/" TRINITY3DS_VERSION " (Nintendo 3DS)");
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 6L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 4L);
