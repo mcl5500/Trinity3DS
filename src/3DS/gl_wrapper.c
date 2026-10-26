@@ -859,24 +859,8 @@ void glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei widt
     if(!pixels || !cur_texture->c3d_tex.data)
         return;
 
-    u32 *swizzle_buf = malloc(size);
-    if (!swizzle_buf)
-        return;
-
-    SwizzleTexBufferRGBA8((u32*)pixels, swizzle_buf, width, height);
-
-    // Reverse the order of the color components
-    for(int i = 0; i < width * height; i++)
-    {
-        swizzle_buf[i] = ((swizzle_buf[i] & 0xff000000) >> 24) |
-                         ((swizzle_buf[i] & 0x00ff0000) >> 8) |
-                         ((swizzle_buf[i] & 0x0000ff00) << 8) |
-                         ((swizzle_buf[i] & 0x000000ff) << 24);
-    }
-
-    memcpy(cur_texture->c3d_tex.data, swizzle_buf, size);
-
-    free(swizzle_buf);
+    // Direct swizzle and byte-swap in-place directly into GPU linear memory
+    SwizzleAndSwapTexBufferRGBA8((const u32*)pixels, (u32*)cur_texture->c3d_tex.data, width, height);
 
     GSPGPU_FlushDataCache(cur_texture->c3d_tex.data, size);
 }
@@ -889,23 +873,22 @@ void glCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffse
     if(!screen)
         return;
 
-    u32 *texbuf = (u32*)cur_texture->c3d_tex.data;
+    u32 *temp_buf = malloc(cur_texture->c3d_tex.size);
+    if (!temp_buf)
+        return;
 
     for(int y = 0; y < height; y++) {
         for(int x = 0; x < width; x++) {
-            texbuf[(y * cur_texture->c3d_tex.width) + x] = screen[(x * height) + y];
+            temp_buf[(y * cur_texture->c3d_tex.width) + x] = screen[(x * height) + y];
         }
     }
 
-    u32 *swizzle_buf = malloc(cur_texture->c3d_tex.size);
-    if (!swizzle_buf)
-        return;
+    // Swizzle directly into GPU linear memory
+    SwizzleTexBufferRGBA8(temp_buf, (u32*)cur_texture->c3d_tex.data, cur_texture->c3d_tex.width, cur_texture->c3d_tex.height);
 
-    SwizzleTexBufferRGBA8(texbuf, swizzle_buf, cur_texture->c3d_tex.width, cur_texture->c3d_tex.height);
+    free(temp_buf);
 
-    memcpy(cur_texture->c3d_tex.data, swizzle_buf, cur_texture->c3d_tex.size);
-
-    free(swizzle_buf);
+    GSPGPU_FlushDataCache(cur_texture->c3d_tex.data, cur_texture->c3d_tex.size);
 }
 
 static inline void _delete_texture(GLuint texture) {

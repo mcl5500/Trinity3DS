@@ -38,4 +38,15 @@ static void SwizzleTexBufferRGBA8(u32 *in, u32 *out, u32 w, u32 h) {
     }
 }
 
+// Direct swizzle + component byte-swap in a single pass directly into GPU linear memory.
+// Eliminates temporary heap buffers, secondary loops, and redundant memcpy calls.
+static inline void SwizzleAndSwapTexBufferRGBA8(const u32 *in, u32 *out, u32 w, u32 h) {
+    for(u32 y = 0; y < h; y++) {
+        for(u32 x = 0; x < w; x++) {
+            u32 pixel = __builtin_bswap32(in[(y * w) + x]);
+            *((u32*)((u8*)out + GetPixelOffset(x, y, w, h))) = pixel;
+        }
+    }
+}
+
 #endif
