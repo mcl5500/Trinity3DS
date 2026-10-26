@@ -381,7 +381,7 @@ static wp_image_t* WP_LoadPNG(const char *filename)
 void WP_UpdateCoverByFilename(const char *target_filename)
 {
     static char s_last_filename[64] = "";
-    if (target_filename && s_last_filename[0] && !strcasecmp(s_last_filename, target_filename)) {
+    if (s_cur_cover && target_filename && s_last_filename[0] && !strcasecmp(s_last_filename, target_filename)) {
         return; // Already loaded!
     }
     WP_FreeCover();
@@ -389,8 +389,6 @@ void WP_UpdateCoverByFilename(const char *target_filename)
         s_last_filename[0] = '\0';
         return;
     }
-    strncpy(s_last_filename, target_filename, sizeof(s_last_filename) - 1);
-    s_last_filename[sizeof(s_last_filename) - 1] = '\0';
 
     char base_name[64];
     strncpy(base_name, target_filename, sizeof(base_name) - 1);
@@ -401,19 +399,26 @@ void WP_UpdateCoverByFilename(const char *target_filename)
     char png_path[256];
     snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.png", base_name);
     s_cur_cover = WP_LoadPNG(png_path);
-    if (s_cur_cover) return;
+    if (!s_cur_cover) {
+        snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.PNG", base_name);
+        s_cur_cover = WP_LoadPNG(png_path);
+    }
+    if (!s_cur_cover) {
+        // Check lowercase
+        char lower[64];
+        strncpy(lower, base_name, sizeof(lower) - 1);
+        lower[sizeof(lower) - 1] = '\0';
+        for (int i = 0; lower[i]; i++) lower[i] = tolower((unsigned char)lower[i]);
+        snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.png", lower);
+        s_cur_cover = WP_LoadPNG(png_path);
+    }
 
-    snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.PNG", base_name);
-    s_cur_cover = WP_LoadPNG(png_path);
-    if (s_cur_cover) return;
-
-    // Check lowercase
-    char lower[64];
-    strncpy(lower, base_name, sizeof(lower) - 1);
-    lower[sizeof(lower) - 1] = '\0';
-    for (int i = 0; lower[i]; i++) lower[i] = tolower((unsigned char)lower[i]);
-    snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.png", lower);
-    s_cur_cover = WP_LoadPNG(png_path);
+    if (s_cur_cover) {
+        strncpy(s_last_filename, target_filename, sizeof(s_last_filename) - 1);
+        s_last_filename[sizeof(s_last_filename) - 1] = '\0';
+    } else {
+        s_last_filename[0] = '\0';
+    }
 }
 
 bool WP_HasCover(void)

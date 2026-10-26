@@ -3847,7 +3847,9 @@ static bool Downloader_ExtractZip(const char *zip_path, const char *dest_dir, ch
         const char *dot = strrchr(filename, '.');
         if (!dot) continue;
 
-        if (strcasecmp(dot, ".wad") != 0 && strcasecmp(dot, ".deh") != 0) {
+        bool is_wad_deh = (strcasecmp(dot, ".wad") == 0 || strcasecmp(dot, ".deh") == 0);
+        bool is_image = (strcasecmp(dot, ".png") == 0 || strcasecmp(dot, ".jpg") == 0 || strcasecmp(dot, ".jpeg") == 0);
+        if (!is_wad_deh && !is_image) {
             continue;
         }
 
@@ -3875,7 +3877,9 @@ static bool Downloader_ExtractZip(const char *zip_path, const char *dest_dir, ch
 
         fclose(out_fp);
         unzCloseCurrentFile(uf);
-        extracted++;
+        if (is_wad_deh && strcasecmp(dot, ".wad") == 0) {
+            extracted++;
+        }
     } while (unzGoToNextFile(uf) == UNZ_OK);
 
     unzClose(uf);
@@ -4097,6 +4101,80 @@ static bool Downloader_ExtractTitlepicToPng(const char *wad_path, const char *ou
     return ok;
 }
 
+static bool Downloader_FetchOnlineCover(const char *target_filename, const char *out_png_path)
+{
+    if (!target_filename || !out_png_path) return false;
+    if (osGetWifiStrength() == 0) return false;
+    if (!Downloader_InitNetwork()) return false;
+
+    char base_name[64];
+    strncpy(base_name, target_filename, sizeof(base_name) - 1);
+    base_name[sizeof(base_name) - 1] = '\0';
+    char *dot = strrchr(base_name, '.');
+    if (dot) *dot = '\0';
+
+    char lower_base[64];
+    strncpy(lower_base, base_name, sizeof(lower_base) - 1);
+    lower_base[sizeof(lower_base) - 1] = '\0';
+    for (int i = 0; lower_base[i]; i++) lower_base[i] = tolower((unsigned char)lower_base[i]);
+
+    const char *url_patterns[] = {
+        "https://raw.githubusercontent.com/mcl5500/trinity3ds-covers/main/%s.png",
+        "https://archive.org/download/doom-wads-covers/%s.png",
+        "https://raw.githubusercontent.com/chocolatiers/doom-cover-art/master/%s.png"
+    };
+
+    char temp_png[256];
+    snprintf(temp_png, sizeof(temp_png), "sdmc:/3ds/Trinity3DS/downloads/temp_cover.png");
+    mkdir("sdmc:/3ds/Trinity3DS/downloads", 0777);
+
+    for (size_t p = 0; p < sizeof(url_patterns) / sizeof(url_patterns[0]); p++) {
+        char url[384];
+        snprintf(url, sizeof(url), url_patterns[p], lower_base);
+
+        FILE *fp = fopen(temp_png, "wb");
+        if (!fp) continue;
+
+        CURL *curl = curl_easy_init();
+        if (!curl) { fclose(fp); unlink(temp_png); continue; }
+
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.1 (Nintendo 3DS)");
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
+        curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+
+        CURLcode res = curl_easy_perform(curl);
+        long http_code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+        fclose(fp);
+        curl_easy_cleanup(curl);
+
+        if (res == CURLE_OK && http_code == 200) {
+            FILE *chk = fopen(temp_png, "rb");
+            if (chk) {
+                u8 sig[8] = {0};
+                size_t read_bytes = fread(sig, 1, 8, chk);
+                fseek(chk, 0, SEEK_END);
+                long fsz = ftell(chk);
+                fclose(chk);
+
+                if (read_bytes >= 8 && sig[0] == 0x89 && sig[1] == 'P' && sig[2] == 'N' && sig[3] == 'G' && fsz > 100) {
+                    rename(temp_png, out_png_path);
+                    return true;
+                }
+            }
+        }
+        unlink(temp_png);
+    }
+    return false;
+}
+
 static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t err_len)
 {
     mkdir("sdmc:/3ds", 0777);
@@ -4180,7 +4258,7 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
         if (!ext_ok) return false;
     }
 
-    // Automatically extract TITLEPIC cover from WAD if no PNG exists yet!
+    // Cover Import Priority 1: Check if ZIP contained an image file
     char base_name[64];
     strncpy(base_name, item->target_file, sizeof(base_name) - 1);
     base_name[sizeof(base_name) - 1] = '\0';
@@ -4191,10 +4269,34 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
     snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.png", base_name);
 
     if (access(png_path, F_OK) != 0) {
+        const char *alt_names[] = {
+            "cover.png", "title.png", "titlepic.png", "preview.png", "boxart.png",
+            "COVER.PNG", "TITLE.PNG", "TITLEPIC.PNG"
+        };
+        for (size_t a = 0; a < sizeof(alt_names) / sizeof(alt_names[0]); a++) {
+            char alt_path[256];
+            snprintf(alt_path, sizeof(alt_path), "sdmc:/3ds/Trinity3DS/wads/%s", alt_names[a]);
+            if (access(alt_path, F_OK) == 0) {
+                rename(alt_path, png_path);
+                break;
+            }
+        }
+    }
+
+    // Cover Import Priority 2: Extract TITLEPIC directly from WAD if no PNG exists yet
+    if (access(png_path, F_OK) != 0) {
         char target_wad_path[256];
         snprintf(target_wad_path, sizeof(target_wad_path), "sdmc:/3ds/Trinity3DS/wads/%s", item->target_file);
         Downloader_ExtractTitlepicToPng(target_wad_path, png_path);
     }
+
+    // Cover Import Priority 3: Fallback online download if still no cover
+    if (access(png_path, F_OK) != 0) {
+        Downloader_FetchOnlineCover(item->target_file, png_path);
+    }
+
+    // Reload cover immediately so store and launcher display it!
+    WP_UpdateCoverByFilename(item->target_file);
 
     return true;
 }
@@ -4474,22 +4576,6 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     WP_DrawRect(fb, 400, cover_x, cover_y, cover_w, cover_h, 70, 95, 130);
 
     WP_UpdateCoverByFilename(cur->target_file);
-    if (!WP_HasCover() && installed) {
-        char base_name[64];
-        strncpy(base_name, cur->target_file, sizeof(base_name) - 1);
-        base_name[sizeof(base_name) - 1] = '\0';
-        char *dot = strrchr(base_name, '.');
-        if (dot) *dot = '\0';
-
-        char png_path[256];
-        snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.png", base_name);
-        char wad_path[256];
-        snprintf(wad_path, sizeof(wad_path), "sdmc:/3ds/Trinity3DS/wads/%s", cur->target_file);
-
-        if (Downloader_ExtractTitlepicToPng(wad_path, png_path)) {
-            WP_UpdateCoverByFilename(cur->target_file);
-        }
-    }
     if (WP_HasCover()) {
         WP_DrawCover(fb, 400, cover_x + 1, cover_y + 1, cover_w - 2, cover_h - 2);
     } else {
@@ -4759,6 +4845,51 @@ bool WAD_Downloader_Run(void)
                     Downloader_ShowModal("DOWNLOAD ERFOLGREICH!", sel->title, "Wurde erfolgreich nach /wads/ installiert!", 50, 220, 80);
                 } else {
                     Downloader_ShowModal("FEHLER BEIM DOWNLOAD", err_msg, "Bitte spaeter erneut versuchen.", 255, 60, 60);
+                }
+            }
+        }
+
+        // Debounced On-Demand Cover Caching
+        static int s_last_sel = -1;
+        static int s_hover_frames = 0;
+        static bool s_tried_fetch = false;
+
+        if (selected_idx != s_last_sel) {
+            s_last_sel = selected_idx;
+            s_hover_frames = 0;
+            s_tried_fetch = false;
+        } else if (!s_tried_fetch) {
+            s_hover_frames++;
+            if (s_hover_frames >= 20) { // ~330ms stationary on current item
+                s_tried_fetch = true;
+                if (!WP_HasCover()) {
+                    const repo_item_t *cur = (count > 0) ? &s_catalog[selected_idx] : NULL;
+                    if (cur) {
+                        char base_name[64];
+                        strncpy(base_name, cur->target_file, sizeof(base_name) - 1);
+                        base_name[sizeof(base_name) - 1] = '\0';
+                        char *dot = strrchr(base_name, '.');
+                        if (dot) *dot = '\0';
+
+                        char png_path[256];
+                        snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.png", base_name);
+
+                        // 1. If WAD is already installed on SD, try TITLEPIC extraction
+                        if (s_installed[selected_idx]) {
+                            char wad_path[256];
+                            snprintf(wad_path, sizeof(wad_path), "sdmc:/3ds/Trinity3DS/wads/%s", cur->target_file);
+                            if (Downloader_ExtractTitlepicToPng(wad_path, png_path)) {
+                                WP_UpdateCoverByFilename(cur->target_file);
+                            }
+                        }
+
+                        // 2. If still no cover and WiFi is active, try online fetch
+                        if (!WP_HasCover() && osGetWifiStrength() > 0) {
+                            if (Downloader_FetchOnlineCover(cur->target_file, png_path)) {
+                                WP_UpdateCoverByFilename(cur->target_file);
+                            }
+                        }
+                    }
                 }
             }
         }
