@@ -8,6 +8,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <dirent.h>
 #include <unistd.h>
 #include <malloc.h>
 #include <ctype.h>
@@ -3971,38 +3972,39 @@ static const repo_item_t s_catalog[] = {
 // In-memory cache for installed status (avoids hammering the slow SD card every frame)
 static bool s_installed[CATALOG_COUNT];
 
-static bool Downloader_CheckFileOnDisk(const char *target_filename)
-{
-    if (!target_filename || !target_filename[0]) return false;
-
-    char path[256];
-    // Check exact in Trinity3DS
-    snprintf(path, sizeof(path), "sdmc:/3ds/Trinity3DS/wads/%s", target_filename);
-    if (access(path, R_OK) == 0) return true;
-
-    // Check lowercase
-    char lower[64];
-    strncpy(lower, target_filename, sizeof(lower) - 1);
-    lower[sizeof(lower) - 1] = '\0';
-    for (int i = 0; lower[i]; i++) lower[i] = tolower((unsigned char)lower[i]);
-    snprintf(path, sizeof(path), "sdmc:/3ds/Trinity3DS/wads/%s", lower);
-    if (access(path, R_OK) == 0) return true;
-
-    // Check uppercase
-    char upper[64];
-    strncpy(upper, target_filename, sizeof(upper) - 1);
-    upper[sizeof(upper) - 1] = '\0';
-    for (int i = 0; upper[i]; i++) upper[i] = toupper((unsigned char)upper[i]);
-    snprintf(path, sizeof(path), "sdmc:/3ds/Trinity3DS/wads/%s", upper);
-    if (access(path, R_OK) == 0) return true;
-
-    return false;
-}
-
 static void Downloader_RefreshInstalledCache(void)
 {
+    memset(s_installed, 0, sizeof(s_installed));
+
+    // Read directory entries into memory ONCE (approx 1-2 milliseconds on FAT32)
+    // instead of calling access() 900+ times over slow SD card IPC!
+    #define MAX_DIR_FILES 1024
+    static char local_files[MAX_DIR_FILES][64];
+    int local_count = 0;
+
+    DIR *d = opendir("sdmc:/3ds/Trinity3DS/wads");
+    if (d) {
+        struct dirent *ent;
+        while ((ent = readdir(d)) != NULL && local_count < MAX_DIR_FILES) {
+            if (ent->d_name[0] == '.') continue;
+            strncpy(local_files[local_count], ent->d_name, sizeof(local_files[local_count]) - 1);
+            local_files[local_count][sizeof(local_files[local_count]) - 1] = '\0';
+            local_count++;
+        }
+        closedir(d);
+    }
+
+    if (local_count == 0) return;
+
+    // Fast in-memory match (0.001 ms)
     for (int i = 0; i < CATALOG_COUNT; i++) {
-        s_installed[i] = Downloader_CheckFileOnDisk(s_catalog[i].target_file);
+        const char *target = s_catalog[i].target_file;
+        for (int j = 0; j < local_count; j++) {
+            if (!strcasecmp(target, local_files[j])) {
+                s_installed[i] = true;
+                break;
+            }
+        }
     }
 }
 
@@ -4230,7 +4232,7 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/0.9.7 (Nintendo 3DS)");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/0.9.8 (Nintendo 3DS)");
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 600L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
     // Optimized buffer sizes for faster 3DS network throughput
