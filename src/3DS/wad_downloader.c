@@ -219,7 +219,11 @@ static int s_search_count = 0;
 static bool s_in_search_mode = false;
 static char s_last_search_query[64] = {0};
 
-static bool Downloader_IsInstalled(const char *target_filename)
+// In-memory cache for installed status (avoids hammering the slow SD card every frame)
+static bool s_curated_installed[CURATED_COUNT];
+static bool s_search_installed[MAX_SEARCH_RESULTS];
+
+static bool Downloader_CheckFileOnDisk(const char *target_filename)
 {
     if (!target_filename || !target_filename[0]) return false;
 
@@ -231,6 +235,16 @@ static bool Downloader_IsInstalled(const char *target_filename)
     if (access(path, R_OK) == 0) return true;
 
     return false;
+}
+
+static void Downloader_RefreshInstalledCache(void)
+{
+    for (int i = 0; i < CURATED_COUNT; i++) {
+        s_curated_installed[i] = Downloader_CheckFileOnDisk(s_curated_wads[i].target_file);
+    }
+    for (int i = 0; i < s_search_count; i++) {
+        s_search_installed[i] = Downloader_CheckFileOnDisk(s_search_results[i].target_file);
+    }
 }
 
 // Download progress state
@@ -256,16 +270,16 @@ static void Downloader_RenderProgress(dl_progress_t *prog)
 
     // Title
     WP_FillRect(bot_fb, 320, 15, 30, 290, 26, 35, 75, 140);
-    WP_DrawText(bot_fb, 320, 24, 38, "DOWNLOAD LAEUFT...", 255, 255, 255, 1);
+    WP_DrawCenteredText(bot_fb, 320, 15, 30, 290, 26, "DOWNLOAD LAEUFT...", 255, 255, 255, 1);
 
     // WAD Title
     if (strlen(prog->title) <= 24) {
-        WP_DrawText(bot_fb, 320, 25, 70, prog->title, 255, 215, 0, 1);
+        WP_DrawCenteredText(bot_fb, 320, 20, 68, 280, 20, prog->title, 255, 215, 0, 1);
     } else {
         char trunc[25];
         strncpy(trunc, prog->title, 24);
         trunc[24] = '\0';
-        WP_DrawText(bot_fb, 320, 25, 70, trunc, 255, 215, 0, 1);
+        WP_DrawCenteredText(bot_fb, 320, 20, 68, 280, 20, trunc, 255, 215, 0, 1);
     }
 
     // Progress Bar Frame
@@ -298,12 +312,12 @@ static void Downloader_RenderProgress(dl_progress_t *prog)
     } else {
         snprintf(status_str, sizeof(status_str), "Geladen: %.2f MB", cur_mb);
     }
-    WP_DrawText(bot_fb, 320, 25, 134, status_str, 200, 230, 255, 1);
+    WP_DrawCenteredText(bot_fb, 320, 20, 134, 280, 16, status_str, 200, 230, 255, 1);
 
     // Cancel hint
     WP_FillRect(bot_fb, 320, 25, 165, 270, 30, 60, 20, 20);
     WP_DrawRect(bot_fb, 320, 25, 165, 270, 30, 200, 50, 50);
-    WP_DrawText(bot_fb, 320, 75, 174, "[B]  DOWNLOAD ABBRECHEN", 255, 255, 255, 1);
+    WP_DrawCenteredText(bot_fb, 320, 25, 165, 270, 30, "[B]  DOWNLOAD ABBRECHEN", 255, 255, 255, 1);
 
     gfxFlushBuffers();
     gfxSwapBuffers();
@@ -322,7 +336,6 @@ static int Downloader_XferInfo(void *clientp, curl_off_t dltotal, curl_off_t dln
     touchPosition touch;
     hidTouchRead(&touch);
 
-    // Check cancel: B button or tapping cancel button
     if (kDown & KEY_B) {
         prog->abort_requested = true;
         return 1;
@@ -333,7 +346,7 @@ static int Downloader_XferInfo(void *clientp, curl_off_t dltotal, curl_off_t dln
     }
 
     u64 now = osGetTime();
-    if (now - prog->last_render_tick >= 100) { // Render ~10 fps during download to keep transfers fast
+    if (now - prog->last_render_tick >= 100) {
         prog->last_render_tick = now;
         Downloader_RenderProgress(prog);
     }
@@ -341,7 +354,6 @@ static int Downloader_XferInfo(void *clientp, curl_off_t dltotal, curl_off_t dln
     return 0;
 }
 
-// Memory buffer for API responses
 typedef struct {
     char *data;
     size_t size;
@@ -363,7 +375,6 @@ static size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, voi
     return realsize;
 }
 
-// Extracts all .wad and .deh files from ZIP archive directly to dest_dir
 static bool Downloader_ExtractZip(const char *zip_path, const char *dest_dir, char *err_msg, size_t err_len)
 {
     unzFile uf = unzOpen(zip_path);
@@ -388,7 +399,6 @@ static bool Downloader_ExtractZip(const char *zip_path, const char *dest_dir, ch
             continue;
         }
 
-        // Filter out macOS metadata folder and hidden files
         if (strstr(filename, "__MACOSX") || strstr(filename, "/.")) {
             continue;
         }
@@ -437,10 +447,8 @@ static bool Downloader_ExtractZip(const char *zip_path, const char *dest_dir, ch
     return true;
 }
 
-// Download a single file with live progress
 static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t err_len)
 {
-    // Create folders
     mkdir("sdmc:/3ds", 0777);
     mkdir("sdmc:/3ds/Boom3DS", 0777);
     mkdir("sdmc:/3ds/Boom3DS/wads", 0777);
@@ -481,7 +489,7 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "Boom3DS/0.9.5 (Nintendo 3DS)");
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 600L); // 10 min
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 600L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
 
     CURLcode res = curl_easy_perform(curl);
@@ -500,33 +508,29 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
         return false;
     }
 
-    // Extract if zip
     if (item->is_zip) {
-        // Show "Entpacke WAD..." dialog
         u8 *bot_fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
         if (bot_fb) {
             WP_FillRect(bot_fb, 320, 15, 70, 290, 100, 28, 28, 35);
             WP_DrawRect(bot_fb, 320, 15, 70, 290, 100, 255, 215, 0);
-            WP_DrawText(bot_fb, 320, 45, 95, "ENTPACKE WAD-DATEIEN...", 255, 255, 255, 1);
-            WP_DrawText(bot_fb, 320, 45, 120, "Bitte einen Moment Geduld...", 200, 200, 200, 1);
+            WP_DrawCenteredText(bot_fb, 320, 20, 90, 280, 20, "ENTPACKE WAD-DATEIEN...", 255, 255, 255, 1);
+            WP_DrawCenteredText(bot_fb, 320, 20, 120, 280, 20, "Bitte einen Moment Geduld...", 200, 200, 200, 1);
             gfxFlushBuffers();
             gfxSwapBuffers();
         }
 
         bool ext_ok = Downloader_ExtractZip(temp_file, "sdmc:/3ds/Boom3DS/wads", err_msg, err_len);
-        unlink(temp_file); // Remove temporary zip to free SD space
+        unlink(temp_file);
         if (!ext_ok) return false;
     }
 
     return true;
 }
 
-// Perform search against Doomworld idgames API
 static bool Downloader_SearchIdgames(const char *query, char *err_msg, size_t err_len)
 {
     if (!query || !query[0]) return false;
 
-    // URL encode query
     char encoded_query[128] = {0};
     int eq_idx = 0;
     for (int i = 0; query[i] && eq_idx < 120; i++) {
@@ -542,13 +546,12 @@ static bool Downloader_SearchIdgames(const char *query, char *err_msg, size_t er
     char api_url[256];
     snprintf(api_url, sizeof(api_url), "https://www.doomworld.com/idgames/api/api.php?action=search&query=%s&out=json", encoded_query);
 
-    // Show searching notice
     u8 *bot_fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
     if (bot_fb) {
         WP_FillRect(bot_fb, 320, 15, 70, 290, 100, 28, 28, 35);
         WP_DrawRect(bot_fb, 320, 15, 70, 290, 100, 80, 180, 255);
-        WP_DrawText(bot_fb, 320, 30, 95, "DURCHSUCHE IDGAMES ARCHIV...", 255, 255, 255, 1);
-        WP_DrawText(bot_fb, 320, 30, 120, query, 255, 215, 0, 1);
+        WP_DrawCenteredText(bot_fb, 320, 20, 90, 280, 20, "DURCHSUCHE IDGAMES ARCHIV...", 255, 255, 255, 1);
+        WP_DrawCenteredText(bot_fb, 320, 20, 120, 280, 20, query, 255, 215, 0, 1);
         gfxFlushBuffers();
         gfxSwapBuffers();
     }
@@ -578,7 +581,6 @@ static bool Downloader_SearchIdgames(const char *query, char *err_msg, size_t er
         return false;
     }
 
-    // Parse JSON
     struct json_object *root = json_tokener_parse(chunk.data);
     free(chunk.data);
 
@@ -603,7 +605,6 @@ static bool Downloader_SearchIdgames(const char *query, char *err_msg, size_t er
 
     s_search_count = 0;
 
-    // Helper lambda-like macro to parse a single file JSON object
     #define PARSE_FILE_ITEM(f_item) do { \
         if (s_search_count >= MAX_SEARCH_RESULTS) break; \
         repo_item_t *it = &s_search_results[s_search_count]; \
@@ -656,10 +657,11 @@ static bool Downloader_SearchIdgames(const char *query, char *err_msg, size_t er
 
     strncpy(s_last_search_query, query, sizeof(s_last_search_query) - 1);
     s_in_search_mode = true;
+    Downloader_RefreshInstalledCache();
     return true;
 }
 
-static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_idx, int total_count)
+static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_idx, int total_count, bool installed)
 {
     // Background
     WP_FillRect(fb, 400, 0, 0, 400, 240, 20, 20, 24);
@@ -705,10 +707,10 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     // Category Badge
     if (cur->is_iwad) {
         WP_FillRect(fb, 400, 22, 88, 140, 16, 20, 120, 40);
-        WP_DrawText(fb, 400, 26, 92, "[STANDALONE IWAD]", 255, 255, 255, 1);
+        WP_DrawCenteredText(fb, 400, 22, 88, 140, 16, "[STANDALONE IWAD]", 255, 255, 255, 1);
     } else {
         WP_FillRect(fb, 400, 22, 88, 140, 16, 20, 70, 130);
-        WP_DrawText(fb, 400, 26, 92, "[COMMUNITY MOD/WAD]", 180, 230, 255, 1);
+        WP_DrawCenteredText(fb, 400, 22, 88, 140, 16, "[COMMUNITY MOD/WAD]", 180, 230, 255, 1);
     }
 
     // Requirement & Size
@@ -725,13 +727,12 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     }
 
     // Install status on card
-    bool installed = Downloader_IsInstalled(cur->target_file);
     if (installed) {
         WP_FillRect(fb, 400, 240, 88, 140, 16, 20, 100, 30);
-        WP_DrawText(fb, 400, 246, 92, "BEREITS INSTALLIERT", 100, 255, 120, 1);
+        WP_DrawCenteredText(fb, 400, 240, 88, 140, 16, "BEREITS INSTALLIERT", 100, 255, 120, 1);
     } else {
         WP_FillRect(fb, 400, 240, 88, 140, 16, 90, 70, 15);
-        WP_DrawText(fb, 400, 246, 92, "NICHT INSTALLIERT", 255, 215, 0, 1);
+        WP_DrawCenteredText(fb, 400, 240, 88, 140, 16, "NICHT INSTALLIERT", 255, 215, 0, 1);
     }
 
     // Position indicator
@@ -747,7 +748,7 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     WP_DrawText(fb, 400, 20, 209, "X: idgames Suche    B: Zurueck zum WAD-Browser", 100, 255, 120, 1);
 }
 
-static void Downloader_RenderBottomScreen(u8 *fb, const repo_item_t *items, int count, int sel_idx, int scroll_offset)
+static void Downloader_RenderBottomScreen(u8 *fb, const repo_item_t *items, const bool *installed_flags, int count, int sel_idx, int scroll_offset)
 {
     // Background
     WP_FillRect(fb, 320, 0, 0, 320, 240, 16, 16, 20);
@@ -774,7 +775,7 @@ static void Downloader_RenderBottomScreen(u8 *fb, const repo_item_t *items, int 
         if (idx < count) {
             const repo_item_t *item = &items[idx];
             bool sel = (idx == sel_idx);
-            bool installed = Downloader_IsInstalled(item->target_file);
+            bool installed = installed_flags ? installed_flags[idx] : false;
 
             // Row background
             if (sel) {
@@ -793,10 +794,10 @@ static void Downloader_RenderBottomScreen(u8 *fb, const repo_item_t *items, int 
             // Install status badge
             if (installed) {
                 WP_FillRect(fb, 320, 26, y + 8, 28, 16, 20, 110, 30);
-                WP_DrawText(fb, 320, 28, y + 12, "[OK]", 100, 255, 120, 1);
+                WP_DrawCenteredText(fb, 320, 26, y + 8, 28, 16, "[OK]", 100, 255, 120, 1);
             } else {
                 WP_FillRect(fb, 320, 26, y + 8, 28, 16, 70, 70, 80);
-                WP_DrawText(fb, 320, 28, y + 12, "[--]", 200, 200, 200, 1);
+                WP_DrawCenteredText(fb, 320, 26, y + 8, 28, 16, "[--]", 200, 200, 200, 1);
             }
 
             // Name
@@ -808,67 +809,62 @@ static void Downloader_RenderBottomScreen(u8 *fb, const repo_item_t *items, int 
     }
 
     // Bottom Action Buttons:
-    // Left: [⬇ WAD HERUNTERLADEN] (W: 194)
-    // Right: [🔍 SUCHE] (W: 108)
-    const repo_item_t *sel_item = (count > 0 && sel_idx < count) ? &items[sel_idx] : NULL;
-    bool already_inst = sel_item ? Downloader_IsInstalled(sel_item->target_file) : false;
+    // Left: [HERUNTERLADEN] (X: 6, Y: 202, W: 194, H: 34)
+    // Right: [SUCHE / KATALOG] (X: 206, Y: 202, W: 108, H: 34)
+    bool already_inst = (count > 0 && sel_idx < count && installed_flags) ? installed_flags[sel_idx] : false;
 
     if (already_inst) {
-        WP_FillRect(fb, 320, 6, 202, 194, 34, 40, 80, 45);
-        WP_DrawRect(fb, 320, 6, 202, 194, 34, 70, 160, 80);
-        WP_DrawText(fb, 320, 18, 212, "✓  NEU HERUNTERLADEN", 200, 255, 200, 1);
+        WP_FillRect(fb, 320, 6, 202, 194, 34, 30, 70, 40);
+        WP_DrawRect(fb, 320, 6, 202, 194, 34, 60, 150, 70);
+        WP_DrawCenteredText(fb, 320, 6, 202, 194, 34, "NEU LADEN [A]", 200, 255, 200, 1);
     } else {
         WP_FillRect(fb, 320, 6, 202, 194, 34, 20, 120, 45);
         WP_DrawRect(fb, 320, 6, 202, 194, 34, 60, 230, 90);
-        WP_DrawText(fb, 320, 22, 212, "⬇  HERUNTERLADEN", 255, 255, 255, 2);
+        WP_DrawCenteredText(fb, 320, 6, 202, 194, 34, "HERUNTERLADEN", 255, 255, 255, 2);
     }
 
-    // Search button
+    // Search / Back button
     WP_FillRect(fb, 320, 206, 202, 108, 34, 25, 60, 115);
     WP_DrawRect(fb, 320, 206, 202, 108, 34, 80, 160, 255);
     if (s_in_search_mode) {
-        WP_DrawText(fb, 320, 214, 214, "[B] KATALOG", 255, 255, 255, 1);
+        WP_DrawCenteredText(fb, 320, 206, 202, 108, 34, "[B] KATALOG", 255, 255, 255, 1);
     } else {
-        WP_DrawText(fb, 320, 214, 214, "[X] SUCHE", 255, 255, 255, 1);
+        WP_DrawCenteredText(fb, 320, 206, 202, 108, 34, "[X] SUCHE", 255, 255, 255, 1);
     }
 }
 
 static void Downloader_ShowModal(const char *title, const char *msg1, const char *msg2, u8 r, u8 g, u8 b)
 {
-    u8 *bot_fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
-    if (!bot_fb) return;
-
-    WP_FillRect(bot_fb, 320, 20, 60, 280, 120, 28, 28, 35);
-    WP_DrawRect(bot_fb, 320, 20, 60, 280, 120, r, g, b);
-
-    WP_FillRect(bot_fb, 320, 20, 60, 280, 24, r / 2, g / 2, b / 2);
-    WP_DrawText(bot_fb, 320, 30, 66, title, 255, 255, 255, 1);
-
-    if (msg1) WP_DrawText(bot_fb, 320, 30, 95, msg1, 255, 255, 255, 1);
-    if (msg2) WP_DrawText(bot_fb, 320, 30, 115, msg2, 220, 220, 220, 1);
-
-    WP_DrawText(bot_fb, 320, 70, 150, "Druecke [A] oder tippe...", 255, 215, 0, 1);
-
-    gfxFlushBuffers();
-    gfxSwapBuffers();
-
-    // Wait for touch or button press
-    for (int t = 0; t < 240 && aptMainLoop(); t++) {
+    // Render loop for modal dialog (handles double buffering and proper input debounce)
+    for (int t = 0; t < 300 && aptMainLoop(); t++) {
         hidScanInput();
         u32 kd = hidKeysDown();
-        if (kd & (KEY_A | KEY_B | KEY_START | KEY_TOUCH)) break;
+        if (t > 15 && (kd & (KEY_A | KEY_B | KEY_START | KEY_TOUCH))) {
+            break;
+        }
+
+        u8 *bot_fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+        if (bot_fb) {
+            WP_FillRect(bot_fb, 320, 20, 50, 280, 135, 28, 28, 35);
+            WP_DrawRect(bot_fb, 320, 20, 50, 280, 135, r, g, b);
+
+            WP_FillRect(bot_fb, 320, 20, 50, 280, 26, r / 2, g / 2, b / 2);
+            WP_DrawCenteredText(bot_fb, 320, 20, 50, 280, 26, title, 255, 255, 255, 1);
+
+            if (msg1) WP_DrawCenteredText(bot_fb, 320, 25, 85, 270, 18, msg1, 255, 255, 255, 1);
+            if (msg2) WP_DrawCenteredText(bot_fb, 320, 25, 110, 270, 18, msg2, 220, 220, 220, 1);
+
+            WP_DrawCenteredText(bot_fb, 320, 25, 150, 270, 18, "Druecke [A] oder tippe...", 255, 215, 0, 1);
+        }
+
+        gfxFlushBuffers();
+        gfxSwapBuffers();
         gspWaitForVBlank();
     }
 }
 
 bool WAD_Downloader_Run(void)
 {
-    // Initialize network
-    if (!Downloader_InitNetwork()) {
-        Downloader_ShowModal("NETZWERKFEHLER", "Socket-Initialisierung fehlgeschlagen!", "3DS unterstuetzt kein WiFi?", 255, 50, 50);
-        return false;
-    }
-
     int selected_idx = 0;
     int scroll_offset = 0;
     bool any_installed = false;
@@ -876,8 +872,17 @@ bool WAD_Downloader_Run(void)
     s_in_search_mode = false;
     s_search_count = 0;
 
+    // Check installed status ONCE upfront in memory (zero SD I/O during render loop!)
+    Downloader_RefreshInstalledCache();
+
     while (aptMainLoop()) {
+        hidScanInput();
+        u32 kDown = hidKeysDown();
+        touchPosition touch;
+        hidTouchRead(&touch);
+
         const repo_item_t *items = s_in_search_mode ? s_search_results : s_curated_wads;
+        const bool *installed_flags = s_in_search_mode ? s_search_installed : s_curated_installed;
         int count = s_in_search_mode ? s_search_count : CURATED_COUNT;
 
         // Keep selected in bounds
@@ -892,32 +897,9 @@ bool WAD_Downloader_Run(void)
             scroll_offset = selected_idx - 4;
         }
 
-        // Render Top Screen
-        u8 *top_fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
-        if (top_fb) {
-            const repo_item_t *cur = (count > 0) ? &items[selected_idx] : NULL;
-            Downloader_RenderTopScreen(top_fb, cur, selected_idx, count);
-        }
-
-        // Render Bottom Screen
-        u8 *bot_fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
-        if (bot_fb) {
-            Downloader_RenderBottomScreen(bot_fb, items, count, selected_idx, scroll_offset);
-        }
-
-        gfxFlushBuffers();
-        gfxSwapBuffers();
-        gspWaitForVBlank();
-
-        hidScanInput();
-        u32 kDown = hidKeysDown();
-        touchPosition touch;
-        hidTouchRead(&touch);
-
         // Exit / Back
         if (kDown & KEY_B) {
             if (s_in_search_mode) {
-                // Return to curated catalog
                 s_in_search_mode = false;
                 selected_idx = 0;
                 scroll_offset = 0;
@@ -950,6 +932,11 @@ bool WAD_Downloader_Run(void)
                 continue;
             }
 
+            if (!Downloader_InitNetwork()) {
+                Downloader_ShowModal("NETZWERKFEHLER", "Socket-Initialisierung fehlgeschlagen!", "3DS unterstuetzt kein WiFi?", 255, 50, 50);
+                continue;
+            }
+
             SwkbdState swkbd;
             char query_buf[64] = {0};
             swkbdInit(&swkbd, SWKBD_TYPE_NORMAL, 2, sizeof(query_buf) - 1);
@@ -970,7 +957,7 @@ bool WAD_Downloader_Run(void)
 
         // Touch Input
         if (kDown & KEY_TOUCH) {
-            // Touch on list items
+            // Check list rows (Y: 28 to 198)
             int item_y_start = 28;
             int item_h = 32;
 
@@ -985,41 +972,64 @@ bool WAD_Downloader_Run(void)
                 }
             }
 
-            // Touch on Bottom Action Button: [⬇ HERUNTERLADEN]
+            // Touch on Bottom Action Button: [HERUNTERLADEN]
             if (touch.py >= 202 && touch.py <= 236 && touch.px >= 6 && touch.px <= 200) {
-                kDown |= KEY_A; // Trigger download
+                kDown |= KEY_A;
             }
 
-            // Touch on Right Button: [🔍 SUCHE] / [KATALOG]
+            // Touch on Right Button: [SUCHE] / [KATALOG]
             if (touch.py >= 202 && touch.py <= 236 && touch.px >= 206 && touch.px <= 314) {
                 if (s_in_search_mode) {
-                    kDown |= KEY_B; // Back to catalog
+                    kDown |= KEY_B;
                 } else {
-                    kDown |= KEY_X; // Trigger search
+                    kDown |= KEY_X;
                 }
             }
         }
 
         // Download Action: [A]
         if (kDown & KEY_A) {
-            if (count == 0 || selected_idx >= count) continue;
+            if (count > 0 && selected_idx < count) {
+                if (osGetWifiStrength() == 0) {
+                    Downloader_ShowModal("KEIN WLAN", "Bitte 3DS mit dem Internet verbinden!", "Systemeinstellungen pruefen.", 255, 80, 80);
+                    continue;
+                }
 
-            if (osGetWifiStrength() == 0) {
-                Downloader_ShowModal("KEIN WLAN", "Bitte 3DS mit dem Internet verbinden!", "Systemeinstellungen pruefen.", 255, 80, 80);
-                continue;
-            }
+                if (!Downloader_InitNetwork()) {
+                    Downloader_ShowModal("NETZWERKFEHLER", "Socket-Initialisierung fehlgeschlagen!", "3DS unterstuetzt kein WiFi?", 255, 50, 50);
+                    continue;
+                }
 
-            const repo_item_t *sel = &items[selected_idx];
-            char err_msg[128] = {0};
+                const repo_item_t *sel = &items[selected_idx];
+                char err_msg[128] = {0};
 
-            bool ok = Downloader_Download(sel, err_msg, sizeof(err_msg));
-            if (ok) {
-                any_installed = true;
-                Downloader_ShowModal("DOWNLOAD ERFOLGREICH!", sel->title, "Wurde erfolgreich nach /wads/ installiert!", 50, 220, 80);
-            } else {
-                Downloader_ShowModal("FEHLER BEIM DOWNLOAD", err_msg, "Bitte spaeter erneut versuchen.", 255, 60, 60);
+                bool ok = Downloader_Download(sel, err_msg, sizeof(err_msg));
+                if (ok) {
+                    any_installed = true;
+                    Downloader_RefreshInstalledCache();
+                    Downloader_ShowModal("DOWNLOAD ERFOLGREICH!", sel->title, "Wurde erfolgreich nach /wads/ installiert!", 50, 220, 80);
+                } else {
+                    Downloader_ShowModal("FEHLER BEIM DOWNLOAD", err_msg, "Bitte spaeter erneut versuchen.", 255, 60, 60);
+                }
             }
         }
+
+        // Render Frame
+        u8 *top_fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+        if (top_fb) {
+            const repo_item_t *cur = (count > 0) ? &items[selected_idx] : NULL;
+            bool inst = (count > 0 && installed_flags) ? installed_flags[selected_idx] : false;
+            Downloader_RenderTopScreen(top_fb, cur, selected_idx, count, inst);
+        }
+
+        u8 *bot_fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+        if (bot_fb) {
+            Downloader_RenderBottomScreen(bot_fb, items, installed_flags, count, selected_idx, scroll_offset);
+        }
+
+        gfxFlushBuffers();
+        gfxSwapBuffers();
+        gspWaitForVBlank();
     }
 
     Downloader_ExitNetwork();

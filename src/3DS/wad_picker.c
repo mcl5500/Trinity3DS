@@ -236,6 +236,20 @@ void WP_DrawText(u8 *fb, int width, int x, int y, const char *str, u8 r, u8 g, u
     }
 }
 
+void WP_DrawCenteredText(u8 *fb, int width, int box_x, int box_y, int box_w, int box_h, const char *text, u8 r, u8 g, u8 b, int scale)
+{
+    if (!text || !text[0]) return;
+    int len = strlen(text);
+    int char_w = (scale == 1) ? 6 : (scale * 6);
+    int text_w = len * char_w - (scale == 1 ? 1 : scale);
+    int text_h = 7 * scale;
+
+    int x = box_x + (box_w - text_w) / 2;
+    int y = box_y + (box_h - text_h) / 2;
+
+    WP_DrawText(fb, width, x, y, text, r, g, b, scale);
+}
+
 static void WP_FreeCover(void)
 {
     if (s_cur_cover) {
@@ -737,15 +751,15 @@ static void WP_RenderBottomScreen(u8 *fb)
     }
 
     // Bottom Action Buttons
-    // Left: [▶ SPIEL STARTEN] (X=6, Y=202, W=194, H=34)
+    // Left: [SPIEL STARTEN] (X=6, Y=202, W=194, H=34)
     WP_FillRect(fb, 320, 6, 202, 194, 34, 20, 130, 40);
     WP_DrawRect(fb, 320, 6, 202, 194, 34, 80, 255, 100);
-    WP_DrawText(fb, 320, 24, 212, "▶  SPIEL STARTEN", 255, 255, 255, 2);
+    WP_DrawCenteredText(fb, 320, 6, 202, 194, 34, "SPIEL STARTEN", 255, 255, 255, 2);
 
-    // Right: [⬇ WAD STORE] (X=206, Y=202, W=108, H=34)
+    // Right: [[Y] STORE] (X=206, Y=202, W=108, H=34)
     WP_FillRect(fb, 320, 206, 202, 108, 34, 25, 60, 120);
     WP_DrawRect(fb, 320, 206, 202, 108, 34, 80, 160, 255);
-    WP_DrawText(fb, 320, 214, 214, "[Y] WAD STORE", 255, 255, 255, 1);
+    WP_DrawCenteredText(fb, 320, 206, 202, 108, 34, "[Y] STORE", 255, 255, 255, 1);
 }
 
 // Find base IWAD for PWADs

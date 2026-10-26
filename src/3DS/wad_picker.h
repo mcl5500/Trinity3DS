@@ -14,6 +14,7 @@ void WP_DrawPixel(u8 *fb, int width, int x, int y, u8 r, u8 g, u8 b);
 void WP_FillRect(u8 *fb, int width, int x, int y, int w, int h, u8 r, u8 g, u8 b);
 void WP_DrawRect(u8 *fb, int width, int x, int y, int w, int h, u8 r, u8 g, u8 b);
 void WP_DrawText(u8 *fb, int width, int x, int y, const char *text, u8 r, u8 g, u8 b, int scale);
+void WP_DrawCenteredText(u8 *fb, int width, int box_x, int box_y, int box_w, int box_h, const char *text, u8 r, u8 g, u8 b, int scale);
 
 // Rescans SD card for IWADs and PWADs
 void WP_RescanWads(void);
