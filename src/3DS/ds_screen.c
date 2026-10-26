@@ -396,24 +396,21 @@ static void DS_DrawAuthenticStatusBar(u8 *fb)
     // Retains original Doom graphics for AMMO, HEALTH, FACE, ARMOR, KEYS, and AMMO TABLE!
     DS_DrawWadPatch(fb, 0, ST_Y, "STBAR");
 
-    // 2. Seamlessly cover ONLY the removed arms box (X: 104 to 142)
-    // In original Doom, STARMS occupied X: 104 to 142 between HEALTH and FACE.
-    // By filling columns 104 to 142 with clean stone texture columns 49..54 (ZERO text/labels!),
-    // there is ZERO gap, and the original "AMMO" and "HEALTH" graphics at X: 0..103 remain completely untouched!
+    // 2. Seamlessly cover ONLY the "ARMS" label (Y: ST_Y + 23 to ST_Y + 28) in columns 104..142.
+    // Columns 104..142 in STBAR are ALREADY 39 unique, natural, continuous Doom stone texture columns!
+    // By copying the natural stone rows 12..17 from the exact same column over rows 23..28,
+    // the label is gone and there is ZERO texture repetition across the entire status bar!
     for (int x = 104; x < 143; x++) {
-        int src_col = 49 + ((x - 104) % 6); // Clean stone texture columns from STBAR without text
-        DS_DrawWadPatchSub(fb, x, ST_Y, "STBAR", src_col, 1);
+        for (int r = 0; r < 6; r++) {
+            int src_y = ST_Y + 12 + r;
+            int dst_y = ST_Y + 23 + r;
+            int src_ofs = (x * 240 + (239 - src_y)) * 3;
+            int dst_ofs = (x * 240 + (239 - dst_y)) * 3;
+            fb[dst_ofs + 0] = fb[src_ofs + 0];
+            fb[dst_ofs + 1] = fb[src_ofs + 1];
+            fb[dst_ofs + 2] = fb[src_ofs + 2];
+        }
     }
-
-    // Top and bottom metallic bevels for the filled X: 104..142 panel
-    DS_FillRect(fb, 104, ST_Y, 39, 1, 107, 107, 107);
-    DS_FillRect(fb, 104, ST_Y + 1, 39, 1, 143, 143, 143);
-    DS_FillRect(fb, 104, ST_Y + 30, 39, 1, 43, 43, 43);
-    DS_FillRect(fb, 104, ST_Y + 31, 39, 1, 27, 27, 27);
-
-    // Subtle vertical bevel dividers:
-    DS_FillRect(fb, 104, ST_Y + 1, 1, 30, 35, 35, 35);
-    DS_FillRect(fb, 142, ST_Y + 1, 1, 30, 35, 35, 35);
 
     // 3. Ammo count (Right-aligned at original position X: 44, Y: ST_Y + 3)
     ammotype_t amtype = weaponinfo[plr->readyweapon].ammo;
@@ -750,9 +747,18 @@ static void DS_DrawWeaponSelector(u8 *fb)
             active = (plr->readyweapon == slots[i].wp);
         }
 
-        // 1. Tile authentic Doom metallic stone background from STBAR using clean columns 49..54 (ZERO text/labels!)
+        // 52 completely clean, unique stone columns from STBAR with zero text or artifacts
+        static const u8 clean_stone_cols[52] = {
+              1,   2,   3,   4,   5,   6,   7,  39,  40,  41,  42,  43,  44,
+             45,  49,  50,  51,  52,  53,  54,  96,  97,  98,  99, 100, 101,
+            102, 103, 179, 180, 181, 184, 185, 225, 226, 227, 228, 229, 231,
+            232, 233, 234, 241, 242, 243, 244, 245, 246, 107, 108, 139, 140
+        };
+
+        // 1. Tile authentic Doom metallic stone background using 52 unique non-repeating columns
+        int col_shift = (i * 13) % 52;
         for (int x = bx; x < bx + bw; x++) {
-            int src_col = 49 + ((x - bx) % 6);
+            int src_col = clean_stone_cols[(col_shift + (x - bx)) % 52];
             DS_DrawWadPatchSub(fb, x, by, "STBAR", src_col, 1);
         }
 
