@@ -45,6 +45,7 @@
 #include "i_joy.h"
 #include "lprintf.h"
 #include "i_system.h"
+#include "i_main.h"
 
 #include <3ds.h>
 
@@ -88,6 +89,19 @@ void I_PollJoystick(void)
   hidScanInput();
 
   unsigned int kHeld = hidKeysHeld();
+
+  // Soft-reset hotkey: Hold L + R + START + SELECT for ~1.5s (90 ticks) -> Soft-reset to WAD manager
+  const unsigned int reset_combo = KEY_L | KEY_R | KEY_START | KEY_SELECT;
+  static int reset_counter = 0;
+  if ((kHeld & reset_combo) == reset_combo) {
+    reset_counter++;
+    if (reset_counter >= 90) {
+      I_ResetToLauncher();
+      return;
+    }
+  } else {
+    reset_counter = 0;
+  }
 
   // A, R, ZR: Fire (Button 0)
   if (kHeld & (KEY_A | KEY_R | KEY_ZR))

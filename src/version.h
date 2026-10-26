@@ -35,8 +35,8 @@
 #ifndef __DOOMVERSION__
 #define __DOOMVERSION__
 
-#define TRINITY3DS_VERSION "1.2.0"
-#define TRINITY3DS_VERSION_STR "v1.2.0"
+#define TRINITY3DS_VERSION "1.2.1"
+#define TRINITY3DS_VERSION_STR "v1.2.1"
 
 extern const char version_date[];
 

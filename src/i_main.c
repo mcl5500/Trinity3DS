@@ -58,6 +58,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #ifdef __3DS__
 #include <3ds.h>
@@ -369,6 +370,24 @@ void I_SafeExit(int rc)
 
   exit(rc);
 }
+
+#ifdef __3DS__
+/* I_ResetToLauncher
+ * Soft-resets the application back to the WAD Manager / Launcher.
+ * Chainloads the application to itself and safely shuts down systems.
+ */
+void I_ResetToLauncher(void)
+{
+  // Remove temporary auto-resume override if present so launcher always presents menu
+  unlink("sdmc:/3ds/Trinity3DS/autostart.flag");
+
+  // Configure APT chainloader to relaunch our application (works for both .3dsx and .cia)
+  aptSetChainloaderToSelf();
+
+  // Exit cleanly: runs all exit hooks (saves config, unmaps DSP/VRAM/audio/GPU) and relaunches
+  I_SafeExit(0);
+}
+#endif
 
 static void I_Quit (void)
 {

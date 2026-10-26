@@ -15,6 +15,7 @@
 #include "s_sound.h"
 #include "sounds.h"
 #include "i_system.h"
+#include "i_main.h"
 
 #include <3ds.h>
 #include <3ds/applets/swkbd.h>
@@ -630,56 +631,61 @@ static void DS_DrawTacticalAutomap(u8 *fb)
             break;
     }
 
-    // 6. Tactical Header Bar (Kills/Items/Secrets stats + [SAVE] + [LOAD] + [ZOOM])
+    // 6. Tactical Header Bar (Kills/Items/Secrets stats + [RESET] + [SAVE] + [LOAD] + [ZOOM])
     DS_FillRect(fb, 0, 0, 268, 20, 18, 20, 26);
     DS_FillRect(fb, 0, 19, 268, 1, 40, 45, 55);
+
+    // [RESET] Button (X: 2 to 44, width: 42, height: 16) - Soft-reset back to WAD Manager
+    DS_FillRect(fb, 2, 2, 42, 16, 75, 20, 20);
+    DS_DrawRect(fb, 2, 2, 42, 16, 220, 60, 60);
+    DS_DrawString(fb, 6, 6, "WADS", 255, 200, 200, 1);
 
     // Stats string (compact format: K:12/34 S:1/3)
     char stats_buf[64];
     snprintf(stats_buf, sizeof(stats_buf), "K:%d/%d S:%d/%d",
              plr->killcount, totalkills, plr->secretcount, totalsecret);
-    DS_DrawString(fb, 4, 6, stats_buf, 180, 210, 245, 1);
+    DS_DrawString(fb, 48, 6, stats_buf, 180, 210, 245, 1);
 
-    // [SAVE] Button (X: 114 to 158, width: 45, height: 15)
+    // [SAVE] Button (X: 138 to 178, width: 40, height: 16)
     if (ds_save_flash > 0) {
-        DS_FillRect(fb, 114, 2, 45, 15, 60, 220, 80);
-        DS_DrawRect(fb, 114, 2, 45, 15, 255, 255, 255);
-        DS_DrawString(fb, 120, 6, "SAVED", 10, 50, 10, 1);
+        DS_FillRect(fb, 138, 2, 40, 16, 60, 220, 80);
+        DS_DrawRect(fb, 138, 2, 40, 16, 255, 255, 255);
+        DS_DrawString(fb, 142, 6, "SAVED", 10, 50, 10, 1);
         ds_save_flash--;
     } else {
-        DS_FillRect(fb, 114, 2, 45, 15, 25, 65, 30);
-        DS_DrawRect(fb, 114, 2, 45, 15, 45, 140, 55);
-        DS_DrawString(fb, 124, 6, "SAVE", 160, 255, 170, 1);
+        DS_FillRect(fb, 138, 2, 40, 16, 25, 65, 30);
+        DS_DrawRect(fb, 138, 2, 40, 16, 45, 140, 55);
+        DS_DrawString(fb, 146, 6, "SAVE", 160, 255, 170, 1);
     }
 
-    // [LOAD] Button (X: 162 to 206, width: 45, height: 15)
+    // [LOAD] Button (X: 182 to 222, width: 40, height: 16)
     if (ds_load_flash > 0) {
-        DS_FillRect(fb, 162, 2, 45, 15, 60, 160, 240);
-        DS_DrawRect(fb, 162, 2, 45, 15, 255, 255, 255);
-        DS_DrawString(fb, 168, 6, "LOADED", 10, 20, 60, 1);
+        DS_FillRect(fb, 182, 2, 40, 16, 60, 160, 240);
+        DS_DrawRect(fb, 182, 2, 40, 16, 255, 255, 255);
+        DS_DrawString(fb, 184, 6, "LOADED", 10, 20, 60, 1);
         ds_load_flash--;
     } else if (ds_load_flash < 0) {
-        DS_FillRect(fb, 162, 2, 45, 15, 180, 40, 40);
-        DS_DrawRect(fb, 162, 2, 45, 15, 255, 100, 100);
-        DS_DrawString(fb, 171, 6, "EMPTY", 255, 255, 255, 1);
+        DS_FillRect(fb, 182, 2, 40, 16, 180, 40, 40);
+        DS_DrawRect(fb, 182, 2, 40, 16, 255, 100, 100);
+        DS_DrawString(fb, 186, 6, "EMPTY", 255, 255, 255, 1);
         ds_load_flash++;
     } else {
-        DS_FillRect(fb, 162, 2, 45, 15, 25, 45, 75);
-        DS_DrawRect(fb, 162, 2, 45, 15, 50, 100, 170);
-        DS_DrawString(fb, 172, 6, "LOAD", 170, 220, 255, 1);
+        DS_FillRect(fb, 182, 2, 40, 16, 25, 45, 75);
+        DS_DrawRect(fb, 182, 2, 40, 16, 50, 100, 170);
+        DS_DrawString(fb, 188, 6, "LOAD", 170, 220, 255, 1);
     }
 
-    // [ZOOM] Button (X: 210 to 264, width: 55, height: 15)
-    DS_FillRect(fb, 210, 2, 55, 15, 35, 38, 46);
-    DS_DrawRect(fb, 210, 2, 55, 15, 80, 90, 110);
+    // [ZOOM] Button (X: 226 to 264, width: 38, height: 16)
+    DS_FillRect(fb, 226, 2, 38, 16, 35, 38, 46);
+    DS_DrawRect(fb, 226, 2, 38, 16, 80, 90, 110);
     const char *zoom_str = "3x";
     if (ds_map_zoom == 1) zoom_str = "4x";
     else if (ds_map_zoom == 2) zoom_str = "3x";
     else if (ds_map_zoom == 3) zoom_str = "2x";
     else if (ds_map_zoom == 4) zoom_str = "1x";
     char zoom_buf[16];
-    snprintf(zoom_buf, sizeof(zoom_buf), "ZOOM %s", zoom_str);
-    DS_DrawString(fb, 214, 6, zoom_buf, 200, 210, 225, 1);
+    snprintf(zoom_buf, sizeof(zoom_buf), "Z:%s", zoom_str);
+    DS_DrawString(fb, 230, 6, zoom_buf, 200, 210, 225, 1);
 }
 
 // Render the interactive 7-slot weapon selection panel on the right side next to automap (X: 268 to 319, Y: 0 to 207)
@@ -903,12 +909,16 @@ void DS_HandleTouch(int touch_x, int touch_y)
             else slot = 7;
             DS_SelectWeaponSlot(slot);
         } else if (touch_y < 24) {
-            // Header bar action buttons (SAVE, LOAD, ZOOM)
-            if (touch_x >= 114 && touch_x <= 158) {
+            // Header bar action buttons (WADS / RESET, SAVE, LOAD, ZOOM)
+            if (touch_x >= 2 && touch_x <= 44) {
+                // Soft-reset back to WAD Manager
+                I_ResetToLauncher();
+                return;
+            } else if (touch_x >= 138 && touch_x <= 178) {
                 DS_QuickSave();
-            } else if (touch_x >= 162 && touch_x <= 206) {
+            } else if (touch_x >= 182 && touch_x <= 222) {
                 DS_QuickLoad();
-            } else if (touch_x >= 210 && touch_x <= 264) {
+            } else if (touch_x >= 226 && touch_x <= 266) {
                 // Zoom button
                 ds_map_zoom++;
                 if (ds_map_zoom > 4) ds_map_zoom = 1;

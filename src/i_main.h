@@ -69,6 +69,9 @@ void I_Warning(const char *message, ...);
 
 void I_Init(void);
 void I_SafeExit(int rc);
+#ifdef __3DS__
+void I_ResetToLauncher(void);
+#endif
 
 extern int (*I_GetTime)(void);
 
