@@ -822,7 +822,7 @@ static void DS_DrawDashboard(u8 *fb)
     DS_DrawString(fb, 26, 162, "A / R / ZR : Attack / Fire", 220, 220, 220, 1);
     DS_DrawString(fb, 26, 176, "B          : Use / Open Doors", 220, 220, 220, 1);
     DS_DrawString(fb, 26, 190, "Touchscreen: Tap Automap to Zoom", 80, 180, 255, 1);
-    DS_DrawString(fb, 26, 204, "Created by : Sheldor & Team", 120, 130, 150, 1);
+    DS_DrawString(fb, 26, 204, "mcl5500", 120, 130, 150, 1);
 }
 
 void DS_Init(void)
