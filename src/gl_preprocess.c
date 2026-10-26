@@ -574,26 +574,43 @@ void gld_PreprocessLevel(void)
     static int numsectors_prev = 0;
     static int numsubsectors_prev = 0;
 
-    free(gl_segs);
-    free(gl_lines);
+    if (gl_segs) { Z_Free(gl_segs); gl_segs = NULL; }
+    if (gl_lines) { Z_Free(gl_lines); gl_lines = NULL; }
 
     free(flats_vbo);
     flats_vbo = NULL;
 
     free(segrendered);
+    segrendered = NULL;
     free(linerendered[0]);
+    linerendered[0] = NULL;
     free(linerendered[1]);
+    linerendered[1] = NULL;
     
-    for (i = 0; i < numsectors_prev; i++)
+    if (sectorloops)
     {
-      free(sectorloops[i].loops);
+      for (i = 0; i < numsectors_prev; i++)
+      {
+        if (sectorloops[i].loops) {
+          Z_Free(sectorloops[i].loops);
+          sectorloops[i].loops = NULL;
+        }
+      }
+      Z_Free(sectorloops);
+      sectorloops = NULL;
     }
-    free(sectorloops);
-    for (i = 0; i < numsubsectors_prev; i++)
+    if (subsectorloops)
     {
-      free(subsectorloops[i].loops);
+      for (i = 0; i < numsubsectors_prev; i++)
+      {
+        if (subsectorloops[i].loops) {
+          Z_Free(subsectorloops[i].loops);
+          subsectorloops[i].loops = NULL;
+        }
+      }
+      Z_Free(subsectorloops);
+      subsectorloops = NULL;
     }
-    free(subsectorloops);
 
     gld_Precache();
     gld_PreprocessSectors();

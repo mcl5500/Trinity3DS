@@ -107,6 +107,58 @@ int lprintf(OutputLevels pri, const char *s, ...)
  * killough 3/20/98: add const
  */
 
+#ifdef __3DS__
+#include <3ds.h>
+#include "3DS/wad_picker.h"
+
+static void CTR_DisplayFatalError(const char *msg)
+{
+  for (int t = 0; t < 600 && aptMainLoop(); t++) {
+    hidScanInput();
+    u32 kd = hidKeysDown();
+    if (t > 30 && (kd & (KEY_A | KEY_B | KEY_START | KEY_TOUCH))) {
+      break;
+    }
+
+    u8 *bot_fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+    if (bot_fb) {
+      WP_FillRect(bot_fb, 320, 0, 0, 320, 240, 16, 16, 20);
+      WP_FillRect(bot_fb, 320, 10, 20, 300, 200, 35, 15, 18);
+      WP_DrawRect(bot_fb, 320, 10, 20, 300, 200, 255, 60, 60);
+
+      WP_FillRect(bot_fb, 320, 10, 20, 300, 28, 140, 20, 25);
+      WP_DrawCenteredText(bot_fb, 320, 10, 20, 300, 28, "KRITISCHER DOOM-FEHLER", 255, 255, 255, 1);
+
+      char lines[8][64];
+      int nlines = 0;
+      if (msg) {
+        const char *p = msg;
+        while (*p && nlines < 6) {
+          while (*p == ' ' || *p == '\n' || *p == '\r') p++;
+          if (!*p) break;
+          int len = 0;
+          while (p[len] && p[len] != '\n' && p[len] != '\r' && len < 38) len++;
+          strncpy(lines[nlines], p, len);
+          lines[nlines][len] = '\0';
+          nlines++;
+          p += len;
+        }
+      }
+
+      for (int i = 0; i < nlines; i++) {
+        WP_DrawText(bot_fb, 320, 20, 60 + i * 18, lines[i], 255, 220, 220, 1);
+      }
+
+      WP_DrawCenteredText(bot_fb, 320, 10, 185, 300, 20, "Druecke [A] oder [B] zum Beenden...", 255, 215, 0, 1);
+    }
+
+    gfxFlushBuffers();
+    gfxSwapBuffers();
+    gspWaitForVBlank();
+  }
+}
+#endif
+
 void I_Error(const char *error, ...)
 {
   char errmsg[MAX_MESSAGE_SIZE];
@@ -115,6 +167,10 @@ void I_Error(const char *error, ...)
   doom_vsnprintf(errmsg,sizeof(errmsg),error,argptr);
   va_end(argptr);
   lprintf(LO_ERROR, "%s\n", errmsg);
+
+#ifdef __3DS__
+  CTR_DisplayFatalError(errmsg);
+#endif
 
   if (!M_CheckParm ("-nodraw")) {
     I_MessageBox(errmsg, PRB_MB_OK);
