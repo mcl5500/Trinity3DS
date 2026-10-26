@@ -65,6 +65,26 @@ if [ -f "$DIR/launcher.ogg" ]; then
     echo "    Upload complete!"
 fi
 
+# Upload PNG covers to /3ds/Trinity3DS/wads/
+COVER_DIR="/home/sh3ld0r/Downloads/hakchi_extracted/bulk_wads"
+if [ -d "$COVER_DIR" ]; then
+    echo "--> Syncing Cover Art pack to /3ds/Trinity3DS/wads/..."
+    COUNT=0
+    for img in "$COVER_DIR"/*.png; do
+        [ -f "$img" ] || continue
+        bname=$(basename "$img")
+        curl -s -X PUT -H "$HDR" \
+          --data-binary @"$img" \
+          "http://$IP/api/file?path=%2F3ds%2FTrinity3DS%2Fwads%2F$bname&replace=1" >/dev/null &
+        COUNT=$((COUNT + 1))
+        if [ $((COUNT % 10)) -eq 0 ]; then
+            wait
+        fi
+    done
+    wait
+    echo "    Synced $COUNT covers!"
+fi
+
 
 
 # 2. Upload and install CIA
