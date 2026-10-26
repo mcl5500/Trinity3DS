@@ -319,6 +319,53 @@ static void DS_DrawWadPatchSub(u8 *fb, int dest_x, int dest_y, const char *patch
     }
 }
 
+// Draw an authentic Doom patch scaled (e.g. 2x) directly into the framebuffer
+static void DS_DrawWadPatchScaled(u8 *fb, int dest_x, int dest_y, const char *patch_name, int scale)
+{
+    if (!ds_pal_loaded) DS_LoadPalette();
+    if (!ds_pal_loaded) return;
+
+    int lump = W_CheckNumForName(patch_name);
+    if (lump < 0) return;
+
+    const u8 *data = (const u8 *)W_CacheLumpNum(lump);
+    if (!data) return;
+
+    short w = *(const short *)(data + 0);
+    short h = *(const short *)(data + 2);
+    short leftoffset = *(const short *)(data + 4);
+    short topoffset = *(const short *)(data + 6);
+    const int *columnofs = (const int *)(data + 8);
+
+    dest_x -= leftoffset * scale;
+    dest_y -= topoffset * scale;
+
+    for (int col = 0; col < w; col++) {
+        int ofs = columnofs[col];
+        const u8 *post = data + ofs;
+        while (1) {
+            u8 topdelta = *post++;
+            if (topdelta == 0xFF) break;
+            u8 length = *post++;
+            post++; // dummy byte
+            int sy = dest_y + topdelta * scale;
+            for (int row = 0; row < length; row++) {
+                int py = sy + row * scale;
+                u8 pal_idx = *post++;
+                u8 r = ds_palette[pal_idx * 3 + 0];
+                u8 g = ds_palette[pal_idx * 3 + 1];
+                u8 b = ds_palette[pal_idx * 3 + 2];
+                if (scale == 1) {
+                    DS_DrawPixel(fb, dest_x + col, py, r, g, b);
+                } else {
+                    DS_FillRect(fb, dest_x + col * scale, py, scale, scale, r, g, b);
+                }
+            }
+            post++; // dummy byte
+        }
+    }
+}
+
 // Draw authentic Doom numbers right-aligned
 static void DS_DrawDoomNumber(u8 *fb, int right_x, int y, int val, int max_digits)
 {
@@ -336,8 +383,8 @@ static void DS_DrawDoomNumber(u8 *fb, int right_x, int y, int val, int max_digit
 }
 
 // Render the authentic Doom Status Bar at the bottom (Y: 208 to 239)
-// Seamless gap-free design: Arms block removed and weapon selection moved next to automap.
-// AMMO and HEALTH cleanly redistributed and widened; DOOMGUY face perfectly centered.
+// Seamless gap-free design: Arms block removed (now beside automap).
+// 100% authentic original Doom designations for AMMO, HEALTH, ARMOR, etc. are preserved!
 static void DS_DrawAuthenticStatusBar(u8 *fb)
 {
     player_t *plr = &players[consoleplayer];
@@ -346,65 +393,39 @@ static void DS_DrawAuthenticStatusBar(u8 *fb)
     const int ST_Y = 208;
 
     // 1. Draw base STBAR background across the entire 320x32 width
+    // Retains original Doom graphics for AMMO, HEALTH, FACE, ARMOR, KEYS, and AMMO TABLE!
     DS_DrawWadPatch(fb, 0, ST_Y, "STBAR");
 
-    // 2. Seamlessly re-skin and expand the left section (X: 0 to 141)
-    // In original Doom, STARMS (weapons 2-7) occupied X: 104 to 142.
-    // By re-skinning X: 0 to 141 into two balanced, widened panels (AMMO: 0..67, HEALTH: 68..141),
-    // there is ZERO empty gap or leftover ARMS block!
-    // Tile the authentic Doom metallic stone background across X: 0..141
-    for (int x = 0; x < 142; x++) {
-        int src_col = 10 + (x % 32); // Authentic stone texture columns from STBAR
+    // 2. Seamlessly cover ONLY the removed arms box (X: 104 to 142)
+    // In original Doom, STARMS occupied X: 104 to 142 between HEALTH and FACE.
+    // By filling columns 104 to 142 with the authentic Doom metallic stone texture from STBAR,
+    // there is ZERO gap, and the original "AMMO" and "HEALTH" graphics at X: 0..103 remain completely untouched!
+    for (int x = 104; x < 143; x++) {
+        int src_col = 12 + (x % 24); // Sample authentic stone texture columns from STBAR
         DS_DrawWadPatchSub(fb, x, ST_Y, "STBAR", src_col, 1);
     }
 
-    // Top and bottom metallic bevels for X: 0..141
-    DS_FillRect(fb, 0, ST_Y, 142, 1, 107, 107, 107);
-    DS_FillRect(fb, 0, ST_Y + 1, 142, 1, 143, 143, 143);
-    DS_FillRect(fb, 0, ST_Y + 30, 142, 1, 43, 43, 43);
-    DS_FillRect(fb, 0, ST_Y + 31, 142, 1, 27, 27, 27);
+    // Top and bottom metallic bevels for the filled X: 104..142 panel
+    DS_FillRect(fb, 104, ST_Y, 39, 1, 107, 107, 107);
+    DS_FillRect(fb, 104, ST_Y + 1, 39, 1, 143, 143, 143);
+    DS_FillRect(fb, 104, ST_Y + 30, 39, 1, 43, 43, 43);
+    DS_FillRect(fb, 104, ST_Y + 31, 39, 1, 27, 27, 27);
 
-    // Bevel dividers:
-    // Left edge (X: 0)
-    DS_FillRect(fb, 0, ST_Y + 1, 1, 30, 143, 143, 143);
-    // Divider between AMMO and HEALTH (X: 67..68)
-    DS_FillRect(fb, 67, ST_Y + 1, 1, 30, 35, 35, 35);
-    DS_FillRect(fb, 68, ST_Y + 1, 1, 30, 143, 143, 143);
-    // Divider between HEALTH and FACE (X: 141..142)
-    DS_FillRect(fb, 141, ST_Y + 1, 1, 30, 35, 35, 35);
-    DS_FillRect(fb, 142, ST_Y + 1, 1, 30, 143, 143, 143);
+    // Subtle vertical bevel dividers:
+    DS_FillRect(fb, 104, ST_Y + 1, 1, 30, 35, 35, 35);
+    DS_FillRect(fb, 142, ST_Y + 1, 1, 30, 35, 35, 35);
 
-    // Recessed number box for AMMO (X: 8 to 60, Y: ST_Y + 3 to ST_Y + 20)
-    DS_FillRect(fb, 8, ST_Y + 3, 53, 18, 38, 38, 38);
-    DS_FillRect(fb, 8, ST_Y + 3, 53, 1, 22, 22, 22);
-    DS_FillRect(fb, 8, ST_Y + 3, 1, 18, 22, 22, 22);
-    DS_FillRect(fb, 8, ST_Y + 20, 53, 1, 88, 88, 88);
-    DS_FillRect(fb, 60, ST_Y + 3, 1, 18, 88, 88, 88);
-
-    // Red "AMMO" label under ammo box
-    DS_DrawString(fb, 22, ST_Y + 23, "AMMO", 180, 25, 25, 1);
-
-    // Recessed number box for HEALTH (X: 76 to 133, Y: ST_Y + 3 to ST_Y + 20)
-    DS_FillRect(fb, 76, ST_Y + 3, 58, 18, 38, 38, 38);
-    DS_FillRect(fb, 76, ST_Y + 3, 58, 1, 22, 22, 22);
-    DS_FillRect(fb, 76, ST_Y + 3, 1, 18, 22, 22, 22);
-    DS_FillRect(fb, 76, ST_Y + 20, 58, 1, 88, 88, 88);
-    DS_FillRect(fb, 133, ST_Y + 3, 1, 18, 88, 88, 88);
-
-    // Red "HEALTH" label under health box
-    DS_DrawString(fb, 87, ST_Y + 23, "HEALTH", 180, 25, 25, 1);
-
-    // 3. Draw AMMO count (Right-aligned at X: 57, Y: ST_Y + 4)
+    // 3. Ammo count (Right-aligned at original position X: 44, Y: ST_Y + 3)
     ammotype_t amtype = weaponinfo[plr->readyweapon].ammo;
     if (amtype != am_noammo) {
-        DS_DrawDoomNumber(fb, 57, ST_Y + 4, plr->ammo[amtype], 3);
+        DS_DrawDoomNumber(fb, 44, ST_Y + 3, plr->ammo[amtype], 3);
     }
 
-    // 4. Draw HEALTH count & % symbol (Right-aligned at X: 118, % at X: 120, Y: ST_Y + 4)
-    DS_DrawDoomNumber(fb, 118, ST_Y + 4, plr->health, 3);
-    DS_DrawWadPatch(fb, 120, ST_Y + 4, "STTPRCNT");
+    // 4. Health count & % symbol (Right-aligned at original position X: 90, Y: ST_Y + 3)
+    DS_DrawDoomNumber(fb, 90, ST_Y + 3, plr->health, 3);
+    DS_DrawWadPatch(fb, 90, ST_Y + 3, "STTPRCNT");
 
-    // 5. Draw DOOMGUY Face (Centered in X: 143 to 178, screen center at X: 160)
+    // 5. Doomguy Face (Original position X: 143, Y: ST_Y)
     char face_name[9] = "STFST01";
     int hp = plr->health;
     int pain_stage = 0;
@@ -430,11 +451,11 @@ static void DS_DrawAuthenticStatusBar(u8 *fb)
     }
     DS_DrawWadPatch(fb, 143, ST_Y, face_name);
 
-    // 6. Armor (Right-aligned at X: 221, Y: ST_Y + 3)
+    // 6. Armor (Right-aligned at original position X: 221, Y: ST_Y + 3)
     DS_DrawDoomNumber(fb, 221, ST_Y + 3, plr->armorpoints, 3);
     DS_DrawWadPatch(fb, 221, ST_Y + 3, "STTPRCNT");
 
-    // 7. Keycards / Skulls (X: 239)
+    // 7. Keycards / Skulls (Original position X: 239)
     if (plr->cards[it_blueskull]) DS_DrawWadPatch(fb, 239, ST_Y + 3, "STKEYS3");
     else if (plr->cards[it_bluecard]) DS_DrawWadPatch(fb, 239, ST_Y + 3, "STKEYS0");
 
@@ -663,6 +684,8 @@ static void DS_DrawTacticalAutomap(u8 *fb)
 }
 
 // Render the interactive 7-slot weapon selection panel on the right side next to automap (X: 268 to 319, Y: 0 to 207)
+// Uses authentic Doom design: STBAR metal plate texture, authentic STYSNUM/STGNUM numbers from WAD (2x),
+// Boom-style white highlight box for the active weapon, and authentic Doom colors (gold/gray). No ammo numbers.
 static void DS_DrawWeaponSelector(u8 *fb)
 {
     player_t *plr = &players[consoleplayer];
@@ -676,16 +699,14 @@ static void DS_DrawWeaponSelector(u8 *fb)
         weapontype_t wp;
         weapontype_t alt_wp;
         const char *name;
-        const char *alt_name;
-        ammotype_t ammo;
     } slots[7] = {
-        { 1, wp_fist,     wp_chainsaw,     "FIST", "SAW",  am_noammo },
-        { 2, wp_pistol,   wp_nochange,     "PIST", NULL,   am_clip },
-        { 3, wp_shotgun,  wp_supershotgun, "SHOT", "SSG",  am_shell },
-        { 4, wp_chaingun, wp_nochange,     "CHGN", NULL,   am_clip },
-        { 5, wp_missile,  wp_nochange,     "RCKT", NULL,   am_misl },
-        { 6, wp_plasma,   wp_nochange,     "PLAS", NULL,   am_cell },
-        { 7, wp_bfg,      wp_nochange,     "BFG",  NULL,   am_cell },
+        { 1, wp_fist,     wp_chainsaw,     "FIST" },
+        { 2, wp_pistol,   wp_nochange,     "PIST" },
+        { 3, wp_shotgun,  wp_supershotgun, "SHOT" },
+        { 4, wp_chaingun, wp_nochange,     "CHGN" },
+        { 5, wp_missile,  wp_nochange,     "RCKT" },
+        { 6, wp_plasma,   wp_nochange,     "PLAS" },
+        { 7, wp_bfg,      wp_nochange,     "BFG"  },
     };
 
     static const int slot_y[7] = { 0, 29, 59, 89, 119, 148, 178 };
@@ -729,55 +750,39 @@ static void DS_DrawWeaponSelector(u8 *fb)
             active = (plr->readyweapon == slots[i].wp);
         }
 
-        // Draw button styling
+        // 1. Tile authentic Doom metallic stone background from STBAR
+        for (int x = bx; x < bx + bw; x++) {
+            int src_col = 12 + ((x - bx) % 24);
+            DS_DrawWadPatchSub(fb, x, by, "STBAR", src_col, 1);
+        }
+
+        // 2. Beveled borders (authentic Doom style)
+        DS_FillRect(fb, bx, by, bw, 1, 107, 107, 107);
+        DS_FillRect(fb, bx, by + 1, 1, bh - 1, 107, 107, 107);
+        DS_FillRect(fb, bx, by + bh - 1, bw, 1, 27, 27, 27);
+        DS_FillRect(fb, bx + bw - 1, by + 1, 1, bh - 1, 27, 27, 27);
+
+        // 3. If ACTIVE: Draw crisp Boom/Doom pure white highlight bracket around active weapon slot!
         if (active) {
-            // Bright active glowing green styling
-            DS_FillRect(fb, bx, by, bw, bh, 20, 50, 25);
-            DS_DrawRect(fb, bx, by, bw, bh, 80, 240, 100);
-            DS_DrawRect(fb, bx + 1, by + 1, bw - 2, bh - 2, 40, 160, 60);
+            DS_DrawRect(fb, bx, by, bw, bh, 255, 255, 255);
+            DS_DrawRect(fb, bx + 1, by + 1, bw - 2, bh - 2, 255, 255, 255);
+        }
 
-            // Slot number in gold, label in bright white
-            char num_str[4];
-            snprintf(num_str, sizeof(num_str), "%d", slots[i].slot);
-            DS_DrawString(fb, bx + 4, by + 4, num_str, 255, 230, 80, 1);
-            DS_DrawString(fb, bx + 14, by + 4, label, 255, 255, 255, 1);
+        // 4. Draw authentic Doom patch number from WAD (STYSNUM if owned, STGNUM if unowned) at 2x scale
+        char num_patch[12];
+        snprintf(num_patch, sizeof(num_patch), "%s%d", owned ? "STYSNUM" : "STGNUM", slots[i].slot);
+        int num_y = by + (bh - 12) / 2;
+        DS_DrawWadPatchScaled(fb, bx + 6, num_y, num_patch, 2);
 
-            // Ammo count on row 2
-            if (slots[i].ammo != am_noammo) {
-                char ammo_buf[16];
-                snprintf(ammo_buf, sizeof(ammo_buf), "%3d", plr->ammo[slots[i].ammo]);
-                DS_DrawString(fb, bx + 16, by + 16, ammo_buf, 140, 255, 180, 1);
-            } else {
-                DS_DrawString(fb, bx + 20, by + 16, "---", 140, 255, 180, 1);
-            }
+        // 5. Draw weapon name next to number (vertically centered, NO ammo count!)
+        int tx = bx + 18;
+        int ty = by + (bh - 7) / 2;
+        if (active) {
+            DS_DrawString(fb, tx, ty, label, 255, 255, 255, 1); // Bright pure white
         } else if (owned) {
-            // Owned metallic slate styling
-            DS_FillRect(fb, bx, by, bw, bh, 24, 28, 38);
-            DS_DrawRect(fb, bx, by, bw, bh, 60, 80, 110);
-
-            // Slot number in warm gold, label in steel silver
-            char num_str[4];
-            snprintf(num_str, sizeof(num_str), "%d", slots[i].slot);
-            DS_DrawString(fb, bx + 4, by + 4, num_str, 220, 190, 70, 1);
-            DS_DrawString(fb, bx + 14, by + 4, label, 190, 205, 220, 1);
-
-            // Ammo count on row 2
-            if (slots[i].ammo != am_noammo) {
-                char ammo_buf[16];
-                snprintf(ammo_buf, sizeof(ammo_buf), "%3d", plr->ammo[slots[i].ammo]);
-                DS_DrawString(fb, bx + 16, by + 16, ammo_buf, 100, 180, 140, 1);
-            } else {
-                DS_DrawString(fb, bx + 20, by + 16, "---", 110, 130, 150, 1);
-            }
+            DS_DrawString(fb, tx, ty, label, 220, 185, 60, 1);  // Authentic Doom yellow/gold
         } else {
-            // Unowned dim gray styling
-            DS_FillRect(fb, bx, by, bw, bh, 14, 16, 20);
-            DS_DrawRect(fb, bx, by, bw, bh, 32, 34, 42);
-
-            char num_str[4];
-            snprintf(num_str, sizeof(num_str), "%d", slots[i].slot);
-            DS_DrawString(fb, bx + 4, by + 4, num_str, 70, 75, 85, 1);
-            DS_DrawString(fb, bx + 14, by + 4, label, 60, 65, 75, 1);
+            DS_DrawString(fb, tx, ty, label, 95, 75, 75, 1);    // Authentic Doom dark gray
         }
     }
 }
