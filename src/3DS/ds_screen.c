@@ -168,10 +168,10 @@ static void DS_DrawLine(u8 *fb, int x0, int y0, int x1, int y1, u8 r, u8 g, u8 b
     int err = dx + dy, e2;
 
     while (1) {
-        if (y0 >= min_y && y0 <= max_y && x0 >= 2 && x0 < 318) {
+        if (y0 >= min_y && y0 <= max_y && x0 >= 2 && x0 < 266) {
             DS_DrawPixel(fb, x0, y0, r, g, b);
             if (thick == 2) {
-                if (x0 + 1 < 318) DS_DrawPixel(fb, x0 + 1, y0, r, g, b);
+                if (x0 + 1 < 266) DS_DrawPixel(fb, x0 + 1, y0, r, g, b);
                 if (y0 + 1 <= max_y) DS_DrawPixel(fb, x0, y0 + 1, r, g, b);
             }
         }
@@ -275,6 +275,50 @@ static void DS_DrawWadPatch(u8 *fb, int dest_x, int dest_y, const char *patch_na
     }
 }
 
+// Draw a sub-region (slice of columns) of a patch directly into the framebuffer
+static void DS_DrawWadPatchSub(u8 *fb, int dest_x, int dest_y, const char *patch_name, int src_col_start, int num_cols)
+{
+    if (!ds_pal_loaded) DS_LoadPalette();
+    if (!ds_pal_loaded) return;
+
+    int lump = W_CheckNumForName(patch_name);
+    if (lump < 0) return;
+
+    const u8 *data = (const u8 *)W_CacheLumpNum(lump);
+    if (!data) return;
+
+    short w = *(const short *)(data + 0);
+    const int *columnofs = (const int *)(data + 8);
+
+    for (int i = 0; i < num_cols; i++) {
+        int col = src_col_start + i;
+        if (col < 0 || col >= w) continue;
+        int sx = dest_x + i;
+        if (sx < 0 || sx >= 320) continue;
+
+        int ofs = columnofs[col];
+        const u8 *post = data + ofs;
+        while (1) {
+            u8 topdelta = *post++;
+            if (topdelta == 0xFF) break;
+            u8 length = *post++;
+            post++; // dummy byte
+            int sy = dest_y + topdelta;
+            for (int row = 0; row < length; row++) {
+                int py = sy + row;
+                u8 pal_idx = *post++;
+                if (py >= 0 && py < 240) {
+                    u8 r = ds_palette[pal_idx * 3 + 0];
+                    u8 g = ds_palette[pal_idx * 3 + 1];
+                    u8 b = ds_palette[pal_idx * 3 + 2];
+                    DS_DrawPixel(fb, sx, py, r, g, b);
+                }
+            }
+            post++; // dummy byte
+        }
+    }
+}
+
 // Draw authentic Doom numbers right-aligned
 static void DS_DrawDoomNumber(u8 *fb, int right_x, int y, int val, int max_digits)
 {
@@ -292,6 +336,8 @@ static void DS_DrawDoomNumber(u8 *fb, int right_x, int y, int val, int max_digit
 }
 
 // Render the authentic Doom Status Bar at the bottom (Y: 208 to 239)
+// Seamless gap-free design: Arms block removed and weapon selection moved next to automap.
+// AMMO and HEALTH cleanly redistributed and widened; DOOMGUY face perfectly centered.
 static void DS_DrawAuthenticStatusBar(u8 *fb)
 {
     player_t *plr = &players[consoleplayer];
@@ -299,56 +345,66 @@ static void DS_DrawAuthenticStatusBar(u8 *fb)
 
     const int ST_Y = 208;
 
-    // 1. Draw base STBAR background (320x32 pixels)
+    // 1. Draw base STBAR background across the entire 320x32 width
     DS_DrawWadPatch(fb, 0, ST_Y, "STBAR");
 
-    // 2. Ammo count (Right-aligned at X: 44, Y: ST_Y + 3)
+    // 2. Seamlessly re-skin and expand the left section (X: 0 to 141)
+    // In original Doom, STARMS (weapons 2-7) occupied X: 104 to 142.
+    // By re-skinning X: 0 to 141 into two balanced, widened panels (AMMO: 0..67, HEALTH: 68..141),
+    // there is ZERO empty gap or leftover ARMS block!
+    // Tile the authentic Doom metallic stone background across X: 0..141
+    for (int x = 0; x < 142; x++) {
+        int src_col = 10 + (x % 32); // Authentic stone texture columns from STBAR
+        DS_DrawWadPatchSub(fb, x, ST_Y, "STBAR", src_col, 1);
+    }
+
+    // Top and bottom metallic bevels for X: 0..141
+    DS_FillRect(fb, 0, ST_Y, 142, 1, 107, 107, 107);
+    DS_FillRect(fb, 0, ST_Y + 1, 142, 1, 143, 143, 143);
+    DS_FillRect(fb, 0, ST_Y + 30, 142, 1, 43, 43, 43);
+    DS_FillRect(fb, 0, ST_Y + 31, 142, 1, 27, 27, 27);
+
+    // Bevel dividers:
+    // Left edge (X: 0)
+    DS_FillRect(fb, 0, ST_Y + 1, 1, 30, 143, 143, 143);
+    // Divider between AMMO and HEALTH (X: 67..68)
+    DS_FillRect(fb, 67, ST_Y + 1, 1, 30, 35, 35, 35);
+    DS_FillRect(fb, 68, ST_Y + 1, 1, 30, 143, 143, 143);
+    // Divider between HEALTH and FACE (X: 141..142)
+    DS_FillRect(fb, 141, ST_Y + 1, 1, 30, 35, 35, 35);
+    DS_FillRect(fb, 142, ST_Y + 1, 1, 30, 143, 143, 143);
+
+    // Recessed number box for AMMO (X: 8 to 60, Y: ST_Y + 3 to ST_Y + 20)
+    DS_FillRect(fb, 8, ST_Y + 3, 53, 18, 38, 38, 38);
+    DS_FillRect(fb, 8, ST_Y + 3, 53, 1, 22, 22, 22);
+    DS_FillRect(fb, 8, ST_Y + 3, 1, 18, 22, 22, 22);
+    DS_FillRect(fb, 8, ST_Y + 20, 53, 1, 88, 88, 88);
+    DS_FillRect(fb, 60, ST_Y + 3, 1, 18, 88, 88, 88);
+
+    // Red "AMMO" label under ammo box
+    DS_DrawString(fb, 22, ST_Y + 23, "AMMO", 180, 25, 25, 1);
+
+    // Recessed number box for HEALTH (X: 76 to 133, Y: ST_Y + 3 to ST_Y + 20)
+    DS_FillRect(fb, 76, ST_Y + 3, 58, 18, 38, 38, 38);
+    DS_FillRect(fb, 76, ST_Y + 3, 58, 1, 22, 22, 22);
+    DS_FillRect(fb, 76, ST_Y + 3, 1, 18, 22, 22, 22);
+    DS_FillRect(fb, 76, ST_Y + 20, 58, 1, 88, 88, 88);
+    DS_FillRect(fb, 133, ST_Y + 3, 1, 18, 88, 88, 88);
+
+    // Red "HEALTH" label under health box
+    DS_DrawString(fb, 87, ST_Y + 23, "HEALTH", 180, 25, 25, 1);
+
+    // 3. Draw AMMO count (Right-aligned at X: 57, Y: ST_Y + 4)
     ammotype_t amtype = weaponinfo[plr->readyweapon].ammo;
     if (amtype != am_noammo) {
-        DS_DrawDoomNumber(fb, 44, ST_Y + 3, plr->ammo[amtype], 3);
+        DS_DrawDoomNumber(fb, 57, ST_Y + 4, plr->ammo[amtype], 3);
     }
 
-    // 3. Health (Right-aligned at X: 90, Y: ST_Y + 3)
-    DS_DrawDoomNumber(fb, 90, ST_Y + 3, plr->health, 3);
-    DS_DrawWadPatch(fb, 90, ST_Y + 3, "STTPRCNT"); // % symbol
+    // 4. Draw HEALTH count & % symbol (Right-aligned at X: 118, % at X: 120, Y: ST_Y + 4)
+    DS_DrawDoomNumber(fb, 118, ST_Y + 4, plr->health, 3);
+    DS_DrawWadPatch(fb, 120, ST_Y + 4, "STTPRCNT");
 
-    // 4. Arms background & owned weapon numbers (X: 104, Y: ST_Y)
-    DS_DrawWadPatch(fb, 104, ST_Y, "STARMS");
-
-    static const int arms_x[6] = { 111, 123, 135, 111, 123, 135 };
-    static const int arms_y[6] = { 212, 212, 212, 222, 222, 222 };
-    static const weapontype_t arms_wp[6] = {
-        wp_pistol, wp_shotgun, wp_chaingun,
-        wp_missile, wp_plasma, wp_bfg
-    };
-
-    for (int i = 0; i < 6; i++) {
-        int w_num = i + 2;
-        bool owned = plr->weaponowned[arms_wp[i]];
-        if (i == 1 && plr->weaponowned[wp_supershotgun]) owned = true;
-
-        char num_patch[10];
-        if (owned) {
-            snprintf(num_patch, sizeof(num_patch), "STYSNUM%d", w_num);
-        } else {
-            snprintf(num_patch, sizeof(num_patch), "STGNUM%d", w_num);
-        }
-        DS_DrawWadPatch(fb, arms_x[i], arms_y[i], num_patch);
-
-        // Highlight currently active weapon with a clean white bracket box
-        bool active = (plr->readyweapon == arms_wp[i]) ||
-                      (i == 1 && plr->readyweapon == wp_supershotgun);
-        if (active) {
-            int hx = arms_x[i] - 1;
-            int hy = arms_y[i] - 1;
-            DS_DrawLine(fb, hx, hy, hx + 5, hy, 255, 255, 255, 208, 239, 1);
-            DS_DrawLine(fb, hx, hy + 7, hx + 5, hy + 7, 255, 255, 255, 208, 239, 1);
-            DS_DrawLine(fb, hx, hy, hx, hy + 7, 255, 255, 255, 208, 239, 1);
-            DS_DrawLine(fb, hx + 5, hy, hx + 5, hy + 7, 255, 255, 255, 208, 239, 1);
-        }
-    }
-
-    // 5. Doomguy Face (X: 143, Y: ST_Y)
+    // 5. Draw DOOMGUY Face (Centered in X: 143 to 178, screen center at X: 160)
     char face_name[9] = "STFST01";
     int hp = plr->health;
     int pain_stage = 0;
@@ -379,30 +435,27 @@ static void DS_DrawAuthenticStatusBar(u8 *fb)
     DS_DrawWadPatch(fb, 221, ST_Y + 3, "STTPRCNT");
 
     // 7. Keycards / Skulls (X: 239)
-    // Blue key
     if (plr->cards[it_blueskull]) DS_DrawWadPatch(fb, 239, ST_Y + 3, "STKEYS3");
     else if (plr->cards[it_bluecard]) DS_DrawWadPatch(fb, 239, ST_Y + 3, "STKEYS0");
 
-    // Yellow key
     if (plr->cards[it_yellowskull]) DS_DrawWadPatch(fb, 239, ST_Y + 13, "STKEYS4");
     else if (plr->cards[it_yellowcard]) DS_DrawWadPatch(fb, 239, ST_Y + 13, "STKEYS1");
 
-    // Red key
     if (plr->cards[it_redskull]) DS_DrawWadPatch(fb, 239, ST_Y + 23, "STKEYS5");
     else if (plr->cards[it_redcard]) DS_DrawWadPatch(fb, 239, ST_Y + 23, "STKEYS2");
 }
 
-// Render the Wolfenstein-style Tactical Live-Automap (Y: 0 to 207)
+// Render the Wolfenstein-style Tactical Live-Automap (Y: 0 to 207, X: 0 to 267)
 static void DS_DrawTacticalAutomap(u8 *fb)
 {
     // 1. Pure Black Background (authentic Wolfenstein style)
-    DS_FillRect(fb, 0, 0, 320, 208, 0, 0, 0);
+    DS_FillRect(fb, 0, 0, 268, 208, 0, 0, 0);
 
     // 2. Crisp Outer Border (Dark Slate Gray)
-    DS_FillRect(fb, 0, 0, 320, 2, 50, 55, 65);
-    DS_FillRect(fb, 0, 206, 320, 2, 50, 55, 65);
+    DS_FillRect(fb, 0, 0, 268, 2, 50, 55, 65);
+    DS_FillRect(fb, 0, 206, 268, 2, 50, 55, 65);
     DS_FillRect(fb, 0, 0, 2, 208, 50, 55, 65);
-    DS_FillRect(fb, 318, 0, 2, 208, 50, 55, 65);
+    DS_FillRect(fb, 266, 0, 2, 208, 50, 55, 65);
 
     player_t *plr = &players[consoleplayer];
     if (!plr || !plr->mo) return;
@@ -410,7 +463,7 @@ static void DS_DrawTacticalAutomap(u8 *fb)
     fixed_t px = plr->mo->x;
     fixed_t py = plr->mo->y;
 
-    const int center_x = 160;
+    const int center_x = 134;
     const int center_y = 104;
     const int shift = FRACBITS + ds_map_zoom;
 
@@ -428,8 +481,8 @@ static void DS_DrawTacticalAutomap(u8 *fb)
         int x1 = center_x + ((ld->v2->x - px) >> shift);
         int y1 = center_y - ((ld->v2->y - py) >> shift);
 
-        // Bounding box test against 320x208
-        if ((x0 < -60 && x1 < -60) || (x0 > 380 && x1 > 380) ||
+        // Bounding box test against 268x208
+        if ((x0 < -60 && x1 < -60) || (x0 > 330 && x1 > 330) ||
             (y0 < -60 && y1 < -60) || (y0 > 260 && y1 > 260))
             continue;
 
@@ -452,7 +505,7 @@ static void DS_DrawTacticalAutomap(u8 *fb)
 
         if (is_secret) {
             // Secret wall / door:
-            // Highlighted distinctly when nearby (in der Nähe), discovered, or with allmap powerup!
+            // Highlighted distinctly when nearby, discovered, or with allmap powerup!
             if (is_nearby || is_discovered || plr->powers[pw_allmap]) {
                 r = 235; g = 60; b = 255; // Distinct Bright Magenta/Purple Secret
                 thick = 2;
@@ -463,7 +516,7 @@ static void DS_DrawTacticalAutomap(u8 *fb)
             }
         } else if (ld->special == 11 || ld->special == 51 || ld->special == 52 ||
                    ld->special == 124 || ld->special == 197 || ld->special == 198) {
-            // Exit switch / line: Light Green (like elevator in Wolfenstein)
+            // Exit switch / line: Light Green
             r = 50; g = 220; b = 80;
             thick = 2;
         } else if (ld->special) {
@@ -475,7 +528,7 @@ static void DS_DrawTacticalAutomap(u8 *fb)
             } else if (ld->special == 28 || ld->special == 33 || ld->special == 134 || ld->special == 136) {
                 r = 255; g = 50; b = 50;   // Red key door
             } else {
-                r = 70; g = 150; b = 255;  // Standard door: Light Blue (Wolfenstein style)
+                r = 70; g = 150; b = 255;  // Standard door: Light Blue
             }
             thick = 2;
         } else if (ld->backsector != NULL) {
@@ -494,7 +547,6 @@ static void DS_DrawTacticalAutomap(u8 *fb)
                 mobj_t *mo = (mobj_t *)th;
                 if (!mo) continue;
 
-                // Only reveal if within line of sight (im sichtbaren Bereich) or allmap cheat
                 if (!plr->powers[pw_allmap] && !P_CheckSight(plr->mo, mo)) {
                     continue;
                 }
@@ -502,7 +554,7 @@ static void DS_DrawTacticalAutomap(u8 *fb)
                 int mx = center_x + ((mo->x - px) >> shift);
                 int my = center_y - ((mo->y - py) >> shift);
 
-                if (mx >= 4 && mx < 316 && my >= 4 && my < 204) {
+                if (mx >= 4 && mx < 264 && my >= 4 && my < 204) {
                     // 1. Active Alive Enemy: Bright 3x3 Red Blip
                     if ((mo->flags & MF_COUNTKILL) && mo->health > 0) {
                         DS_FillRect(fb, mx - 1, my - 1, 3, 3, 240, 30, 30);
@@ -559,47 +611,47 @@ static void DS_DrawTacticalAutomap(u8 *fb)
     }
 
     // 6. Tactical Header Bar (Kills/Items/Secrets stats + [SAVE] + [LOAD] + [ZOOM])
-    DS_FillRect(fb, 0, 0, 320, 20, 18, 20, 26);
-    DS_FillRect(fb, 0, 19, 320, 1, 40, 45, 55);
+    DS_FillRect(fb, 0, 0, 268, 20, 18, 20, 26);
+    DS_FillRect(fb, 0, 19, 268, 1, 40, 45, 55);
 
-    // Stats string (compact format: K: 12/34 I: 5/10 S: 1/3)
+    // Stats string (compact format: K:12/34 S:1/3)
     char stats_buf[64];
-    snprintf(stats_buf, sizeof(stats_buf), "K:%d/%d I:%d/%d S:%d/%d",
-             plr->killcount, totalkills, plr->itemcount, totalitems, plr->secretcount, totalsecret);
+    snprintf(stats_buf, sizeof(stats_buf), "K:%d/%d S:%d/%d",
+             plr->killcount, totalkills, plr->secretcount, totalsecret);
     DS_DrawString(fb, 4, 6, stats_buf, 180, 210, 245, 1);
 
-    // [SAVE] Button (X: 148 to 198, width: 50, height: 15)
+    // [SAVE] Button (X: 114 to 158, width: 45, height: 15)
     if (ds_save_flash > 0) {
-        DS_FillRect(fb, 148, 2, 50, 15, 60, 220, 80);
-        DS_DrawRect(fb, 148, 2, 50, 15, 255, 255, 255);
-        DS_DrawString(fb, 158, 6, "SAVED", 10, 50, 10, 1);
+        DS_FillRect(fb, 114, 2, 45, 15, 60, 220, 80);
+        DS_DrawRect(fb, 114, 2, 45, 15, 255, 255, 255);
+        DS_DrawString(fb, 120, 6, "SAVED", 10, 50, 10, 1);
         ds_save_flash--;
     } else {
-        DS_FillRect(fb, 148, 2, 50, 15, 25, 65, 30);
-        DS_DrawRect(fb, 148, 2, 50, 15, 45, 140, 55);
-        DS_DrawString(fb, 161, 6, "SAVE", 160, 255, 170, 1);
+        DS_FillRect(fb, 114, 2, 45, 15, 25, 65, 30);
+        DS_DrawRect(fb, 114, 2, 45, 15, 45, 140, 55);
+        DS_DrawString(fb, 124, 6, "SAVE", 160, 255, 170, 1);
     }
 
-    // [LOAD] Button (X: 204 to 254, width: 50, height: 15)
+    // [LOAD] Button (X: 162 to 206, width: 45, height: 15)
     if (ds_load_flash > 0) {
-        DS_FillRect(fb, 204, 2, 50, 15, 60, 160, 240);
-        DS_DrawRect(fb, 204, 2, 50, 15, 255, 255, 255);
-        DS_DrawString(fb, 213, 6, "LOADED", 10, 20, 60, 1);
+        DS_FillRect(fb, 162, 2, 45, 15, 60, 160, 240);
+        DS_DrawRect(fb, 162, 2, 45, 15, 255, 255, 255);
+        DS_DrawString(fb, 168, 6, "LOADED", 10, 20, 60, 1);
         ds_load_flash--;
     } else if (ds_load_flash < 0) {
-        DS_FillRect(fb, 204, 2, 50, 15, 180, 40, 40);
-        DS_DrawRect(fb, 204, 2, 50, 15, 255, 100, 100);
-        DS_DrawString(fb, 216, 6, "EMPTY", 255, 255, 255, 1);
+        DS_FillRect(fb, 162, 2, 45, 15, 180, 40, 40);
+        DS_DrawRect(fb, 162, 2, 45, 15, 255, 100, 100);
+        DS_DrawString(fb, 171, 6, "EMPTY", 255, 255, 255, 1);
         ds_load_flash++;
     } else {
-        DS_FillRect(fb, 204, 2, 50, 15, 25, 45, 75);
-        DS_DrawRect(fb, 204, 2, 50, 15, 50, 100, 170);
-        DS_DrawString(fb, 217, 6, "LOAD", 170, 220, 255, 1);
+        DS_FillRect(fb, 162, 2, 45, 15, 25, 45, 75);
+        DS_DrawRect(fb, 162, 2, 45, 15, 50, 100, 170);
+        DS_DrawString(fb, 172, 6, "LOAD", 170, 220, 255, 1);
     }
 
-    // [ZOOM] Button (X: 260 to 316, width: 56, height: 15)
-    DS_FillRect(fb, 260, 2, 56, 15, 35, 38, 46);
-    DS_DrawRect(fb, 260, 2, 56, 15, 80, 90, 110);
+    // [ZOOM] Button (X: 210 to 264, width: 55, height: 15)
+    DS_FillRect(fb, 210, 2, 55, 15, 35, 38, 46);
+    DS_DrawRect(fb, 210, 2, 55, 15, 80, 90, 110);
     const char *zoom_str = "3x";
     if (ds_map_zoom == 1) zoom_str = "4x";
     else if (ds_map_zoom == 2) zoom_str = "3x";
@@ -607,7 +659,127 @@ static void DS_DrawTacticalAutomap(u8 *fb)
     else if (ds_map_zoom == 4) zoom_str = "1x";
     char zoom_buf[16];
     snprintf(zoom_buf, sizeof(zoom_buf), "ZOOM %s", zoom_str);
-    DS_DrawString(fb, 266, 6, zoom_buf, 200, 210, 225, 1);
+    DS_DrawString(fb, 214, 6, zoom_buf, 200, 210, 225, 1);
+}
+
+// Render the interactive 7-slot weapon selection panel on the right side next to automap (X: 268 to 319, Y: 0 to 207)
+static void DS_DrawWeaponSelector(u8 *fb)
+{
+    player_t *plr = &players[consoleplayer];
+    if (!plr) return;
+
+    // Divider border between map and weapon selector
+    DS_FillRect(fb, 267, 0, 1, 208, 50, 55, 65);
+
+    static const struct {
+        int slot;
+        weapontype_t wp;
+        weapontype_t alt_wp;
+        const char *name;
+        const char *alt_name;
+        ammotype_t ammo;
+    } slots[7] = {
+        { 1, wp_fist,     wp_chainsaw,     "FIST", "SAW",  am_noammo },
+        { 2, wp_pistol,   wp_nochange,     "PIST", NULL,   am_clip },
+        { 3, wp_shotgun,  wp_supershotgun, "SHOT", "SSG",  am_shell },
+        { 4, wp_chaingun, wp_nochange,     "CHGN", NULL,   am_clip },
+        { 5, wp_missile,  wp_nochange,     "RCKT", NULL,   am_misl },
+        { 6, wp_plasma,   wp_nochange,     "PLAS", NULL,   am_cell },
+        { 7, wp_bfg,      wp_nochange,     "BFG",  NULL,   am_cell },
+    };
+
+    static const int slot_y[7] = { 0, 29, 59, 89, 119, 148, 178 };
+    static const int slot_h[7] = { 29, 30, 30, 30, 29, 30, 30 };
+
+    for (int i = 0; i < 7; i++) {
+        int sy = slot_y[i];
+        int sh = slot_h[i];
+        int by = sy;
+        int bh = sh - 1;
+        int bx = 268;
+        int bw = 52;
+
+        bool owned = false;
+        bool active = false;
+        const char *label = slots[i].name;
+
+        if (i == 0) {
+            // Slot 1: Fist / Chainsaw
+            owned = true;
+            if (plr->weaponowned[wp_chainsaw]) {
+                label = (plr->readyweapon == wp_chainsaw) ? "SAW" : "F/SAW";
+            }
+            active = (plr->readyweapon == wp_fist || plr->readyweapon == wp_chainsaw);
+        } else if (i == 2) {
+            // Slot 3: Shotgun / SSG
+            owned = plr->weaponowned[wp_shotgun] || plr->weaponowned[wp_supershotgun];
+            if (plr->weaponowned[wp_supershotgun] && plr->readyweapon == wp_supershotgun) {
+                label = "SSG";
+            } else if (plr->weaponowned[wp_supershotgun] && plr->weaponowned[wp_shotgun]) {
+                label = "S/SSG";
+            } else if (plr->weaponowned[wp_supershotgun]) {
+                label = "SSG";
+            } else {
+                label = "SHOT";
+            }
+            active = (plr->readyweapon == wp_shotgun || plr->readyweapon == wp_supershotgun);
+        } else {
+            owned = plr->weaponowned[slots[i].wp];
+            if ((i == 5 || i == 6) && gamemode == shareware) owned = false;
+            active = (plr->readyweapon == slots[i].wp);
+        }
+
+        // Draw button styling
+        if (active) {
+            // Bright active glowing green styling
+            DS_FillRect(fb, bx, by, bw, bh, 20, 50, 25);
+            DS_DrawRect(fb, bx, by, bw, bh, 80, 240, 100);
+            DS_DrawRect(fb, bx + 1, by + 1, bw - 2, bh - 2, 40, 160, 60);
+
+            // Slot number in gold, label in bright white
+            char num_str[4];
+            snprintf(num_str, sizeof(num_str), "%d", slots[i].slot);
+            DS_DrawString(fb, bx + 4, by + 4, num_str, 255, 230, 80, 1);
+            DS_DrawString(fb, bx + 14, by + 4, label, 255, 255, 255, 1);
+
+            // Ammo count on row 2
+            if (slots[i].ammo != am_noammo) {
+                char ammo_buf[16];
+                snprintf(ammo_buf, sizeof(ammo_buf), "%3d", plr->ammo[slots[i].ammo]);
+                DS_DrawString(fb, bx + 16, by + 16, ammo_buf, 140, 255, 180, 1);
+            } else {
+                DS_DrawString(fb, bx + 20, by + 16, "---", 140, 255, 180, 1);
+            }
+        } else if (owned) {
+            // Owned metallic slate styling
+            DS_FillRect(fb, bx, by, bw, bh, 24, 28, 38);
+            DS_DrawRect(fb, bx, by, bw, bh, 60, 80, 110);
+
+            // Slot number in warm gold, label in steel silver
+            char num_str[4];
+            snprintf(num_str, sizeof(num_str), "%d", slots[i].slot);
+            DS_DrawString(fb, bx + 4, by + 4, num_str, 220, 190, 70, 1);
+            DS_DrawString(fb, bx + 14, by + 4, label, 190, 205, 220, 1);
+
+            // Ammo count on row 2
+            if (slots[i].ammo != am_noammo) {
+                char ammo_buf[16];
+                snprintf(ammo_buf, sizeof(ammo_buf), "%3d", plr->ammo[slots[i].ammo]);
+                DS_DrawString(fb, bx + 16, by + 16, ammo_buf, 100, 180, 140, 1);
+            } else {
+                DS_DrawString(fb, bx + 20, by + 16, "---", 110, 130, 150, 1);
+            }
+        } else {
+            // Unowned dim gray styling
+            DS_FillRect(fb, bx, by, bw, bh, 14, 16, 20);
+            DS_DrawRect(fb, bx, by, bw, bh, 32, 34, 42);
+
+            char num_str[4];
+            snprintf(num_str, sizeof(num_str), "%d", slots[i].slot);
+            DS_DrawString(fb, bx + 4, by + 4, num_str, 70, 75, 85, 1);
+            DS_DrawString(fb, bx + 14, by + 4, label, 60, 65, 75, 1);
+        }
+    }
 }
 
 // Draw Dashboard when in Menu or Title screen
@@ -703,42 +875,38 @@ void DS_SelectWeaponSlot(int slot)
 void DS_HandleTouch(int touch_x, int touch_y)
 {
     if (gamestate == GS_LEVEL) {
-        if (touch_y < 24) {
-            // Header bar action buttons
-            if (touch_x >= 144 && touch_x <= 198) {
+        if (touch_x >= 268 && touch_y < 208) {
+            // Right-side Weapon Selector touch (Slots 1 to 7)
+            int slot = 1;
+            if (touch_y < 29) slot = 1;
+            else if (touch_y < 59) slot = 2;
+            else if (touch_y < 89) slot = 3;
+            else if (touch_y < 119) slot = 4;
+            else if (touch_y < 148) slot = 5;
+            else if (touch_y < 178) slot = 6;
+            else slot = 7;
+            DS_SelectWeaponSlot(slot);
+        } else if (touch_y < 24) {
+            // Header bar action buttons (SAVE, LOAD, ZOOM)
+            if (touch_x >= 114 && touch_x <= 158) {
                 DS_QuickSave();
-            } else if (touch_x >= 200 && touch_x <= 256) {
+            } else if (touch_x >= 162 && touch_x <= 206) {
                 DS_QuickLoad();
-            } else if (touch_x >= 258 && touch_x <= 320) {
+            } else if (touch_x >= 210 && touch_x <= 264) {
                 // Zoom button
                 ds_map_zoom++;
                 if (ds_map_zoom > 4) ds_map_zoom = 1;
             }
-        } else if (touch_y < 200) {
-            // Automap area: toggle zoom
+        } else if (touch_y < 208) {
+            // Automap area (X: 0 to 267): toggle zoom
             ds_map_zoom++;
             if (ds_map_zoom > 4) {
                 ds_map_zoom = 1;
             }
         } else {
-            // Status bar touch (Y: 200..239)
-            // 1. Classic ARMS Box (X: 96 to 142)
-            if (touch_x >= 96 && touch_x <= 142) {
-                int col = 0;
-                if (touch_x < 115) col = 0;
-                else if (touch_x < 129) col = 1;
-                else col = 2;
-
-                int row = (touch_y >= 220) ? 1 : 0; // 0=Top row (2, 3, 4), 1=Bottom row (5, 6, 7)
-                int slot = (row == 0) ? (2 + col) : (5 + col);
-                DS_SelectWeaponSlot(slot);
-            }
-            // 2. Doomguy Face (X: 143 to 180) -> Fist / Chainsaw
-            else if (touch_x >= 143 && touch_x <= 180) {
-                DS_SelectWeaponSlot(1);
-            }
-            // 3. Ammo box (X: 0 to 95) -> Quick Melee / Fist toggle
-            else if (touch_x >= 0 && touch_x < 96) {
+            // Status bar touch (Y: 208..239)
+            // Tap Ammo, Health, or Face -> Quick Melee / Fist toggle
+            if (touch_x >= 0 && touch_x <= 180) {
                 DS_SelectWeaponSlot(1);
             }
         }
@@ -752,6 +920,7 @@ void DS_UpdateBottomScreen(void)
 
     if (gamestate == GS_LEVEL) {
         DS_DrawTacticalAutomap(framebuf);
+        DS_DrawWeaponSelector(framebuf);
         DS_DrawAuthenticStatusBar(framebuf);
     } else {
         DS_DrawDashboard(framebuf);

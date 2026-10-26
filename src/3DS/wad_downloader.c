@@ -4489,7 +4489,7 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, "v1.0.2 WAD STORE", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 280, 12, "v1.0.3 WAD STORE", 255, 215, 0, 1);
 
     // WiFi signal
     int wifi = osGetWifiStrength();
