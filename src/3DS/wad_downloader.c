@@ -417,6 +417,32 @@ static const repo_item_t s_catalog[] = {
         false
     },
     {
+        "BETRAY (XBOX MAP33)",
+        "Brendon Chung",
+        "SECRET LEVEL",
+        "DOOM2.WAD",
+        "Das geheime 33. Bonuslevel der Xbox Doom II Version.",
+        "Spannendes raetsellastiges Leveldesign.",
+        "https://archive.org/download/doom-wads/Betray%20%28Xbox%20Doom%20II%29%20%5BFixed%5D.zip",
+        "BETRAY.WAD",
+        "0.1 MB",
+        true,
+        false
+    },
+    {
+        "BLASPHEMER",
+        "Blasphemer Community Project",
+        "TOTAL CONVERSION",
+        "DOOM.WAD",
+        "Freies Dark-Fantasy Spiel im Geiste von Heretic.",
+        "Duestere Kathedralen und eigene Monster.",
+        "https://archive.org/download/doom-wads/Blasphemer%20%28v0.1.5%29.zip",
+        "BLASPHEM.WAD",
+        "2.5 MB",
+        true,
+        true
+    },
+    {
         "BLOOD.WAD",
         "Eric",
         "MEGAWAD",
@@ -454,6 +480,45 @@ static const repo_item_t s_catalog[] = {
         "0.8 MB",
         true,
         false
+    },
+    {
+        "CHEX QUEST",
+        "Digital Cafe",
+        "TOTAL CONVERSION",
+        "DOOM.WAD",
+        "Legendaere Total Conversion mit dem Zorcher.",
+        "Vollstaendig familienfreundlich mit eigenen Texturen.",
+        "https://archive.org/download/doom-wads/Chex%20Quest.zip",
+        "CHEX.WAD",
+        "3.9 MB",
+        true,
+        true
+    },
+    {
+        "CHEX QUEST 2: FLEMOIDS CHEK",
+        "Digital Cafe",
+        "TOTAL CONVERSION",
+        "DOOM.WAD",
+        "Offizieller zweiter Teil auf Chex City.",
+        "5 neue Level mit neuen Flem-Gegnern.",
+        "https://archive.org/download/doom-wads/Chex%20Quest%202.zip",
+        "CHEX2.WAD",
+        "2.1 MB",
+        true,
+        false
+    },
+    {
+        "CHEX QUEST 3",
+        "Charles Jacobi",
+        "TOTAL CONVERSION",
+        "DOOM.WAD",
+        "Teil 3 der beliebten Chex Quest Reihe.",
+        "Entwickelt vom originalen Chex-Kuenstler.",
+        "https://archive.org/download/doom-wads/Chex%20Quest%203%20%28v1.4%29.zip",
+        "CHEX3.WAD",
+        "6.3 MB",
+        true,
+        true
     },
     {
         "CITY OF DOOM (PART I) BETA 1-11",
@@ -664,6 +729,19 @@ static const repo_item_t s_catalog[] = {
         false
     },
     {
+        "DOOM II: NO REST FOR THE LIVING",
+        "Nerve Software / id Software",
+        "EPISODE",
+        "DOOM2.WAD",
+        "Offizielle 9-Level Erweiterung von Nerve Software.",
+        "Fantastisches Leveldesign der BFG Edition.",
+        "https://archive.org/download/doom-wads/Doom%20II%20-%20No%20Rest%20for%20the%20Living%20%28BFG%20Edition%29.zip",
+        "NERVE.WAD",
+        "1.3 MB",
+        true,
+        false
+    },
+    {
         "DOOM MONSTER REPLACEMENT - ZOMBIES",
         "Daniel",
         "MEGAWAD",
@@ -807,6 +885,19 @@ static const repo_item_t s_catalog[] = {
         false
     },
     {
+        "FREEDOOM: FREEDM",
+        "Freedoom Project",
+        "STANDALONE",
+        "DOOM2.WAD",
+        "Freie Deathmatch-orientierte Arena-Kampagne (32 Level).",
+        "Fokussiert auf schnelle Schusswechsel & Layouts.",
+        "https://archive.org/download/doom-wads/Freedoom%20-%20FreeDM%20%28v0.11.3%29.zip",
+        "FREEDM.WAD",
+        "7.4 MB",
+        true,
+        true
+    },
+    {
         "FREEDOOM: PHASE 1 & 2",
         "Freedoom Project",
         "STANDALONE IWAD",
@@ -831,6 +922,32 @@ static const repo_item_t s_catalog[] = {
         "8.4 MB",
         true,
         false
+    },
+    {
+        "HACX: TWITCH 'N KILL (V1.2)",
+        "Banjo Software",
+        "TOTAL CONVERSION",
+        "DOOM2.WAD",
+        "Cyberpunk Total Conversion mit 21 neuen Leveln.",
+        "Eigene Cyber-Waffen, Soundtracks & Gegner.",
+        "https://archive.org/download/doom-wads/HACX%20%28v1.2%29.zip",
+        "HACX.WAD",
+        "7.3 MB",
+        true,
+        true
+    },
+    {
+        "HARMONY",
+        "Thomas van der Velden",
+        "TOTAL CONVERSION",
+        "DOOM2.WAD",
+        "Vollstaendig handgezeichnete Sci-Fi TC (13 Level).",
+        "Eigene Welt, Waffen und Soundtrack.",
+        "https://archive.org/download/doom-wads/Harmony%20%28v1.1%29.zip",
+        "HARM1.WAD",
+        "39.8 MB",
+        true,
+        true
     },
     {
         "HELL REVEALED",
@@ -868,6 +985,19 @@ static const repo_item_t s_catalog[] = {
         "https://youfailit.net/pub/idgames/levels/doom/g-i/hellrun.zip",
         "HELLRUN.WAD",
         "0.5 MB",
+        true,
+        false
+    },
+    {
+        "HELL TO PAY",
+        "Wraith Corporation",
+        "MEGAWAD",
+        "DOOM2.WAD",
+        "32 Level Sci-Fi Megawad von Wraith Corporation.",
+        "Zukunftskulisse, neue Sprites & Texturen.",
+        "https://archive.org/download/doom-wads/Hell%20to%20Pay.zip",
+        "HTP-RAW.WAD",
+        "4.0 MB",
         true,
         false
     },
@@ -1223,6 +1353,19 @@ static const repo_item_t s_catalog[] = {
         false
     },
     {
+        "PERDITION'S GATE",
+        "Wraith Corporation",
+        "MEGAWAD",
+        "DOOM2.WAD",
+        "Kommerzieller 32-Level Megawad-Klassiker.",
+        "Schnelle Kaempfe und intelligentes Layout.",
+        "https://archive.org/download/doom-wads/Perdition%27s%20Gate.zip",
+        "PG-RAW-X.WAD",
+        "4.2 MB",
+        true,
+        false
+    },
+    {
         "PLUTONIA 2",
         "Plutonia 2 Team",
         "MEGAWAD",
@@ -1353,6 +1496,19 @@ static const repo_item_t s_catalog[] = {
         false
     },
     {
+        "RISE OF THE WOOL BALL",
+        "MSP",
+        "TOTAL CONVERSION",
+        "DOOM2.WAD",
+        "Bunte humorvolle TC im Stil klassischer Retro-Shooter.",
+        "5 Episoden voller Spass, Musik & neuer Grafiken.",
+        "https://archive.org/download/doom-wads/Rise%20Of%20The%20Wool%20Ball%20%28v1.3%29.zip",
+        "ROTWB.WAD",
+        "7.6 MB",
+        true,
+        true
+    },
+    {
         "ROWDY RUDY II: POWERTRIP",
         "Doomkid",
         "MEGAWAD",
@@ -1401,6 +1557,19 @@ static const repo_item_t s_catalog[] = {
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/scythe2.zip",
         "scythe2.wad",
         "10.1 MB",
+        true,
+        false
+    },
+    {
+        "SEWERS (XBOX E1M10)",
+        "David Robinson",
+        "SECRET LEVEL",
+        "DOOM.WAD",
+        "Das legendaere geheime Bonuslevel der Xbox-Version.",
+        "Wird als E1M10 im ersten Doom-Kapitel gespielt.",
+        "https://archive.org/download/doom-wads/Sewers%20%28Xbox%20Ultimate%20Doom%29%20%5BFixed%5D.zip",
+        "SEWERS.WAD",
+        "0.1 MB",
         true,
         false
     },
@@ -1583,6 +1752,19 @@ static const repo_item_t s_catalog[] = {
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/longtrek.zip",
         "LONGTREK.WAD",
         "3.5 MB",
+        true,
+        false
+    },
+    {
+        "THE LOST EPISODES OF DOOM",
+        "Jonathan Mendoza & Chris Klie",
+        "MEGAWAD",
+        "DOOM.WAD",
+        "Die beruehmte 24-Level Buch-Kampagne von 1995.",
+        "Einer der allerersten professionellen Megawads.",
+        "https://archive.org/download/doom-wads/Lost%20Episodes%20of%20Doom%2C%20The.zip",
+        "JPTR_FIX.WAD",
+        "0.8 MB",
         true,
         false
     },
@@ -1782,8 +1964,6 @@ static const repo_item_t s_catalog[] = {
         false
     }
 };
-
-
 #define CATALOG_COUNT ((int)(sizeof(s_catalog) / sizeof(s_catalog[0])))
 
 // In-memory cache for installed status (avoids hammering the slow SD card every frame)
