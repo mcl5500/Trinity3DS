@@ -236,6 +236,52 @@ void WP_DrawText(u8 *fb, int width, int x, int y, const char *str, u8 r, u8 g, u
     }
 }
 
+void WP_DrawClippedText(u8 *fb, int width, int clip_x1, int clip_x2, int x, int y, const char *str, u8 r, u8 g, u8 b, int scale)
+{
+    if (!str || !str[0]) return;
+    int cur_x = x;
+    int spacing = (scale == 1) ? 6 : (scale * 6);
+    int char_w = 5 * scale;
+
+    while (*str) {
+        if (*str == '\n') {
+            y += (scale == 1) ? 9 : (scale * 9);
+            cur_x = x;
+        } else {
+            if (cur_x >= clip_x2) break; // Past the right edge
+            if (cur_x + char_w >= clip_x1) {
+                char c = *str;
+                if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
+                if (c < 32 || c > 95) c = ' ';
+                int idx = c - 32;
+
+                for (int col = 0; col < 5; col++) {
+                    int px = cur_x + col * scale;
+                    for (int dx = 0; dx < scale; dx++) {
+                        int final_x = px + dx;
+                        if (final_x >= clip_x1 && final_x < clip_x2) {
+                            u8 line = s_font_5x7[idx][col];
+                            for (int row = 0; row < 7; row++) {
+                                if (line & (1 << row)) {
+                                    if (scale == 1) {
+                                        WP_DrawPixel(fb, width, final_x, y + row, r, g, b);
+                                    } else {
+                                        for (int dy = 0; dy < scale; dy++) {
+                                            WP_DrawPixel(fb, width, final_x, y + row * scale + dy, r, g, b);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            cur_x += spacing;
+        }
+        str++;
+    }
+}
+
 void WP_DrawCenteredText(u8 *fb, int width, int box_x, int box_y, int box_w, int box_h, const char *text, u8 r, u8 g, u8 b, int scale)
 {
     if (!text || !text[0]) return;
@@ -626,7 +672,7 @@ static void WP_RenderTopScreen(u8 *fb)
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, "v0.9.8 WAD MANAGER", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 280, 12, "v0.9.9 WAD MANAGER", 255, 215, 0, 1);
 
     if (s_wad_count == 0) {
         WP_DrawText(fb, 400, 20, 100, "KEINE WAD-DATEIEN GEFUNDEN!", 255, 50, 50, 2);
