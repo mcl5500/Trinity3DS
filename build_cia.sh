@@ -32,7 +32,7 @@ RES="$DIR/build/3ds/res"
 
 echo "=== Creating Banner and SMDH ==="
 $BANNERTOOL makebanner -i "$RES/banner.png" -a "$RES/banner.wav" -o "$RES/banner.bin"
-$BANNERTOOL makesmdh -i "$RES/icon.png" -s "Trinity3DS" -l "Trinity3DS v1.0.1" -p "Sheldor & id Software" -f visible,allow3d,recordusage -o "$RES/icon.bin"
+$BANNERTOOL makesmdh -i "$RES/icon.png" -s "Trinity3DS" -l "Trinity3DS v1.0.2" -p "Sheldor & id Software" -f visible,allow3d,recordusage -o "$RES/icon.bin"
 
 echo "=== Packaging CIA with makerom ==="
 $MAKEROM -f cia -target t -exefslogo \

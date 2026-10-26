@@ -1,6 +1,8 @@
 #include "wad_picker.h"
 #include "wad_downloader.h"
 #include "i_main.h"
+
+void I_SetupTimidity(void);
 #include <3ds.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +22,8 @@ static bool s_music_inited = false;
 static void WP_StartBGM(void)
 {
     if (s_music_inited) return;
+
+    I_SetupTimidity();
 
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
         return;
@@ -688,7 +692,7 @@ static void WP_RenderTopScreen(u8 *fb)
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, "v1.0.1 WAD MANAGER", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 280, 12, "v1.0.2 WAD MANAGER", 255, 215, 0, 1);
 
     if (s_wad_count == 0) {
         WP_DrawText(fb, 400, 20, 100, "KEINE WAD-DATEIEN GEFUNDEN!", 255, 50, 50, 2);

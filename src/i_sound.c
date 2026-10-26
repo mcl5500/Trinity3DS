@@ -34,6 +34,7 @@
 
 #include <math.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include <SDL/SDL.h>
 #include <SDL/SDL_audio.h>
@@ -597,6 +598,87 @@ void I_ShutdownSound(void)
 
 //static SDL_AudioSpec audio;
 
+void I_SetupTimidity(void)
+{
+#ifdef __3DS__
+  static bool timidity_setup_done = false;
+  if (timidity_setup_done) return;
+  timidity_setup_done = true;
+
+  mkdir("sdmc:/3ds", 0777);
+  mkdir("sdmc:/3ds/Trinity3DS", 0777);
+
+  // If eawpats is still in legacy Boom3DS or PrBoom-Plus folder on SD card, migrate it seamlessly
+  if (access("sdmc:/3ds/Trinity3DS/eawpats/acpiano.pat", R_OK) != 0 &&
+      access("sdmc:/3ds/Trinity3DS/eawpats/gravis.cfg", R_OK) != 0) {
+    if (access("sdmc:/3ds/Boom3DS/eawpats/acpiano.pat", R_OK) == 0 ||
+        access("sdmc:/3ds/Boom3DS/eawpats/gravis.cfg", R_OK) == 0) {
+      rename("sdmc:/3ds/Boom3DS/eawpats", "sdmc:/3ds/Trinity3DS/eawpats");
+    } else if (access("sdmc:/3ds/PrBoom-Plus/eawpats/acpiano.pat", R_OK) == 0 ||
+               access("sdmc:/3ds/PrBoom-Plus/eawpats/gravis.cfg", R_OK) == 0) {
+      rename("sdmc:/3ds/PrBoom-Plus/eawpats", "sdmc:/3ds/Trinity3DS/eawpats");
+    }
+  }
+
+  const char *candidate_dirs[] = {
+    "sdmc:/3ds/Trinity3DS/eawpats",
+    "/3ds/Trinity3DS/eawpats",
+    "sdmc:/3ds/Boom3DS/eawpats",
+    "/3ds/Boom3DS/eawpats",
+    "sdmc:/3ds/PrBoom-Plus/eawpats",
+    "/3ds/PrBoom-Plus/eawpats",
+    NULL
+  };
+
+  const char *found_dir = NULL;
+  for (int i = 0; candidate_dirs[i]; i++) {
+    char test_path[256];
+    snprintf(test_path, sizeof(test_path), "%s/acpiano.pat", candidate_dirs[i]);
+    if (access(test_path, R_OK) == 0) {
+      found_dir = candidate_dirs[i];
+      break;
+    }
+    snprintf(test_path, sizeof(test_path), "%s/gravis.cfg", candidate_dirs[i]);
+    if (access(test_path, R_OK) == 0) {
+      found_dir = candidate_dirs[i];
+      break;
+    }
+  }
+
+  // Write universal timidity.cfg in /3ds/Trinity3DS/
+  const char *cfg_path = "sdmc:/3ds/Trinity3DS/timidity.cfg";
+  FILE *fp = fopen(cfg_path, "w");
+  if (!fp) {
+    cfg_path = "/3ds/Trinity3DS/timidity.cfg";
+    fp = fopen(cfg_path, "w");
+  }
+
+  if (fp) {
+    fprintf(fp, "# Trinity3DS Universal Timidity Config\n");
+    if (found_dir) {
+      fprintf(fp, "dir %s\n", found_dir);
+      if (strncmp(found_dir, "sdmc:", 5) == 0) {
+        fprintf(fp, "dir %s\n", found_dir + 5);
+      }
+    }
+    fprintf(fp, "dir /3ds/Trinity3DS/eawpats\n");
+    fprintf(fp, "dir sdmc:/3ds/Trinity3DS/eawpats\n");
+    fprintf(fp, "dir /3ds/Boom3DS/eawpats\n");
+    fprintf(fp, "dir sdmc:/3ds/Boom3DS/eawpats\n");
+    fprintf(fp, "dir /3ds/PrBoom-Plus/eawpats\n");
+    fprintf(fp, "dir sdmc:/3ds/PrBoom-Plus/eawpats\n");
+    fprintf(fp, "source gravis.cfg\n");
+    fprintf(fp, "source gsdrums.cfg\n");
+    fprintf(fp, "source gssfx.cfg\n");
+    fclose(fp);
+  }
+
+  setenv("TIMIDITY_CFG", cfg_path, 1);
+  lprintf(LO_INFO, "Trinity3DS: Timidity configured at %s (patches: %s)\n",
+          cfg_path, found_dir ? found_dir : "NOT FOUND");
+#endif
+}
+
 void I_InitSound(void)
 {
   int audio_rate;
@@ -624,14 +706,7 @@ void I_InitSound(void)
   audio_buffers = getSliceSize();
 
 #ifdef __3DS__
-  // Point Timidity to the eawpats soundfont/patch directory before Mix_OpenAudio
-  if (access("sdmc:/3ds/Trinity3DS/eawpats/timidity.cfg", R_OK) == 0) {
-    setenv("TIMIDITY_CFG", "sdmc:/3ds/Trinity3DS/eawpats/timidity.cfg", 1);
-  } else if (access("/3ds/Trinity3DS/eawpats/timidity.cfg", R_OK) == 0) {
-    setenv("TIMIDITY_CFG", "/3ds/Trinity3DS/eawpats/timidity.cfg", 1);
-  } else if (access("/etc/timidity.cfg", R_OK) == 0) {
-    setenv("TIMIDITY_CFG", "/etc/timidity.cfg", 1);
-  }
+  I_SetupTimidity();
 #endif
 
   if (Mix_OpenAudio(audio_rate, MIX_DEFAULT_FORMAT, audio_channels, audio_buffers) < 0)
@@ -790,6 +865,8 @@ void I_ShutdownMusic(void)
 void I_InitMusic(void)
 {
   if (!music_tmp) {
+    mkdir("sdmc:/3ds", 0777);
+    mkdir("sdmc:/3ds/Trinity3DS", 0777);
 #ifdef __3DS__
     music_tmp = strdup("sdmc:/3ds/Trinity3DS/doom.tmp");
 #else

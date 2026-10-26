@@ -99,6 +99,7 @@ extern char music_player_order[][200];
 
 void I_InitMusic(void);
 void I_ShutdownMusic(void);
+void I_SetupTimidity(void);
 
 // Volume.
 void I_SetMusicVolume(int volume);

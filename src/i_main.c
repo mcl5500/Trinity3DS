@@ -394,6 +394,8 @@ int main(int argc, char **argv)
 
 	if(isN3DS)
 		osSetSpeedupEnable(true);
+
+  I_SetupTimidity();
 #endif
 
   myargc = argc;
