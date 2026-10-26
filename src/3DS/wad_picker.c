@@ -382,17 +382,27 @@ static wp_image_t* WP_LoadPNG(const char *filename)
     return img;
 }
 
+static char s_last_filename[64] = "";
+
+void WP_InvalidateCoverCache(void)
+{
+    s_last_filename[0] = '\0';
+    WP_FreeCover();
+}
+
 void WP_UpdateCoverByFilename(const char *target_filename)
 {
-    static char s_last_filename[64] = "";
-    if (s_cur_cover && target_filename && s_last_filename[0] && !strcasecmp(s_last_filename, target_filename)) {
-        return; // Already loaded!
+    if (target_filename && s_last_filename[0] && !strcasecmp(s_last_filename, target_filename)) {
+        return; // Already checked/loaded!
     }
     WP_FreeCover();
     if (!target_filename || !target_filename[0]) {
         s_last_filename[0] = '\0';
         return;
     }
+
+    strncpy(s_last_filename, target_filename, sizeof(s_last_filename) - 1);
+    s_last_filename[sizeof(s_last_filename) - 1] = '\0';
 
     char base_name[64];
     strncpy(base_name, target_filename, sizeof(base_name) - 1);
@@ -415,13 +425,6 @@ void WP_UpdateCoverByFilename(const char *target_filename)
         for (int i = 0; lower[i]; i++) lower[i] = tolower((unsigned char)lower[i]);
         snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.png", lower);
         s_cur_cover = WP_LoadPNG(png_path);
-    }
-
-    if (s_cur_cover) {
-        strncpy(s_last_filename, target_filename, sizeof(s_last_filename) - 1);
-        s_last_filename[sizeof(s_last_filename) - 1] = '\0';
-    } else {
-        s_last_filename[0] = '\0';
     }
 }
 
@@ -772,7 +775,7 @@ static void WP_RenderTopScreen(u8 *fb)
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, "v1.0.6 WAD MANAGER", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 280, 12, "v1.0.7 WAD MANAGER", 255, 215, 0, 1);
 
     if (s_wad_count == 0) {
         WP_DrawText(fb, 400, 20, 100, "KEINE WAD-DATEIEN GEFUNDEN!", 255, 50, 50, 2);

@@ -32,7 +32,7 @@ RES="$DIR/build/3ds/res"
 
 echo "=== Creating Banner and SMDH ==="
 $BANNERTOOL makebanner -i "$RES/banner.png" -a "$RES/banner.wav" -o "$RES/banner.bin"
-$BANNERTOOL makesmdh -i "$RES/icon.png" -s "Trinity3DS" -l "Trinity3DS v1.0.6" -p "Sheldor & id Software" -f visible,allow3d,recordusage -o "$RES/icon.bin"
+$BANNERTOOL makesmdh -i "$RES/icon.png" -s "Trinity3DS" -l "Trinity3DS v1.0.7" -p "Sheldor & id Software" -f visible,allow3d,recordusage -o "$RES/icon.bin"
 
 echo "=== Packaging CIA with makerom ==="
 $MAKEROM -f cia -target t -exefslogo \
@@ -42,7 +42,7 @@ $MAKEROM -f cia -target t -exefslogo \
     -banner "$RES/banner.bin" \
     -icon "$RES/icon.bin" \
     -logo "$RES/logo.bcma.lz" \
-    -major 1 -minor 0 -micro 6 \
+    -major 1 -minor 0 -micro 7 \
     -DAPP_VERSION_MAJOR=1
 
 cp "$DIR/build/3ds/Trinity3DS.3dsx" "$DIR/Trinity3DS.3dsx"

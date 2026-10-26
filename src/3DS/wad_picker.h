@@ -19,6 +19,7 @@ void WP_DrawCenteredText(u8 *fb, int width, int box_x, int box_y, int box_w, int
 
 // Cover loading & rendering
 void WP_UpdateCoverByFilename(const char *target_filename);
+void WP_InvalidateCoverCache(void);
 bool WP_HasCover(void);
 void WP_DrawCover(u8 *fb, int fb_width, int dest_x, int dest_y, int dest_w, int dest_h);
 void WP_FreeCover(void);

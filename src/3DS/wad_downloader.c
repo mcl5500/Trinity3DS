@@ -3756,15 +3756,17 @@ static const repo_item_t s_catalog[] = {
 };
 #define CATALOG_COUNT ((int)(sizeof(s_catalog) / sizeof(s_catalog[0])))
 
-// In-memory cache for installed status (avoids hammering the slow SD card every frame)
+// In-memory cache for installed status & cover availability (zero SD I/O during rendering)
 static bool s_installed[CATALOG_COUNT];
+static bool s_has_cover[CATALOG_COUNT];
+static bool s_store_cache_initialized = false;
 
 static void Downloader_RefreshInstalledCache(void)
 {
     memset(s_installed, 0, sizeof(s_installed));
+    memset(s_has_cover, 0, sizeof(s_has_cover));
 
     // Read directory entries into memory ONCE (approx 1-2 milliseconds on FAT32)
-    // instead of calling access() 900+ times over slow SD card IPC!
     #define MAX_DIR_FILES 1024
     static char local_files[MAX_DIR_FILES][64];
     int local_count = 0;
@@ -3786,10 +3788,21 @@ static void Downloader_RefreshInstalledCache(void)
     // Fast in-memory match (0.001 ms)
     for (int i = 0; i < CATALOG_COUNT; i++) {
         const char *target = s_catalog[i].target_file;
+        char base[64];
+        strncpy(base, target, sizeof(base) - 1);
+        base[sizeof(base) - 1] = '\0';
+        char *dot = strrchr(base, '.');
+        if (dot) *dot = '\0';
+
+        char png_name[64];
+        snprintf(png_name, sizeof(png_name), "%s.png", base);
+
         for (int j = 0; j < local_count; j++) {
-            if (!strcasecmp(target, local_files[j])) {
+            if (!s_installed[i] && !strcasecmp(target, local_files[j])) {
                 s_installed[i] = true;
-                break;
+            }
+            if (!s_has_cover[i] && !strcasecmp(png_name, local_files[j])) {
+                s_has_cover[i] = true;
             }
         }
     }
@@ -4306,7 +4319,7 @@ bool Downloader_FetchOnlineCover(const char *target_filename, const char *out_pn
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.6 (Nintendo 3DS)");
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.7 (Nintendo 3DS)");
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
         curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
@@ -4381,7 +4394,7 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.6 (Nintendo 3DS)");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.7 (Nintendo 3DS)");
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 600L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
     // Optimized buffer sizes for faster 3DS network throughput
@@ -4750,7 +4763,7 @@ bool Downloader_FetchMetadataForWad(const char *filename, char *out_author, size
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteMemoryCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.6 (Nintendo 3DS)");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.7 (Nintendo 3DS)");
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 6L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 4L);
 
@@ -4826,7 +4839,7 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, "v1.0.6 WAD STORE", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 280, 12, "v1.0.7 WAD STORE", 255, 215, 0, 1);
 
     // WiFi signal
     int wifi = osGetWifiStrength();
@@ -4912,12 +4925,12 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     WP_FillRect(fb, 400, cover_x, cover_y, cover_w, cover_h, 16, 18, 22);
     WP_DrawRect(fb, 400, cover_x, cover_y, cover_w, cover_h, 70, 95, 130);
 
-    WP_UpdateCoverByFilename(cur->target_file);
     if (WP_HasCover()) {
         WP_DrawCover(fb, 400, cover_x + 1, cover_y + 1, cover_w - 2, cover_h - 2);
     } else {
-        WP_DrawCenteredText(fb, 400, cover_x, cover_y + 40, cover_w, 18, "KEIN", 110, 120, 135, 2);
-        WP_DrawCenteredText(fb, 400, cover_x, cover_y + 62, cover_w, 18, "COVER", 110, 120, 135, 2);
+        WP_DrawCenteredText(fb, 400, cover_x, cover_y + 35, cover_w, 18, "KEIN", 110, 120, 135, 2);
+        WP_DrawCenteredText(fb, 400, cover_x, cover_y + 57, cover_w, 18, "COVER", 110, 120, 135, 2);
+        WP_DrawCenteredText(fb, 400, cover_x, cover_y + 85, cover_w, 14, "[Y] LADEN", 255, 215, 0, 1);
     }
 
     // Controls Help Box (Bottom)
@@ -4925,7 +4938,7 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     WP_DrawRect(fb, 400, 12, 182, 376, 50, 70, 70, 80);
     WP_DrawText(fb, 400, 20, 189, "STEUERUNG:", 255, 215, 0, 1);
     WP_DrawText(fb, 400, 100, 189, "D-PAD: Scrollen   L / R: A-Z Sprung", 200, 200, 200, 1);
-    WP_DrawText(fb, 400, 20, 209, "A: Download   X / TOUCH: Beschreibung   B: Zurueck", 100, 255, 120, 1);
+    WP_DrawText(fb, 400, 20, 209, "A: Download  X: Details  Y: Cover holen  B: Zurueck", 100, 255, 120, 1);
 }
 static void Downloader_RenderBottomScreen(u8 *fb, const repo_item_t *items, const bool *installed_flags, int count, int sel_idx, int scroll_offset)
 {
@@ -4982,30 +4995,36 @@ static void Downloader_RenderBottomScreen(u8 *fb, const repo_item_t *items, cons
     }
 
     // Bottom Action Buttons:
-    // Left: [A] LADEN (X: 6, Y: 202, W: 125, H: 34)
-    // Middle: [X] DETAILS (X: 136, Y: 202, W: 100, H: 34)
-    // Right: [B] ZURUECK (X: 242, Y: 202, W: 72, H: 34)
+    // Left: [A] LADEN (X: 6, Y: 202, W: 96, H: 34)
+    // Mid-Left: [Y] COVER (X: 106, Y: 202, W: 66, H: 34)
+    // Mid-Right: [X] DETAILS (X: 176, Y: 202, W: 72, H: 34)
+    // Right: [B] ZURUECK (X: 252, Y: 202, W: 62, H: 34)
     bool already_inst = (count > 0 && sel_idx < count && installed_flags) ? installed_flags[sel_idx] : false;
 
     if (already_inst) {
-        WP_FillRect(fb, 320, 6, 202, 125, 34, 30, 70, 40);
-        WP_DrawRect(fb, 320, 6, 202, 125, 34, 60, 150, 70);
-        WP_DrawCenteredText(fb, 320, 6, 202, 125, 34, "NEU LADEN [A]", 200, 255, 200, 1);
+        WP_FillRect(fb, 320, 6, 202, 96, 34, 30, 70, 40);
+        WP_DrawRect(fb, 320, 6, 202, 96, 34, 60, 150, 70);
+        WP_DrawCenteredText(fb, 320, 6, 202, 96, 34, "NEU [A]", 200, 255, 200, 1);
     } else {
-        WP_FillRect(fb, 320, 6, 202, 125, 34, 20, 120, 45);
-        WP_DrawRect(fb, 320, 6, 202, 125, 34, 60, 230, 90);
-        WP_DrawCenteredText(fb, 320, 6, 202, 125, 34, "[A] LADEN", 255, 255, 255, 1);
+        WP_FillRect(fb, 320, 6, 202, 96, 34, 20, 120, 45);
+        WP_DrawRect(fb, 320, 6, 202, 96, 34, 60, 230, 90);
+        WP_DrawCenteredText(fb, 320, 6, 202, 96, 34, "[A] LADEN", 255, 255, 255, 1);
     }
 
-    // Info / Description Button
-    WP_FillRect(fb, 320, 136, 202, 100, 34, 35, 55, 85);
-    WP_DrawRect(fb, 320, 136, 202, 100, 34, 70, 120, 210);
-    WP_DrawCenteredText(fb, 320, 136, 202, 100, 34, "[X] DETAILS", 255, 255, 255, 1);
+    // Cover Button [Y]
+    WP_FillRect(fb, 320, 106, 202, 66, 34, 40, 50, 30);
+    WP_DrawRect(fb, 320, 106, 202, 66, 34, 180, 190, 60);
+    WP_DrawCenteredText(fb, 320, 106, 202, 66, 34, "[Y] COVER", 255, 235, 120, 1);
 
-    // Back button
-    WP_FillRect(fb, 320, 242, 202, 72, 34, 30, 30, 36);
-    WP_DrawRect(fb, 320, 242, 202, 72, 34, 80, 80, 95);
-    WP_DrawCenteredText(fb, 320, 242, 202, 72, 34, "[B] ZURUECK", 255, 255, 255, 1);
+    // Info / Description Button [X]
+    WP_FillRect(fb, 320, 176, 202, 72, 34, 35, 55, 85);
+    WP_DrawRect(fb, 320, 176, 202, 72, 34, 70, 120, 210);
+    WP_DrawCenteredText(fb, 320, 176, 202, 72, 34, "[X] INFO", 255, 255, 255, 1);
+
+    // Back button [B]
+    WP_FillRect(fb, 320, 252, 202, 62, 34, 30, 30, 36);
+    WP_DrawRect(fb, 320, 252, 202, 62, 34, 80, 80, 95);
+    WP_DrawCenteredText(fb, 320, 252, 202, 62, 34, "[B]", 255, 255, 255, 1);
 }
 
 static void Downloader_ShowModal(const char *title, const char *msg1, const char *msg2, u8 r, u8 g, u8 b)
@@ -5038,14 +5057,239 @@ static void Downloader_ShowModal(const char *title, const char *msg1, const char
     }
 }
 
+static void Downloader_RenderCacheFrame(int progress_pct, const char *step_title, const char *log_lines[], int log_count, int spinner_frame)
+{
+    // 1. Top Screen (400x240)
+    u8 *top_fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+    if (top_fb) {
+        // Background: Dark gunmetal
+        WP_FillRect(top_fb, 400, 0, 0, 400, 240, 20, 20, 24);
+
+        // Header banner: Deep Crimson
+        WP_FillRect(top_fb, 400, 0, 0, 400, 32, 130, 20, 20);
+        WP_FillRect(top_fb, 400, 0, 30, 400, 2, 210, 40, 40);
+        WP_DrawText(top_fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
+        WP_DrawText(top_fb, 400, 270, 12, "v1.0.7 WAD STORE", 255, 215, 0, 1);
+
+        // Central Card Frame
+        WP_FillRect(top_fb, 400, 20, 46, 360, 172, 30, 32, 40);
+        WP_DrawRect(top_fb, 400, 20, 46, 360, 172, 70, 140, 220);
+
+        // Title Box
+        WP_FillRect(top_fb, 400, 20, 46, 360, 28, 40, 60, 95);
+        WP_DrawCenteredText(top_fb, 400, 20, 46, 360, 28, "INITIALISIERE WAD-STORE CACHE", 255, 255, 255, 1);
+
+        // Spinner / Animation Icon
+        static const char *spinner_chars[] = {"[ | ]", "[ / ]", "[ - ]", "[ \\ ]"};
+        const char *spin = spinner_chars[(spinner_frame / 4) % 4];
+        WP_DrawCenteredText(top_fb, 400, 20, 84, 360, 16, spin, 255, 215, 0, 2);
+
+        // Step description
+        if (step_title) {
+            WP_DrawCenteredText(top_fb, 400, 30, 114, 340, 16, step_title, 200, 230, 255, 1);
+        }
+
+        // Progress Bar
+        int bar_x = 40;
+        int bar_y = 138;
+        int bar_w = 320;
+        int bar_h = 22;
+
+        WP_FillRect(top_fb, 400, bar_x, bar_y, bar_w, bar_h, 12, 14, 18);
+        WP_DrawRect(top_fb, 400, bar_x, bar_y, bar_w, bar_h, 120, 150, 190);
+
+        if (progress_pct > 0) {
+            int fill_w = (int)((progress_pct / 100.0f) * (bar_w - 4));
+            if (fill_w > bar_w - 4) fill_w = bar_w - 4;
+            u8 bar_r = (progress_pct == 100) ? 50 : 30 + (progress_pct % 20);
+            u8 bar_g = (progress_pct == 100) ? 220 : 180;
+            u8 bar_b = (progress_pct == 100) ? 70 : 80;
+            WP_FillRect(top_fb, 400, bar_x + 2, bar_y + 2, fill_w, bar_h - 4, bar_r, bar_g, bar_b);
+        }
+
+        char pct_str[32];
+        snprintf(pct_str, sizeof(pct_str), "%d %%", progress_pct);
+        WP_DrawCenteredText(top_fb, 400, bar_x, bar_y + 4, bar_w, 16, pct_str, 255, 255, 255, 1);
+
+        WP_DrawCenteredText(top_fb, 400, 20, 175, 360, 16, "Einmalige Initialisierung fuer maximale Geschwindigkeit", 160, 170, 190, 1);
+    }
+
+    // 2. Bottom Screen (320x240)
+    u8 *bot_fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+    if (bot_fb) {
+        WP_FillRect(bot_fb, 320, 0, 0, 320, 240, 14, 16, 20);
+
+        WP_FillRect(bot_fb, 320, 10, 12, 300, 24, 25, 35, 48);
+        WP_DrawRect(bot_fb, 320, 10, 12, 300, 24, 60, 120, 180);
+        WP_DrawText(bot_fb, 320, 20, 18, "DIAGNOSE & SYSTEM-STATUS", 255, 215, 0, 1);
+
+        WP_FillRect(bot_fb, 320, 10, 40, 300, 186, 18, 22, 28);
+        WP_DrawRect(bot_fb, 320, 10, 40, 300, 186, 50, 70, 90);
+
+        for (int i = 0; i < log_count && i < 8; i++) {
+            if (log_lines[i]) {
+                WP_DrawText(bot_fb, 320, 20, 52 + i * 20, log_lines[i], 120, 230, 160, 1);
+            }
+        }
+
+        if (progress_pct < 100) {
+            WP_DrawText(bot_fb, 320, 20, 204, "> Bitte kurz warten...", 220, 220, 220, 1);
+        } else {
+            WP_DrawText(bot_fb, 320, 20, 204, "> Bereit! Starte WAD-Store...", 100, 255, 120, 1);
+        }
+    }
+
+    gfxFlushBuffers();
+    gfxSwapBuffers();
+    gspWaitForVBlank();
+}
+
+static void Downloader_InitStoreCacheWithAnimation(void)
+{
+    if (s_store_cache_initialized) return;
+
+    const char *logs[8] = {0};
+    int log_cnt = 0;
+    int anim_frame = 0;
+
+    static char log_buf0[64], log_buf1[64], log_buf2[64], log_buf3[64], log_buf4[64];
+
+    snprintf(log_buf0, sizeof(log_buf0), "[..] SD-Karte /3ds/Trinity3DS/wads/");
+    logs[log_cnt++] = log_buf0;
+
+    for (int f = 0; f < 10; f++) {
+        Downloader_RenderCacheFrame(10 + f, "Scanne Verzeichnisse auf SD-Karte...", logs, log_cnt, anim_frame++);
+    }
+
+    // Step 1: Scan local files
+    #define MAX_CACHE_FILES 1024
+    static char cache_files[MAX_CACHE_FILES][64];
+    int cache_count = 0;
+
+    DIR *d = opendir("sdmc:/3ds/Trinity3DS/wads");
+    if (d) {
+        struct dirent *ent;
+        while ((ent = readdir(d)) != NULL && cache_count < MAX_CACHE_FILES) {
+            if (ent->d_name[0] == '.') continue;
+            strncpy(cache_files[cache_count], ent->d_name, sizeof(cache_files[cache_count]) - 1);
+            cache_files[cache_count][sizeof(cache_files[cache_count]) - 1] = '\0';
+            cache_count++;
+        }
+        closedir(d);
+    }
+
+    snprintf(log_buf0, sizeof(log_buf0), "[OK] Verzeichnis gelesen: %d Dateien", cache_count);
+
+    int installed_count = 0;
+    int covers_count = 0;
+
+    // Step 2: Match catalog items
+    snprintf(log_buf1, sizeof(log_buf1), "[..] Indiziere %d WADs...", CATALOG_COUNT);
+    logs[log_cnt++] = log_buf1;
+
+    for (int f = 0; f < 10; f++) {
+        Downloader_RenderCacheFrame(25 + f * 2, "Indiziere Katalog & Installationsstatus...", logs, log_cnt, anim_frame++);
+    }
+
+    memset(s_installed, 0, sizeof(s_installed));
+    memset(s_has_cover, 0, sizeof(s_has_cover));
+
+    for (int i = 0; i < CATALOG_COUNT; i++) {
+        const char *target = s_catalog[i].target_file;
+        char base[64];
+        strncpy(base, target, sizeof(base) - 1);
+        base[sizeof(base) - 1] = '\0';
+        char *dot = strrchr(base, '.');
+        if (dot) *dot = '\0';
+
+        char png_name[64];
+        snprintf(png_name, sizeof(png_name), "%s.png", base);
+
+        for (int j = 0; j < cache_count; j++) {
+            if (!s_installed[i] && !strcasecmp(target, cache_files[j])) {
+                s_installed[i] = true;
+                installed_count++;
+            }
+            if (!s_has_cover[i] && !strcasecmp(png_name, cache_files[j])) {
+                s_has_cover[i] = true;
+                covers_count++;
+            }
+        }
+    }
+
+    snprintf(log_buf1, sizeof(log_buf1), "[OK] Installiert: %d | Covers: %d", installed_count, covers_count);
+
+    // Step 3: Check TITLEPIC extraction for installed WADs without cover
+    snprintf(log_buf2, sizeof(log_buf2), "[..] Optimiere Cover-Cache...");
+    logs[log_cnt++] = log_buf2;
+
+    for (int f = 0; f < 8; f++) {
+        Downloader_RenderCacheFrame(50 + f * 3, "Pruefe TITLEPICs installierter WADs...", logs, log_cnt, anim_frame++);
+    }
+
+    int extracted = 0;
+    for (int i = 0; i < CATALOG_COUNT; i++) {
+        if (s_installed[i] && !s_has_cover[i]) {
+            char base[64];
+            strncpy(base, s_catalog[i].target_file, sizeof(base) - 1);
+            base[sizeof(base) - 1] = '\0';
+            char *dot = strrchr(base, '.');
+            if (dot) *dot = '\0';
+
+            char wad_path[256];
+            snprintf(wad_path, sizeof(wad_path), "sdmc:/3ds/Trinity3DS/wads/%s", s_catalog[i].target_file);
+            char png_path[256];
+            snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.png", base);
+
+            if (Downloader_ExtractTitlepicToPng(wad_path, png_path)) {
+                s_has_cover[i] = true;
+                extracted++;
+            }
+        }
+    }
+
+    if (extracted > 0) {
+        snprintf(log_buf2, sizeof(log_buf2), "[OK] %d TITLEPICs automatisch extrahiert", extracted);
+    } else {
+        snprintf(log_buf2, sizeof(log_buf2), "[OK] Cover-Cache ist aktuell");
+    }
+
+    // Step 4: Finalize
+    snprintf(log_buf3, sizeof(log_buf3), "[OK] %d Megawads im RAM bereit", CATALOG_COUNT);
+    logs[log_cnt++] = log_buf3;
+
+    snprintf(log_buf4, sizeof(log_buf4), "[OK] In-Memory Cache aktiv!");
+    logs[log_cnt++] = log_buf4;
+
+    for (int pct = 80; pct <= 100; pct += 2) {
+        Downloader_RenderCacheFrame(pct, "Initialisierung abgeschlossen!", logs, log_cnt, anim_frame++);
+    }
+
+    // Hold 100% frame briefly for satisfying feedback (~15 frames = 250ms)
+    for (int f = 0; f < 15; f++) {
+        Downloader_RenderCacheFrame(100, "Viel Spass im WAD Store!", logs, log_cnt, anim_frame++);
+    }
+
+    s_store_cache_initialized = true;
+}
+
 bool WAD_Downloader_Run(void)
 {
     int selected_idx = 0;
     int scroll_offset = 0;
     bool any_installed = false;
 
-    // Check installed status ONCE upfront in memory (zero SD I/O during render loop!)
-    Downloader_RefreshInstalledCache();
+    // Check if initial cache build is needed (with animated loading screen)
+    if (!s_store_cache_initialized) {
+        Downloader_InitStoreCacheWithAnimation();
+    } else {
+        Downloader_RefreshInstalledCache();
+    }
+
+    WP_InvalidateCoverCache();
+    if (CATALOG_COUNT > 0) {
+        WP_UpdateCoverByFilename(s_catalog[0].target_file);
+    }
 
     while (aptMainLoop()) {
         hidScanInput();
@@ -5136,18 +5380,21 @@ bool WAD_Downloader_Run(void)
                 }
             }
 
-            // Touch on Bottom Action Button: [A] LADEN
-            if (touch.py >= 202 && touch.py <= 236 && touch.px >= 6 && touch.px <= 131) {
+            // Touch on Bottom Action Buttons:
+            // [A] LADEN (6 to 102)
+            if (touch.py >= 202 && touch.py <= 236 && touch.px >= 6 && touch.px <= 102) {
                 kDown |= KEY_A;
             }
-
-            // Touch on Middle Button: [X] DETAILS
-            if (touch.py >= 202 && touch.py <= 236 && touch.px >= 136 && touch.px <= 236) {
+            // [Y] COVER (106 to 172)
+            if (touch.py >= 202 && touch.py <= 236 && touch.px >= 106 && touch.px <= 172) {
+                kDown |= KEY_Y;
+            }
+            // [X] DETAILS (176 to 248)
+            if (touch.py >= 202 && touch.py <= 236 && touch.px >= 176 && touch.px <= 248) {
                 kDown |= KEY_X;
             }
-
-            // Touch on Right Button: [B] ZURUECK
-            if (touch.py >= 202 && touch.py <= 236 && touch.px >= 242 && touch.px <= 314) {
+            // [B] ZURUECK (252 to 314)
+            if (touch.py >= 202 && touch.py <= 236 && touch.px >= 252 && touch.px <= 314) {
                 kDown |= KEY_B;
             }
         }
@@ -5156,6 +5403,42 @@ bool WAD_Downloader_Run(void)
         if ((kDown & KEY_X) || (kDown & KEY_SELECT)) {
             if (count > 0 && selected_idx < count) {
                 Downloader_ShowDescriptionModal(&s_catalog[selected_idx]);
+            }
+        }
+
+        // Manual Online Cover Download: [Y]
+        if (kDown & KEY_Y) {
+            if (count > 0 && selected_idx < count) {
+                const repo_item_t *cur = &s_catalog[selected_idx];
+                if (osGetWifiStrength() == 0) {
+                    Downloader_ShowModal("KEIN WLAN", "Bitte 3DS mit dem Internet verbinden!", "Um Online-Covers zu laden.", 255, 80, 80);
+                    continue;
+                }
+                if (!Downloader_InitNetwork()) {
+                    Downloader_ShowModal("NETZWERKFEHLER", "Socket-Initialisierung fehlgeschlagen!", NULL, 255, 50, 50);
+                    continue;
+                }
+
+                char base_name[64];
+                strncpy(base_name, cur->target_file, sizeof(base_name) - 1);
+                base_name[sizeof(base_name) - 1] = '\0';
+                char *dot = strrchr(base_name, '.');
+                if (dot) *dot = '\0';
+
+                char png_path[256];
+                snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.png", base_name);
+
+                Downloader_ShowModal("COVER WIRD GELADEN...", cur->title, "Verbinde mit Online-Repository...", 80, 160, 255);
+
+                bool ok = Downloader_FetchOnlineCover(cur->target_file, png_path);
+                if (ok) {
+                    s_has_cover[selected_idx] = true;
+                    WP_InvalidateCoverCache();
+                    WP_UpdateCoverByFilename(cur->target_file);
+                    Downloader_ShowModal("COVER ERFOLGREICH GELADEN!", cur->title, "Cover wurde auf SD-Karte gespeichert.", 50, 220, 80);
+                } else {
+                    Downloader_ShowModal("KEIN COVER GEFUNDEN", "Fuer diesen Eintrag existiert kein", "Cover in den Online-Repositories.", 255, 120, 80);
+                }
             }
         }
 
@@ -5179,6 +5462,8 @@ bool WAD_Downloader_Run(void)
                 if (ok) {
                     any_installed = true;
                     Downloader_RefreshInstalledCache();
+                    WP_InvalidateCoverCache();
+                    WP_UpdateCoverByFilename(sel->target_file);
                     Downloader_ShowModal("DOWNLOAD ERFOLGREICH!", sel->title, "Wurde erfolgreich nach /wads/ installiert!", 50, 220, 80);
                 } else {
                     Downloader_ShowModal("FEHLER BEIM DOWNLOAD", err_msg, "Bitte spaeter erneut versuchen.", 255, 60, 60);
@@ -5186,48 +5471,15 @@ bool WAD_Downloader_Run(void)
             }
         }
 
-        // Debounced On-Demand Cover Caching
+        // Update cover on selection change (instant 60 FPS, zero SD thrashing)
         static int s_last_sel = -1;
-        static int s_hover_frames = 0;
-        static bool s_tried_fetch = false;
-
         if (selected_idx != s_last_sel) {
             s_last_sel = selected_idx;
-            s_hover_frames = 0;
-            s_tried_fetch = false;
-        } else if (!s_tried_fetch) {
-            s_hover_frames++;
-            if (s_hover_frames >= 20) { // ~330ms stationary on current item
-                s_tried_fetch = true;
-                if (!WP_HasCover()) {
-                    const repo_item_t *cur = (count > 0) ? &s_catalog[selected_idx] : NULL;
-                    if (cur) {
-                        char base_name[64];
-                        strncpy(base_name, cur->target_file, sizeof(base_name) - 1);
-                        base_name[sizeof(base_name) - 1] = '\0';
-                        char *dot = strrchr(base_name, '.');
-                        if (dot) *dot = '\0';
-
-                        char png_path[256];
-                        snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.png", base_name);
-
-                        // 1. If WAD is already installed on SD, try TITLEPIC extraction
-                        if (s_installed[selected_idx]) {
-                            char wad_path[256];
-                            snprintf(wad_path, sizeof(wad_path), "sdmc:/3ds/Trinity3DS/wads/%s", cur->target_file);
-                            if (Downloader_ExtractTitlepicToPng(wad_path, png_path)) {
-                                WP_UpdateCoverByFilename(cur->target_file);
-                            }
-                        }
-
-                        // 2. If still no cover and WiFi is active, try online fetch
-                        if (!WP_HasCover() && osGetWifiStrength() > 0) {
-                            if (Downloader_FetchOnlineCover(cur->target_file, png_path)) {
-                                WP_UpdateCoverByFilename(cur->target_file);
-                            }
-                        }
-                    }
-                }
+            const repo_item_t *cur = (count > 0) ? &s_catalog[selected_idx] : NULL;
+            if (cur) {
+                WP_UpdateCoverByFilename(cur->target_file);
+            } else {
+                WP_FreeCover();
             }
         }
 
@@ -5249,7 +5501,6 @@ bool WAD_Downloader_Run(void)
         gspWaitForVBlank();
     }
 
-    // Do NOT shutdown network here if it wasn't even needed, or if user returns to browser
-    // This makes pressing [B] instant without any lag!
+    WP_InvalidateCoverCache();
     return any_installed;
 }
