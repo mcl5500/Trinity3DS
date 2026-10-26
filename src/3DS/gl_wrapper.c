@@ -23,9 +23,15 @@ typedef enum _gl_c3d_dirty_flags {
     DIRTY_FLAGS_SCISSOR     = 0x0020,
     DIRTY_FLAGS_TEV         = 0x0040,
     DIRTY_FLAGS_FOG         = 0x0080,
+    DIRTY_FLAGS_FOGLUT      = 0x0100,
 } gl_c3d_dirty_flags;
 
+// Magic value to validate GL texture IDs (the ID is the struct pointer itself),
+// allowing O(1) lookups instead of walking the whole texture list
+#define GL_C3D_TEX_MAGIC 0x54455833u // 'TEX3'
+
 typedef struct _gl_c3d_tex {
+    u32 magic;
     C3D_Tex c3d_tex;
 
     struct _gl_c3d_tex *prev;
@@ -99,7 +105,37 @@ static DVLB_s* vshader_dvlb;
 static shaderProgram_s program;
 static int uloc_mv_mtx, uloc_p_mtx, uloc_t_mtx;
 
-static C3D_FogLut fog_Lut;
+static C3D_FogLut *_get_fog_lut(float density);
+
+// Cache of precomputed fog LUTs keyed by density. PrBoom only uses a handful of
+// distinct densities (one per light level), but switches between them constantly
+// because draw items are sorted by texture. Recomputing a LUT costs 128 expf().
+#define FOG_LUT_CACHE_SIZE 32
+typedef struct {
+    float density;
+    int valid;
+    C3D_FogLut lut;
+} fog_lut_cache_entry;
+
+static fog_lut_cache_entry fog_lut_cache[FOG_LUT_CACHE_SIZE];
+static int fog_lut_cache_next = 0;
+
+static C3D_FogLut *_get_fog_lut(float density) {
+    for(int i = 0; i < FOG_LUT_CACHE_SIZE; i++) {
+        if(fog_lut_cache[i].valid && fog_lut_cache[i].density == density)
+            return &fog_lut_cache[i].lut;
+    }
+
+    // Not cached yet: compute into the next slot (round-robin replacement)
+    fog_lut_cache_entry *e = &fog_lut_cache[fog_lut_cache_next];
+    fog_lut_cache_next = (fog_lut_cache_next + 1) % FOG_LUT_CACHE_SIZE;
+
+    FogLut_Exp(&e->lut, density * 12.0f, 1.0f, 0.01f, 1.0f);
+    e->density = density;
+    e->valid = 1;
+
+    return &e->lut;
+}
 
 static C3D_MtxStack mtx_modelview, mtx_projection, mtx_texture;
 static C3D_MtxStack *cur_mtxstack;
@@ -230,10 +266,16 @@ static inline void _release_all_gl_textures() {
     gl_c3d_tex *gl_delete_tex = gl_c3d_tex_base;
 
     while(gl_delete_tex) {
+        gl_c3d_tex *next = gl_delete_tex->next;
+
         if(gl_delete_tex->c3d_tex.data)
             linearFree(gl_delete_tex->c3d_tex.data);
 
-        gl_delete_tex = gl_delete_tex->next;
+        // Invalidate the ID and free the struct (was previously leaked)
+        gl_delete_tex->magic = 0;
+        free(gl_delete_tex);
+
+        gl_delete_tex = next;
     }
 
     gl_c3d_tex_base = NULL;
@@ -570,14 +612,16 @@ static inline void _update_dirty_render_states() {
     }
     if(dirty_flags & DIRTY_FLAGS_FOG)
     {
-        FogLut_Exp(&fog_Lut, fog_density * 12.0f, 1.0f, 0.01f, 1.0f);
         C3D_FogGasMode(fog_enable ? GPU_FOG : GPU_NO_FOG, GPU_DEPTH_DENSITY, true);
 
         C3D_FogColor( ((int)(fog_color[0] * 255) << 16) |
                       ((int)(fog_color[1] * 255) << 8) |
                       ((int)(fog_color[2] * 255)) );
-
-        C3D_FogLutBind(&fog_Lut);
+    }
+    if(dirty_flags & DIRTY_FLAGS_FOGLUT)
+    {
+        // Only touch the LUT when the density actually changed (cached, no expf)
+        C3D_FogLutBind(_get_fog_lut(fog_density));
     }
 
     // Reset all dirty flags
@@ -673,24 +717,20 @@ void glEnd(void) {
 }
 
 static inline GLuint _gen_texture() {
+    gl_c3d_tex *new_tex = malloc(sizeof(gl_c3d_tex));
+    if(!new_tex)
+        return 0;
+
+    new_tex->magic = GL_C3D_TEX_MAGIC;
+    new_tex->next = NULL;
+    new_tex->prev = gl_c3d_tex_head;
+
     if(!gl_c3d_tex_head) // Linked list has no entries?
-    {
-        gl_c3d_tex_head = malloc(sizeof(gl_c3d_tex));
-
-        gl_c3d_tex_head->prev = NULL;
-        gl_c3d_tex_head->next = NULL;
-
-        gl_c3d_tex_base = gl_c3d_tex_head;
-    }
+        gl_c3d_tex_base = new_tex;
     else // Create new entry at the head of the list
-    {
-        gl_c3d_tex_head->next = malloc(sizeof(gl_c3d_tex));
+        gl_c3d_tex_head->next = new_tex;
 
-        gl_c3d_tex_head->next->prev = gl_c3d_tex_head;
-        gl_c3d_tex_head->next->next = NULL;
-
-        gl_c3d_tex_head = gl_c3d_tex_head->next;
-    }
+    gl_c3d_tex_head = new_tex;
 
     // Set default C3D texture parameters
     gl_c3d_tex_head->c3d_tex.width = 0;
@@ -717,17 +757,15 @@ void glGenTextures(GLsizei n, GLuint *textures) {
         textures[i] = _gen_texture();
 }
 
+// O(1) lookup: the GL texture ID is the pointer to the texture struct.
+// The magic value guards against stale/invalid IDs (it is cleared on delete).
 static inline gl_c3d_tex *_try_find_texture(GLuint texture) {
-    gl_c3d_tex *cur_entry = gl_c3d_tex_base;
+    gl_c3d_tex *entry = (gl_c3d_tex *)texture;
 
-    while(cur_entry) {
-        if((GLuint)cur_entry == texture)
-            return cur_entry;
+    if(!entry || entry->magic != GL_C3D_TEX_MAGIC)
+        return NULL;
 
-        cur_entry = cur_entry->next;
-    }
-
-    return NULL;
+    return entry;
 }
 
 void glBindTexture(GLenum target, GLuint texture) {
@@ -888,6 +926,9 @@ static inline void _delete_texture(GLuint texture) {
     gl_c3d_tex *prev = gl_delete_tex->prev;
     gl_c3d_tex *next = gl_delete_tex->next;
 
+    // Invalidate the ID so stale handles are rejected by _try_find_texture
+    gl_delete_tex->magic = 0;
+
     // Delete (free) the texture
     free(gl_delete_tex);
 
@@ -928,8 +969,11 @@ void glFogi(GLenum pname, GLint param) {
 void glFogf(GLenum pname, GLfloat param) {
     switch(pname) {
     case GL_FOG_DENSITY:
-        fog_density = param;
-        break;
+        if(fog_density != param) {
+            fog_density = param;
+            dirty_flags |= DIRTY_FLAGS_FOGLUT;
+        }
+        return;
     }
 
     dirty_flags |= DIRTY_FLAGS_FOG;

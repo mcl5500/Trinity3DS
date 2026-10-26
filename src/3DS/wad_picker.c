@@ -1,6 +1,7 @@
 #include "wad_picker.h"
 #include "wad_downloader.h"
 #include "i_main.h"
+#include "version.h"
 
 void I_SetupTimidity(void);
 #include <3ds.h>
@@ -777,7 +778,7 @@ static void WP_RenderTopScreen(u8 *fb)
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, "v1.1.0 WAD MANAGER", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 280, 12, TRINITY3DS_VERSION_STR " WAD MANAGER", 255, 215, 0, 1);
 
     if (s_wad_count == 0) {
         WP_DrawText(fb, 400, 20, 100, "KEINE WAD-DATEIEN GEFUNDEN!", 255, 50, 50, 2);

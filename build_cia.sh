@@ -30,9 +30,18 @@ fi
 
 RES="$DIR/build/3ds/res"
 
+# Single source of truth for the version: src/version.h (TRINITY3DS_VERSION "X.Y.Z")
+VERSION=$(sed -n 's/^#define TRINITY3DS_VERSION "\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/p' "$DIR/src/version.h")
+if [ -z "$VERSION" ]; then
+    echo "Error: could not read TRINITY3DS_VERSION from src/version.h"
+    exit 1
+fi
+IFS='.' read -r VER_MAJOR VER_MINOR VER_MICRO <<< "$VERSION"
+echo "=== Version: v$VERSION ==="
+
 echo "=== Creating Banner and SMDH ==="
 $BANNERTOOL makebanner -i "$RES/banner.png" -a "$RES/banner.wav" -o "$RES/banner.bin"
-$BANNERTOOL makesmdh -i "$RES/icon.png" -s "Trinity3DS" -l "Trinity3DS v1.1.0" -p "Sheldor & id Software" -f visible,allow3d,recordusage -o "$RES/icon.bin"
+$BANNERTOOL makesmdh -i "$RES/icon.png" -s "Trinity3DS" -l "Trinity3DS v$VERSION" -p "Sheldor & id Software" -f visible,allow3d,recordusage -o "$RES/icon.bin"
 
 echo "=== Packaging CIA with makerom ==="
 $MAKEROM -f cia -target t -exefslogo \
@@ -42,7 +51,7 @@ $MAKEROM -f cia -target t -exefslogo \
     -banner "$RES/banner.bin" \
     -icon "$RES/icon.bin" \
     -logo "$RES/logo.bcma.lz" \
-    -major 1 -minor 1 -micro 0 \
+    -major "$VER_MAJOR" -minor "$VER_MINOR" -micro "$VER_MICRO" \
     -DAPP_VERSION_MAJOR=1
 
 cp "$DIR/build/3ds/Trinity3DS.3dsx" "$DIR/Trinity3DS.3dsx"
