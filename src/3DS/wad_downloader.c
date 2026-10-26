@@ -4319,7 +4319,7 @@ bool Downloader_FetchOnlineCover(const char *target_filename, const char *out_pn
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.7 (Nintendo 3DS)");
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.8 (Nintendo 3DS)");
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
         curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
@@ -4394,7 +4394,7 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.7 (Nintendo 3DS)");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.8 (Nintendo 3DS)");
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 600L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
     // Optimized buffer sizes for faster 3DS network throughput
@@ -4763,7 +4763,7 @@ bool Downloader_FetchMetadataForWad(const char *filename, char *out_author, size
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteMemoryCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.7 (Nintendo 3DS)");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.8 (Nintendo 3DS)");
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 6L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 4L);
 
@@ -4839,7 +4839,7 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, "v1.0.7 WAD STORE", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 280, 12, "v1.0.8 WAD STORE", 255, 215, 0, 1);
 
     // WiFi signal
     int wifi = osGetWifiStrength();
@@ -5069,7 +5069,7 @@ static void Downloader_RenderCacheFrame(int progress_pct, const char *step_title
         WP_FillRect(top_fb, 400, 0, 0, 400, 32, 130, 20, 20);
         WP_FillRect(top_fb, 400, 0, 30, 400, 2, 210, 40, 40);
         WP_DrawText(top_fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
-        WP_DrawText(top_fb, 400, 270, 12, "v1.0.7 WAD STORE", 255, 215, 0, 1);
+        WP_DrawText(top_fb, 400, 270, 12, "v1.0.8 WAD STORE", 255, 215, 0, 1);
 
         // Central Card Frame
         WP_FillRect(top_fb, 400, 20, 46, 360, 172, 30, 32, 40);

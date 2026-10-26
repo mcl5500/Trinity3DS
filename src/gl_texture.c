@@ -780,9 +780,9 @@ l_exit:
     tex_buffer = NULL;
   }
 
-  if (!readonly)
+  if (!readonly && data)
   {
-    free(data);
+    Z_Free(data);
     data = NULL;
   }
 

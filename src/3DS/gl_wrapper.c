@@ -807,17 +807,20 @@ void glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei widt
     }
 
     u32 size = width * height * 4;
-    gl_c3d_tex_head->c3d_tex.width = width;
-    gl_c3d_tex_head->c3d_tex.height = height;
-    gl_c3d_tex_head->c3d_tex.data = linearAlloc(size);
-    gl_c3d_tex_head->c3d_tex.fmt = GPU_RGBA8;
-    gl_c3d_tex_head->c3d_tex.size = size;
+    cur_texture->c3d_tex.width = width;
+    cur_texture->c3d_tex.height = height;
+    cur_texture->c3d_tex.data = linearAlloc(size);
+    cur_texture->c3d_tex.fmt = GPU_RGBA8;
+    cur_texture->c3d_tex.size = size;
 
-    // We can safely leave now if no pixel data (NULL) was provided
-    if(!pixels)
+    // We can safely leave now if no pixel data (NULL) was provided or linearAlloc failed
+    if(!pixels || !cur_texture->c3d_tex.data)
         return;
 
     u32 *swizzle_buf = malloc(size);
+    if (!swizzle_buf)
+        return;
+
     SwizzleTexBufferRGBA8((u32*)pixels, swizzle_buf, width, height);
 
     // Reverse the order of the color components
@@ -829,17 +832,20 @@ void glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei widt
                          ((swizzle_buf[i] & 0x000000ff) << 24);
     }
 
-    memcpy(gl_c3d_tex_head->c3d_tex.data, swizzle_buf, size);
+    memcpy(cur_texture->c3d_tex.data, swizzle_buf, size);
 
     free(swizzle_buf);
 }
 
 void glCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height) {
-    if(!cur_texture)
+    if(!cur_texture || !cur_texture->c3d_tex.data)
         return;
 
     u32 *screen = (u32*)gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
-    u32 *texbuf = (u32*)gl_c3d_tex_head->c3d_tex.data;
+    if(!screen)
+        return;
+
+    u32 *texbuf = (u32*)cur_texture->c3d_tex.data;
 
     for(int y = 0; y < height; y++) {
         for(int x = 0; x < width; x++) {
@@ -848,9 +854,12 @@ void glCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffse
     }
 
     u32 *swizzle_buf = malloc(cur_texture->c3d_tex.size);
+    if (!swizzle_buf)
+        return;
+
     SwizzleTexBufferRGBA8(texbuf, swizzle_buf, cur_texture->c3d_tex.width, cur_texture->c3d_tex.height);
 
-    memcpy(gl_c3d_tex_head->c3d_tex.data, swizzle_buf, gl_c3d_tex_head->c3d_tex.size);
+    memcpy(cur_texture->c3d_tex.data, swizzle_buf, cur_texture->c3d_tex.size);
 
     free(swizzle_buf);
 }

@@ -383,10 +383,12 @@ static wp_image_t* WP_LoadPNG(const char *filename)
 }
 
 static char s_last_filename[64] = "";
+static int s_cached_meta_idx = -1;
 
 void WP_InvalidateCoverCache(void)
 {
     s_last_filename[0] = '\0';
+    s_cached_meta_idx = -1;
     WP_FreeCover();
 }
 
@@ -775,7 +777,7 @@ static void WP_RenderTopScreen(u8 *fb)
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, "v1.0.7 WAD MANAGER", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 280, 12, "v1.0.8 WAD MANAGER", 255, 215, 0, 1);
 
     if (s_wad_count == 0) {
         WP_DrawText(fb, 400, 20, 100, "KEINE WAD-DATEIEN GEFUNDEN!", 255, 50, 50, 2);
@@ -840,23 +842,30 @@ static void WP_RenderTopScreen(u8 *fb)
     snprintf(path_buf, sizeof(path_buf), "DATEI: %s", cur->filename);
     WP_DrawText(fb, 400, info_x, 110, path_buf, 160, 210, 255, 1);
 
-    // Metadata snippet (Author & Description preview)
-    char meta_auth[64] = "";
-    char meta_base[32] = "";
-    char meta_desc[256] = "";
-    bool has_meta = WP_LoadWadMetadata(cur->filename, meta_auth, sizeof(meta_auth), meta_base, sizeof(meta_base), meta_desc, sizeof(meta_desc));
+    // Metadata snippet (Author & Description preview) - cached by index to avoid 60 FPS SD thrashing
+    static char s_cached_auth[64] = "";
+    static char s_cached_base[32] = "";
+    static char s_cached_desc[256] = "";
+    static bool s_cached_has_meta = false;
 
-    if (has_meta && meta_auth[0] && strcasecmp(meta_auth, "Unbekannt") != 0) {
+    if (s_selected_idx != s_cached_meta_idx) {
+        s_cached_meta_idx = s_selected_idx;
+        s_cached_has_meta = WP_LoadWadMetadata(cur->filename, s_cached_auth, sizeof(s_cached_auth),
+                                               s_cached_base, sizeof(s_cached_base),
+                                               s_cached_desc, sizeof(s_cached_desc));
+    }
+
+    if (s_cached_has_meta && s_cached_auth[0] && strcasecmp(s_cached_auth, "Unbekannt") != 0) {
         char auth_buf[64];
-        snprintf(auth_buf, sizeof(auth_buf), "AUTOR: %s", meta_auth);
+        snprintf(auth_buf, sizeof(auth_buf), "AUTOR: %s", s_cached_auth);
         WP_DrawText(fb, 400, info_x, 130, auth_buf, 255, 215, 0, 1);
     } else {
         WP_DrawText(fb, 400, info_x, 130, cur->is_iwad ? "* EIGENSTAENDIGES SPIEL" : "* MEGAWAD / MOD", 100, 255, 120, 1);
     }
 
-    if (has_meta && meta_desc[0]) {
+    if (s_cached_has_meta && s_cached_desc[0]) {
         char short_desc[48];
-        strncpy(short_desc, meta_desc, sizeof(short_desc) - 1);
+        strncpy(short_desc, s_cached_desc, sizeof(short_desc) - 1);
         short_desc[sizeof(short_desc) - 1] = '\0';
         WP_DrawText(fb, 400, info_x, 146, short_desc, 200, 200, 210, 1);
     } else {
@@ -1013,6 +1022,7 @@ static bool WP_ManageWadModal(int wad_idx)
 
             bool ok = Downloader_FetchMetadataForWad(wad->filename, meta_author, sizeof(meta_author), meta_base, sizeof(meta_base), meta_desc, sizeof(meta_desc));
             WP_UpdateCoverByFilename(wad->filename);
+            s_cached_meta_idx = -1;
 
             if (ok) {
                 snprintf(status_msg, sizeof(status_msg), "Metadaten & Cover geladen!");
