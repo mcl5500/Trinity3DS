@@ -545,8 +545,10 @@ static bool Downloader_CheckFileOnDisk(const char *target_filename)
     if (!target_filename || !target_filename[0]) return false;
 
     char path[256];
-    // Check exact
+    // Check exact in Trinity3DS or Boom3DS
     snprintf(path, sizeof(path), "sdmc:/3ds/Trinity3DS/wads/%s", target_filename);
+    if (access(path, R_OK) == 0) return true;
+    snprintf(path, sizeof(path), "sdmc:/3ds/Boom3DS/wads/%s", target_filename);
     if (access(path, R_OK) == 0) return true;
 
     // Check lowercase
@@ -556,6 +558,8 @@ static bool Downloader_CheckFileOnDisk(const char *target_filename)
     for (int i = 0; lower[i]; i++) lower[i] = tolower((unsigned char)lower[i]);
     snprintf(path, sizeof(path), "sdmc:/3ds/Trinity3DS/wads/%s", lower);
     if (access(path, R_OK) == 0) return true;
+    snprintf(path, sizeof(path), "sdmc:/3ds/Boom3DS/wads/%s", lower);
+    if (access(path, R_OK) == 0) return true;
 
     // Check uppercase
     char upper[64];
@@ -563,6 +567,8 @@ static bool Downloader_CheckFileOnDisk(const char *target_filename)
     upper[sizeof(upper) - 1] = '\0';
     for (int i = 0; upper[i]; i++) upper[i] = toupper((unsigned char)upper[i]);
     snprintf(path, sizeof(path), "sdmc:/3ds/Trinity3DS/wads/%s", upper);
+    if (access(path, R_OK) == 0) return true;
+    snprintf(path, sizeof(path), "sdmc:/3ds/Boom3DS/wads/%s", upper);
     if (access(path, R_OK) == 0) return true;
 
     return false;

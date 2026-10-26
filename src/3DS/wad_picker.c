@@ -342,7 +342,7 @@ static void WP_UpdateCurrentCover(int idx)
     wad_info_t *wad = &s_wads[idx];
     char png_path[256];
 
-    // 1. Direct path in sdmc:/3ds/Trinity3DS/wads/<filename_without_ext>.png
+    // 1. Direct path in /wads/<filename_without_ext>.png
     char base_name[64];
     strncpy(base_name, wad->filename, sizeof(base_name) - 1);
     base_name[sizeof(base_name) - 1] = '\0';
@@ -353,7 +353,15 @@ static void WP_UpdateCurrentCover(int idx)
     s_cur_cover = WP_LoadPNG(png_path);
     if (s_cur_cover) return;
 
+    snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Boom3DS/wads/%s.png", base_name);
+    s_cur_cover = WP_LoadPNG(png_path);
+    if (s_cur_cover) return;
+
     snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.PNG", base_name);
+    s_cur_cover = WP_LoadPNG(png_path);
+    if (s_cur_cover) return;
+
+    snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Boom3DS/wads/%s.PNG", base_name);
     s_cur_cover = WP_LoadPNG(png_path);
     if (s_cur_cover) return;
 
@@ -600,8 +608,10 @@ void WP_RescanWads(void)
     s_wad_count = 0;
     unlink(WAD_CACHE_FILE);
     WP_ScanDirectory("sdmc:/3ds/Trinity3DS/wads", 0);
+    WP_ScanDirectory("sdmc:/3ds/Boom3DS/wads", 0);
     if (s_wad_count == 0) {
         WP_ScanDirectory("/3ds/Trinity3DS/wads", 0);
+        WP_ScanDirectory("/3ds/Boom3DS/wads", 0);
     }
     if (s_wad_count > 0) {
         qsort(s_wads, s_wad_count, sizeof(wad_info_t), WP_CompareWads);
@@ -809,10 +819,12 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
             gfxSwapBuffers();
         }
 
-        // Scan ONLY the designated WAD folder (no redundant scans)
+        // Scan BOTH Trinity3DS and previous Boom3DS folders seamlessly!
         WP_ScanDirectory("sdmc:/3ds/Trinity3DS/wads", 0);
+        WP_ScanDirectory("sdmc:/3ds/Boom3DS/wads", 0);
         if (s_wad_count == 0) {
             WP_ScanDirectory("/3ds/Trinity3DS/wads", 0);
+            WP_ScanDirectory("/3ds/Boom3DS/wads", 0);
         }
 
         if (s_wad_count > 0) {

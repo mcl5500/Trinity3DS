@@ -629,6 +629,10 @@ void I_InitSound(void)
     setenv("TIMIDITY_CFG", "sdmc:/3ds/Trinity3DS/eawpats/timidity.cfg", 1);
   } else if (access("/3ds/Trinity3DS/eawpats/timidity.cfg", R_OK) == 0) {
     setenv("TIMIDITY_CFG", "/3ds/Trinity3DS/eawpats/timidity.cfg", 1);
+  } else if (access("sdmc:/3ds/Boom3DS/eawpats/timidity.cfg", R_OK) == 0) {
+    setenv("TIMIDITY_CFG", "sdmc:/3ds/Boom3DS/eawpats/timidity.cfg", 1);
+  } else if (access("/3ds/Boom3DS/eawpats/timidity.cfg", R_OK) == 0) {
+    setenv("TIMIDITY_CFG", "/3ds/Boom3DS/eawpats/timidity.cfg", 1);
   } else if (access("/etc/timidity.cfg", R_OK) == 0) {
     setenv("TIMIDITY_CFG", "/etc/timidity.cfg", 1);
   }
