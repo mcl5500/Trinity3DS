@@ -319,8 +319,8 @@ static void DS_DrawWadPatchSub(u8 *fb, int dest_x, int dest_y, const char *patch
     }
 }
 
-// Draw an authentic Doom patch scaled (e.g. 2x) directly into the framebuffer
-static void DS_DrawWadPatchScaled(u8 *fb, int dest_x, int dest_y, const char *patch_name, int scale)
+// Draw an authentic Doom patch with configurable brightness percentage (for dimmed unowned weapons)
+static void DS_DrawWadPatchDimmed(u8 *fb, int dest_x, int dest_y, const char *patch_name, int brightness_percent)
 {
     if (!ds_pal_loaded) DS_LoadPalette();
     if (!ds_pal_loaded) return;
@@ -332,15 +332,17 @@ static void DS_DrawWadPatchScaled(u8 *fb, int dest_x, int dest_y, const char *pa
     if (!data) return;
 
     short w = *(const short *)(data + 0);
-    short h = *(const short *)(data + 2);
     short leftoffset = *(const short *)(data + 4);
     short topoffset = *(const short *)(data + 6);
     const int *columnofs = (const int *)(data + 8);
 
-    dest_x -= leftoffset * scale;
-    dest_y -= topoffset * scale;
+    dest_x -= leftoffset;
+    dest_y -= topoffset;
 
     for (int col = 0; col < w; col++) {
+        int sx = dest_x + col;
+        if (sx < 0 || sx >= 320) continue;
+
         int ofs = columnofs[col];
         const u8 *post = data + ofs;
         while (1) {
@@ -348,17 +350,15 @@ static void DS_DrawWadPatchScaled(u8 *fb, int dest_x, int dest_y, const char *pa
             if (topdelta == 0xFF) break;
             u8 length = *post++;
             post++; // dummy byte
-            int sy = dest_y + topdelta * scale;
+            int sy = dest_y + topdelta;
             for (int row = 0; row < length; row++) {
-                int py = sy + row * scale;
+                int py = sy + row;
                 u8 pal_idx = *post++;
-                u8 r = ds_palette[pal_idx * 3 + 0];
-                u8 g = ds_palette[pal_idx * 3 + 1];
-                u8 b = ds_palette[pal_idx * 3 + 2];
-                if (scale == 1) {
-                    DS_DrawPixel(fb, dest_x + col, py, r, g, b);
-                } else {
-                    DS_FillRect(fb, dest_x + col * scale, py, scale, scale, r, g, b);
+                if (py >= 0 && py < 240) {
+                    u8 r = (ds_palette[pal_idx * 3 + 0] * brightness_percent) / 100;
+                    u8 g = (ds_palette[pal_idx * 3 + 1] * brightness_percent) / 100;
+                    u8 b = (ds_palette[pal_idx * 3 + 2] * brightness_percent) / 100;
+                    DS_DrawPixel(fb, sx, py, r, g, b);
                 }
             }
             post++; // dummy byte
@@ -398,10 +398,10 @@ static void DS_DrawAuthenticStatusBar(u8 *fb)
 
     // 2. Seamlessly cover ONLY the removed arms box (X: 104 to 142)
     // In original Doom, STARMS occupied X: 104 to 142 between HEALTH and FACE.
-    // By filling columns 104 to 142 with the authentic Doom metallic stone texture from STBAR,
+    // By filling columns 104 to 142 with clean stone texture columns 49..54 (ZERO text/labels!),
     // there is ZERO gap, and the original "AMMO" and "HEALTH" graphics at X: 0..103 remain completely untouched!
     for (int x = 104; x < 143; x++) {
-        int src_col = 12 + (x % 24); // Sample authentic stone texture columns from STBAR
+        int src_col = 49 + ((x - 104) % 6); // Clean stone texture columns from STBAR without text
         DS_DrawWadPatchSub(fb, x, ST_Y, "STBAR", src_col, 1);
     }
 
@@ -728,7 +728,7 @@ static void DS_DrawWeaponSelector(u8 *fb)
             // Slot 1: Fist / Chainsaw
             owned = true;
             if (plr->weaponowned[wp_chainsaw]) {
-                label = (plr->readyweapon == wp_chainsaw) ? "SAW" : "F/SAW";
+                label = (plr->readyweapon == wp_chainsaw) ? "SAW" : "FIST";
             }
             active = (plr->readyweapon == wp_fist || plr->readyweapon == wp_chainsaw);
         } else if (i == 2) {
@@ -737,7 +737,7 @@ static void DS_DrawWeaponSelector(u8 *fb)
             if (plr->weaponowned[wp_supershotgun] && plr->readyweapon == wp_supershotgun) {
                 label = "SSG";
             } else if (plr->weaponowned[wp_supershotgun] && plr->weaponowned[wp_shotgun]) {
-                label = "S/SSG";
+                label = (plr->readyweapon == wp_shotgun) ? "SHOT" : "SSG";
             } else if (plr->weaponowned[wp_supershotgun]) {
                 label = "SSG";
             } else {
@@ -750,9 +750,9 @@ static void DS_DrawWeaponSelector(u8 *fb)
             active = (plr->readyweapon == slots[i].wp);
         }
 
-        // 1. Tile authentic Doom metallic stone background from STBAR
+        // 1. Tile authentic Doom metallic stone background from STBAR using clean columns 49..54 (ZERO text/labels!)
         for (int x = bx; x < bx + bw; x++) {
-            int src_col = 12 + ((x - bx) % 24);
+            int src_col = 49 + ((x - bx) % 6);
             DS_DrawWadPatchSub(fb, x, by, "STBAR", src_col, 1);
         }
 
@@ -768,21 +768,24 @@ static void DS_DrawWeaponSelector(u8 *fb)
             DS_DrawRect(fb, bx + 1, by + 1, bw - 2, bh - 2, 255, 255, 255);
         }
 
-        // 4. Draw authentic Doom patch number from WAD (STYSNUM if owned, STGNUM if unowned) at 2x scale
+        // 4. Draw authentic Doom RED number (STTNUM)
         char num_patch[12];
-        snprintf(num_patch, sizeof(num_patch), "%s%d", owned ? "STYSNUM" : "STGNUM", slots[i].slot);
-        int num_y = by + (bh - 12) / 2;
-        DS_DrawWadPatchScaled(fb, bx + 6, num_y, num_patch, 2);
-
-        // 5. Draw weapon name next to number (vertically centered, NO ammo count!)
-        int tx = bx + 18;
-        int ty = by + (bh - 7) / 2;
-        if (active) {
-            DS_DrawString(fb, tx, ty, label, 255, 255, 255, 1); // Bright pure white
-        } else if (owned) {
-            DS_DrawString(fb, tx, ty, label, 220, 185, 60, 1);  // Authentic Doom yellow/gold
+        snprintf(num_patch, sizeof(num_patch), "STTNUM%d", slots[i].slot);
+        int num_x = bx + 5;
+        int num_y = by + (bh - 16) / 2;
+        if (owned) {
+            DS_DrawWadPatch(fb, num_x, num_y, num_patch); // Bright authentic Doom red number
         } else {
-            DS_DrawString(fb, tx, ty, label, 95, 75, 75, 1);    // Authentic Doom dark gray
+            DS_DrawWadPatchDimmed(fb, num_x, num_y, num_patch, 30); // Dim dark red number
+        }
+
+        // 5. Draw weapon name behind the number in pure white (if owned) or dim gray (if unowned)
+        int tx = bx + 22;
+        int ty = by + (bh - 7) / 2;
+        if (owned || active) {
+            DS_DrawString(fb, tx, ty, label, 255, 255, 255, 1); // Pure white
+        } else {
+            DS_DrawString(fb, tx, ty, label, 90, 90, 95, 1);   // Dim gray
         }
     }
 }
