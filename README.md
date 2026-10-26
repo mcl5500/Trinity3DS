@@ -147,5 +147,5 @@ cd Trinity3DS
 * **id Software** for creating DOOM.
 * **Team TNT**, **Lee Killough**, **Jim Flynn**, **Rand Phares**, and the **Boom / PrBoom / PrBoom+ Team** for the legendary source port.
 * **Voxel9** for the initial Nintendo 3DS PrBoom+ port base.
-* **Sheldor** for Trinity3DS enhancements: dual-screen tactical HUD, WAD Manager & Downloader, soft-reset architecture, VBO GPU batching, and localization.
+* **mcl5500** for Trinity3DS enhancements: dual-screen tactical HUD, WAD Manager & Downloader, soft-reset architecture, VBO GPU batching, and localization.
 * Licensed under the **GNU General Public License v2 (GPL-2.0)**.
