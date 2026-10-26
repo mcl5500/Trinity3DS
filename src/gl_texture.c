@@ -740,7 +740,7 @@ int gld_BuildTexture(GLTexture *gltexture, void *data, dboolean readonly, int wi
   {
     if (width == tex_width)
     {
-      tex_buffer = malloc(tex_buffer_size);
+      tex_buffer = calloc(1, tex_buffer_size);
       memcpy(tex_buffer, data, width * height * 4);
     }
     else

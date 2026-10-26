@@ -61,8 +61,8 @@
 
 #ifdef __3DS__
 #include <3ds.h>
-// Reserve 24MB for 3DS GPU linear memory, granting all remaining FCRAM (~100MB on N3DS, ~56MB on O3DS) to malloc() & Z_Malloc
-u32 __ctru_linear_heap_size = 24 * 1024 * 1024;
+// Reserve 32MB for 3DS GPU linear memory, granting all remaining FCRAM (~92MB on N3DS, ~48MB on O3DS) to malloc() & Z_Malloc
+u32 __ctru_linear_heap_size = 32 * 1024 * 1024;
 #else
 #include <SDL/SDL_timer.h>
 #endif

@@ -149,7 +149,11 @@ int M_ReadFile(char const *name, byte **buffer)
 //
 
 int usemouse;
+#ifdef __3DS__
+dboolean    precache = false; /* Disable on 3DS to prevent VRAM/linear RAM exhaustion on slaughter maps like Deus Vult */
+#else
 dboolean    precache = true; /* if true, load all graphics at start */
+#endif
 
 extern int viewwidth;
 extern int viewheight;
@@ -242,8 +246,13 @@ default_t defaults[] =
    def_bool,ss_none}, // killough 10/98 - enable flashing HOM indicator
   {"demo_insurance",{&default_demo_insurance},{2},0,2,  // killough 3/31/98
    def_int,ss_none}, // 1=take special steps ensuring demo sync, 2=only during recordings
+#ifdef __3DS__
+  {"level_precache",{(int*)&precache},{0},0,1,
+   def_bool,ss_none}, // precache level data? (disabled on 3DS)
+#else
   {"level_precache",{(int*)&precache},{1},0,1,
    def_bool,ss_none}, // precache level data?
+#endif
   {"demo_smoothturns", {&demo_smoothturns},  {0},0,1,
    def_bool,ss_stat},
   {"demo_smoothturnsfactor", {&demo_smoothturnsfactor},  {6},1,SMOOTH_PLAYING_MAXFACTOR,

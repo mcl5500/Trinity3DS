@@ -110,7 +110,7 @@ static inline void _set_default_render_states() {
     clear_color_b = 0.0f;
     clear_color_a = 0.0f;
 
-    clear_depth = -1.0f;
+    clear_depth = 0.0f;
 
     cull_enable = 0;
     cull_mode = GL_BACK;
@@ -167,13 +167,16 @@ static inline void _set_default_render_states() {
 }
 
 void gl_wrapper_init() {
-    // TODO: Keep an eye on this. So far, we're using immediate drawing,
-    // which gobbles up a LOT of the command buffer. This should be big enough
-    // for the vanilla game to handle, but maps like nuts.wad will shit the bed...
-    C3D_Init(0x200000);
+    // Allocate 4MB command buffer for complex scenes (nuts.wad, Deus Vult)
+    C3D_Init(0x400000);
 
-    hw_screen_l = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH16);
-    hw_screen_r = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH16);
+    // Map 3DS NDC depth [-1.0, 0.0] to standard OpenGL depth range [0.0, 1.0]:
+    // depth = z_ndc * 1.0f + 1.0f  (near -1.0 -> 0.0, far 0.0 -> 1.0)
+    // This allows standard OpenGL depth testing (GL_LEQUAL / closer < farther)
+    C3D_DepthMap(true, 1.0f, 1.0f);
+
+    hw_screen_l = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
+    hw_screen_r = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
     C3D_RenderTargetSetOutput(hw_screen_l, GFX_TOP, GFX_LEFT, DISPLAY_TRANSFER_FLAGS);
     C3D_RenderTargetSetOutput(hw_screen_r, GFX_TOP, GFX_RIGHT, DISPLAY_TRANSFER_FLAGS);
 
@@ -263,7 +266,7 @@ int gl_wrapper_is_initialized() {
 }
 
 void gl_wrapper_perspective(float fovy, float aspect, float znear) {
-    Mtx_PerspStereoTilt(MtxStack_Cur(cur_mtxstack), fovy, aspect, 1000.0f, znear, hw_stereo_offset, 0.15f, false);
+    Mtx_PerspStereoTilt(MtxStack_Cur(cur_mtxstack), fovy, aspect, znear, 1000.0f, hw_stereo_offset, 0.15f, false);
 }
 
 void gl_wrapper_select_screen(gfx3dSide_t side) {
@@ -406,7 +409,8 @@ void glClearColor(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha) {
 }
 
 void glClearDepth(GLclampd depth) {
-    clear_depth = -depth;
+    // Map OpenGL depth [0.0, 1.0] to NDC z [-1.0, 0.0]
+    clear_depth = (float)depth - 1.0f;
 }
 
 void glClear(GLbitfield mask) {
@@ -587,7 +591,7 @@ void glBegin(GLenum mode) {
 
     _update_dirty_render_states();
 
-    if(cur_texture)
+    if(cur_texture && cur_texture->c3d_tex.data)
         C3D_TexBind(0, &cur_texture->c3d_tex);
     else
         C3D_TexBind(0, NULL);
@@ -835,6 +839,8 @@ void glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei widt
     memcpy(cur_texture->c3d_tex.data, swizzle_buf, size);
 
     free(swizzle_buf);
+
+    GSPGPU_FlushDataCache(cur_texture->c3d_tex.data, size);
 }
 
 void glCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height) {
@@ -1088,7 +1094,7 @@ void glPopMatrix(void) {
 }
 
 void glOrtho(GLdouble left, GLdouble right, GLdouble bottom, GLdouble top, GLdouble zNear, GLdouble zFar) {
-    Mtx_OrthoTilt(MtxStack_Cur(cur_mtxstack), (float)left, (float)right, (float)bottom, (float)top, (float)zFar, (float)zNear, false);
+    Mtx_OrthoTilt(MtxStack_Cur(cur_mtxstack), (float)left, (float)right, (float)bottom, (float)top, (float)zNear, (float)zFar, false);
 }
 
 void glTranslatef(GLfloat x, GLfloat y, GLfloat z) {

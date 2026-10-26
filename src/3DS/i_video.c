@@ -744,6 +744,9 @@ void I_UpdateVideoMode(void)
     gl_wrapper_init();
   }
 
+  // Ensure level precache is disabled on 3DS to avoid VRAM / linear heap exhaustion
+  precache = false;
+
   // e6y: wide-res
   // Need some initialisations before level precache
   R_ExecuteSetViewSize();
