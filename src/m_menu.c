@@ -1071,6 +1071,27 @@ void M_SaveSelect(int choice)
     SetDefaultSaveName(choice);
   }
   saveCharIndex = strlen(savegamestrings[choice]);
+
+#ifdef __3DS__
+  {
+    char entered[SAVESTRINGSIZE];
+    memset(entered, 0, sizeof(entered));
+    if (I_SoftwareKeyboard("Enter save name...", savegamestrings[choice], entered, SAVESTRINGSIZE - 1))
+    {
+      if (entered[0] != '\0')
+      {
+        strncpy(savegamestrings[choice], entered, SAVESTRINGSIZE - 1);
+        savegamestrings[choice][SAVESTRINGSIZE - 1] = '\0';
+        saveStringEnter = 0;
+        M_DoSave(choice);
+        return;
+      }
+    }
+    strcpy(savegamestrings[choice], saveOldString);
+    saveStringEnter = 0;
+    return;
+  }
+#endif
 }
 
 //
@@ -4683,6 +4704,31 @@ dboolean M_Responder (event_t* ev) {
   // Save Game string input
 
   if (saveStringEnter) {
+#ifdef __3DS__
+    if (ch == key_menu_enter) {
+      char entered[SAVESTRINGSIZE];
+      memset(entered, 0, sizeof(entered));
+      if (I_SoftwareKeyboard("Enter save name...", savegamestrings[saveSlot], entered, SAVESTRINGSIZE - 1))
+      {
+        if (entered[0] != '\0')
+        {
+          strncpy(savegamestrings[saveSlot], entered, SAVESTRINGSIZE - 1);
+          savegamestrings[saveSlot][SAVESTRINGSIZE - 1] = '\0';
+          saveStringEnter = 0;
+          M_DoSave(saveSlot);
+          return true;
+        }
+      }
+      strcpy(savegamestrings[saveSlot], saveOldString);
+      saveStringEnter = 0;
+      return true;
+    }
+    else if (ch == key_menu_escape) {
+      saveStringEnter = 0;
+      strcpy(&savegamestrings[saveSlot][0],saveOldString);
+      return true;
+    }
+#endif
     if (ch == key_menu_backspace)                            // phares 3/7/98
       {
       if (saveCharIndex > 0)
@@ -5561,9 +5607,40 @@ dboolean M_Responder (event_t* ev) {
 
     if (flags & S_NUM)
       {
+#ifdef __3DS__
+        char init_buf[32];
+        char num_buf[32];
+        memset(init_buf, 0, sizeof(init_buf));
+        memset(num_buf, 0, sizeof(num_buf));
+        snprintf(init_buf, sizeof(init_buf), "%d", *ptr1->var.def->location.pi);
+        if (I_SoftwareKeyboardNumeric(ptr1->m_text, init_buf, num_buf, sizeof(num_buf) - 1))
+        {
+          int value = atoi(num_buf);
+          if ((ptr1->var.def->minvalue != UL && value < ptr1->var.def->minvalue) ||
+              (ptr1->var.def->maxvalue != UL && value > ptr1->var.def->maxvalue))
+          {
+            warn_about_changes(S_BADVAL);
+          }
+          else
+          {
+            *ptr1->var.def->location.pi = value;
+            if (ptr1->m_flags & (S_LEVWARN | S_PRGWARN))
+              warn_about_changes(ptr1->m_flags & (S_LEVWARN | S_PRGWARN));
+            else
+              M_UpdateCurrent(ptr1->var.def);
+            if (ptr1->action)
+              ptr1->action();
+          }
+          M_SelectDone(ptr1);
+          return true;
+        }
+        M_SelectDone(ptr1);
+        return true;
+#else
         setup_gather = true;
         print_warning_about_changes = false;
         gather_count = 0;
+#endif
       }
     else if (flags & S_COLOR)
       {
@@ -5601,6 +5678,20 @@ dboolean M_Responder (event_t* ev) {
           *(u.c) = chat_string_buffer;
         }
         chat_index = 0; // current cursor position in chat_string_buffer
+#ifdef __3DS__
+        {
+          char entered[CHAT_STRING_BFR_SIZE];
+          memset(entered, 0, sizeof(entered));
+          if (I_SoftwareKeyboard(ptr1->m_text, chat_string_buffer, entered, CHAT_STRING_BFR_SIZE - 1))
+          {
+            strncpy(chat_string_buffer, entered, CHAT_STRING_BFR_SIZE - 1);
+            chat_string_buffer[CHAT_STRING_BFR_SIZE - 1] = 0;
+          }
+          *ptr1->var.def->location.ppsz = chat_string_buffer;
+          M_SelectDone(ptr1);
+          return true;
+        }
+#endif
       }
     else if (flags & S_RESET)
       default_verify = true;

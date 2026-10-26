@@ -90,4 +90,7 @@ int I_Filelength(int handle);
 typedef void (*atexit_func_t)(void);
 void I_AtExit(atexit_func_t func, dboolean run_if_error);
 
+dboolean I_SoftwareKeyboard(const char *hint, const char *initial, char *out, int max_len);
+dboolean I_SoftwareKeyboardNumeric(const char *hint, const char *initial, char *out, int max_len);
+
 #endif

@@ -14,8 +14,10 @@
 #include "g_game.h"
 #include "s_sound.h"
 #include "sounds.h"
+#include "i_system.h"
 
 #include <3ds.h>
+#include <3ds/applets/swkbd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -940,3 +942,79 @@ void DS_UpdateBottomScreen(void)
         DS_DrawDashboard(framebuf);
     }
 }
+
+#ifdef __3DS__
+dboolean I_SoftwareKeyboard(const char *hint, const char *initial, char *out, int max_len)
+{
+    if (!out || max_len <= 0) return false;
+
+    SwkbdState swkbd;
+    char myTypedString[256];
+    memset(myTypedString, 0, sizeof(myTypedString));
+
+    int limit = max_len;
+    if (limit > 255) limit = 255;
+
+    swkbdInit(&swkbd, SWKBD_TYPE_NORMAL, 2, limit);
+    swkbdSetFeatures(&swkbd, SWKBD_DEFAULT_QWERTY | SWKBD_PREDICTIVE_INPUT | SWKBD_ALLOW_HOME);
+    swkbdSetValidation(&swkbd, SWKBD_ANYTHING, 0, 0);
+    swkbdSetButton(&swkbd, SWKBD_BUTTON_LEFT, "Cancel", false);
+    swkbdSetButton(&swkbd, SWKBD_BUTTON_RIGHT, "OK", true);
+    if (hint && *hint) {
+        swkbdSetHintText(&swkbd, hint);
+    }
+    if (initial && *initial) {
+        swkbdSetInitialText(&swkbd, initial);
+    }
+
+    SwkbdButton button = swkbdInputText(&swkbd, myTypedString, sizeof(myTypedString));
+
+    // Clear any input events generated while tapping the keyboard
+    hidScanInput();
+
+    if (button == SWKBD_BUTTON_CONFIRM || button == SWKBD_BUTTON_RIGHT) {
+        strncpy(out, myTypedString, limit);
+        out[limit] = '\0';
+        return true;
+    }
+
+    return false;
+}
+
+dboolean I_SoftwareKeyboardNumeric(const char *hint, const char *initial, char *out, int max_len)
+{
+    if (!out || max_len <= 0) return false;
+
+    SwkbdState swkbd;
+    char myTypedString[256];
+    memset(myTypedString, 0, sizeof(myTypedString));
+
+    int limit = max_len;
+    if (limit > 255) limit = 255;
+
+    swkbdInit(&swkbd, SWKBD_TYPE_NUMPAD, 2, limit);
+    swkbdSetFeatures(&swkbd, SWKBD_ALLOW_HOME);
+    swkbdSetValidation(&swkbd, SWKBD_ANYTHING, 0, 0);
+    swkbdSetButton(&swkbd, SWKBD_BUTTON_LEFT, "Cancel", false);
+    swkbdSetButton(&swkbd, SWKBD_BUTTON_RIGHT, "OK", true);
+    if (hint && *hint) {
+        swkbdSetHintText(&swkbd, hint);
+    }
+    if (initial && *initial) {
+        swkbdSetInitialText(&swkbd, initial);
+    }
+
+    SwkbdButton button = swkbdInputText(&swkbd, myTypedString, sizeof(myTypedString));
+
+    // Clear any input events generated while tapping the keyboard
+    hidScanInput();
+
+    if (button == SWKBD_BUTTON_CONFIRM || button == SWKBD_BUTTON_RIGHT) {
+        strncpy(out, myTypedString, limit);
+        out[limit] = '\0';
+        return true;
+    }
+
+    return false;
+}
+#endif

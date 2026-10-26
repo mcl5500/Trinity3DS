@@ -430,4 +430,16 @@ const char* I_FindFile2(const char* wfname, const char* ext)
   return (const char*) I_FindFileInternal(wfname, ext, true);
 }
 
+#ifndef __3DS__
+dboolean I_SoftwareKeyboard(const char *hint, const char *initial, char *out, int max_len)
+{
+  return false;
+}
+
+dboolean I_SoftwareKeyboardNumeric(const char *hint, const char *initial, char *out, int max_len)
+{
+  return false;
+}
+#endif
+
 #endif // PRBOOM_SERVER
