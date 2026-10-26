@@ -1,4 +1,5 @@
 #include "wad_picker.h"
+#include "wad_downloader.h"
 #include "i_main.h"
 #include <3ds.h>
 #include <stdio.h>
@@ -165,7 +166,7 @@ static const u8 s_font_5x7[][5] = {
     {0x40, 0x40, 0x40, 0x40, 0x40}  // _ (95)
 };
 
-static inline void WP_DrawPixel(u8 *fb, int width, int x, int y, u8 r, u8 g, u8 b)
+void WP_DrawPixel(u8 *fb, int width, int x, int y, u8 r, u8 g, u8 b)
 {
     if (x < 0 || x >= width || y < 0 || y >= 240) return;
     int offset = (x * 240 + (239 - y)) * 3;
@@ -174,7 +175,7 @@ static inline void WP_DrawPixel(u8 *fb, int width, int x, int y, u8 r, u8 g, u8 
     fb[offset + 2] = r;
 }
 
-static void WP_FillRect(u8 *fb, int width, int x, int y, int w, int h, u8 r, u8 g, u8 b)
+void WP_FillRect(u8 *fb, int width, int x, int y, int w, int h, u8 r, u8 g, u8 b)
 {
     for (int cy = y; cy < y + h; cy++) {
         for (int cx = x; cx < x + w; cx++) {
@@ -183,7 +184,7 @@ static void WP_FillRect(u8 *fb, int width, int x, int y, int w, int h, u8 r, u8 
     }
 }
 
-static void WP_DrawRect(u8 *fb, int width, int x, int y, int w, int h, u8 r, u8 g, u8 b)
+void WP_DrawRect(u8 *fb, int width, int x, int y, int w, int h, u8 r, u8 g, u8 b)
 {
     for (int cx = x; cx < x + w; cx++) {
         WP_DrawPixel(fb, width, cx, y, r, g, b);
@@ -219,7 +220,7 @@ static void WP_DrawChar(u8 *fb, int width, int x, int y, char c, u8 r, u8 g, u8 
     }
 }
 
-static void WP_DrawText(u8 *fb, int width, int x, int y, const char *str, u8 r, u8 g, u8 b, int scale)
+void WP_DrawText(u8 *fb, int width, int x, int y, const char *str, u8 r, u8 g, u8 b, int scale)
 {
     int cur_x = x;
     int spacing = (scale == 1) ? 6 : (scale * 6);
@@ -580,6 +581,20 @@ static int WP_CompareWads(const void *a, const void *b)
     return strcasecmp(wa->display_name, wb->display_name);
 }
 
+void WP_RescanWads(void)
+{
+    s_wad_count = 0;
+    unlink(WAD_CACHE_FILE);
+    WP_ScanDirectory("sdmc:/3ds/Boom3DS/wads", 0);
+    if (s_wad_count == 0) {
+        WP_ScanDirectory("/3ds/Boom3DS/wads", 0);
+    }
+    if (s_wad_count > 0) {
+        qsort(s_wads, s_wad_count, sizeof(wad_info_t), WP_CompareWads);
+        WP_SaveCache();
+    }
+}
+
 static void WP_RenderTopScreen(u8 *fb)
 {
     // Background: Dark gunmetal gray
@@ -589,7 +604,7 @@ static void WP_RenderTopScreen(u8 *fb)
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "BOOM3DS DUALSCREEN", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, "v0.9.4 WAD BROWSER", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 280, 12, "v0.9.5 WAD BROWSER", 255, 215, 0, 1);
 
     if (s_wad_count == 0) {
         WP_DrawText(fb, 400, 20, 100, "KEINE WAD-DATEIEN GEFUNDEN!", 255, 50, 50, 2);
@@ -668,7 +683,7 @@ static void WP_RenderTopScreen(u8 *fb)
     WP_DrawRect(fb, 400, 12, 182, 376, 50, 70, 70, 80);
     WP_DrawText(fb, 400, 20, 189, "STEUERUNG:", 255, 215, 0, 1);
     WP_DrawText(fb, 400, 100, 189, "D-PAD: Scrollen   L / R: A-Z Buchstabensprung", 200, 200, 200, 1);
-    WP_DrawText(fb, 400, 20, 209, "A / TOUCH : Spiel starten   START : Zuletzt gespielt", 100, 255, 120, 1);
+    WP_DrawText(fb, 400, 20, 209, "A/TOUCH: Starten   START: Zuletzt   Y: WAD Downloader", 100, 255, 120, 1);
 }
 
 static void WP_RenderBottomScreen(u8 *fb)
@@ -721,10 +736,16 @@ static void WP_RenderBottomScreen(u8 *fb)
         }
     }
 
-    // Big Action Button at bottom
-    WP_FillRect(fb, 320, 6, 202, 308, 34, 20, 130, 40);
-    WP_DrawRect(fb, 320, 6, 202, 308, 34, 80, 255, 100);
-    WP_DrawText(fb, 320, 75, 212, "▶  SPIEL STARTEN", 255, 255, 255, 2);
+    // Bottom Action Buttons
+    // Left: [▶ SPIEL STARTEN] (X=6, Y=202, W=194, H=34)
+    WP_FillRect(fb, 320, 6, 202, 194, 34, 20, 130, 40);
+    WP_DrawRect(fb, 320, 6, 202, 194, 34, 80, 255, 100);
+    WP_DrawText(fb, 320, 24, 212, "▶  SPIEL STARTEN", 255, 255, 255, 2);
+
+    // Right: [⬇ WAD STORE] (X=206, Y=202, W=108, H=34)
+    WP_FillRect(fb, 320, 206, 202, 108, 34, 25, 60, 120);
+    WP_DrawRect(fb, 320, 206, 202, 108, 34, 80, 160, 255);
+    WP_DrawText(fb, 320, 214, 214, "[Y] WAD STORE", 255, 255, 255, 1);
 }
 
 // Find base IWAD for PWADs
@@ -939,10 +960,25 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
                     }
                 }
             }
-            // Check Start Button (Y: 202 to 238)
-            else if (touch.py >= 202 && touch.py <= 238) {
+            // Check Start Button (X: 6 to 200, Y: 202 to 238)
+            else if (touch.py >= 202 && touch.py <= 238 && touch.px >= 6 && touch.px <= 200) {
                 confirmed = true;
             }
+            // Check WAD Store Button (X: 206 to 314, Y: 202 to 238)
+            else if (touch.py >= 202 && touch.py <= 238 && touch.px >= 206 && touch.px <= 314) {
+                kDown |= KEY_Y;
+            }
+        }
+
+        // Open WAD Downloader / Repository
+        if (kDown & KEY_Y) {
+            if (WAD_Downloader_Run()) {
+                // If any WAD was downloaded, rescan and update
+                WP_RescanWads();
+                if (s_selected_idx >= s_wad_count) s_selected_idx = s_wad_count - 1;
+                if (s_selected_idx < 0) s_selected_idx = 0;
+            }
+            continue;
         }
 
         // Button Confirm

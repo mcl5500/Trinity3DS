@@ -32,7 +32,7 @@ RES="$DIR/build/3ds/res"
 
 echo "=== Creating Banner and SMDH ==="
 $BANNERTOOL makebanner -i "$RES/banner.png" -a "$RES/banner.wav" -o "$RES/banner.bin"
-$BANNERTOOL makesmdh -i "$RES/icon.png" -s "Boom3DS" -l "Boom3DS Dualscreen v0.9.4" -p "Sheldor & id Software" -f visible,allow3d,recordusage -o "$RES/icon.bin"
+$BANNERTOOL makesmdh -i "$RES/icon.png" -s "Boom3DS" -l "Boom3DS Dualscreen v0.9.5" -p "Sheldor & id Software" -f visible,allow3d,recordusage -o "$RES/icon.bin"
 
 echo "=== Packaging CIA with makerom ==="
 $MAKEROM -f cia -target t -exefslogo \
@@ -42,7 +42,7 @@ $MAKEROM -f cia -target t -exefslogo \
     -banner "$RES/banner.bin" \
     -icon "$RES/icon.bin" \
     -logo "$RES/logo.bcma.lz" \
-    -major 0 -minor 9 -micro 4 \
+    -major 0 -minor 9 -micro 5 \
     -DAPP_VERSION_MAJOR=0
 
 cp "$DIR/build/3ds/Boom3DS.3dsx" "$DIR/Boom3DS-Dualscreen.3dsx"
