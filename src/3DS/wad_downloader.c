@@ -55,7 +55,7 @@ typedef struct {
     char author[64];
     char category[32];   // "STANDALONE", "MEGAWAD", "EPISODE"
     char base_iwad[32];  // e.g. "DOOM2.WAD", "DOOM.WAD", "KEINE"
-    char desc[256];
+    char desc[512];
     char url[256];
     char target_file[64];// Primary wad to check for installation
     char size_str[32];
@@ -70,7 +70,7 @@ static const repo_item_t s_catalog[] = {
         "Eye del Cul",
         "MEGAWAD",
         "DOOM.WAD",
-        "A compilation of 27 levels (the three series from the original Doom), that I made between 1994 and 2000. But they weren't conceived as a complete and coherent episode. There isn't storyline or something similar, and most of these maps were...",
+        "A compilation of 27 levels (the three series from the original Doom), that I made between 1994 and 2000. But they weren't conceived as a complete and coherent episode. There isn't storyline or something similar, and most of these maps were constructed without any previous planning. In any case, they're grouped in three series, in the same way that the original episodes from Doom. The usual; my first episode has a futurist ambientation, the second introduces some bloody...",
         "https://youfailit.net/pub/idgames/levels/doom/megawads/niveles.zip",
         "niveles.wad",
         "1.0 MB",
@@ -118,7 +118,7 @@ static const repo_item_t s_catalog[] = {
         "NinjaDelphox and Arsinikk",
         "MEGAWAD",
         "DOOM2.WAD",
-        "100 Line Massacre is a small Megawad project (Full 32 maps + 3 Bonus) by NinjaDelphox and Arsinikk with the goal of making Vanilla- Compatible maps with the limit of 100 lines. All maps were designed with pistol start in mind, though...",
+        "100 Line Massacre is a small Megawad project (Full 32 maps + 3 Bonus) by NinjaDelphox and Arsinikk with the goal of making Vanilla- Compatible maps with the limit of 100 lines. All maps were designed with pistol start in mind, though continuous play is perfectly fine. Each map should take only around 2-5 minutes to finish. In addition to the 100 line limit, the other goal was to add variety to the megawad by alternating authorship with each map, combining Ninja's heavy...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/100lnm.zip",
         "100lnm.wad",
         "0.9 MB",
@@ -142,7 +142,7 @@ static const repo_item_t s_catalog[] = {
         "Liberation and others",
         "MEGAWAD",
         "DOOM2.WAD",
-        "A 34 map megawad made for vanilla Doom 2, made by the community with a strict line limit of 1000 lines. Using the power of Votex, a vanilla version of the OTEX texture pack by Ola Bj rling (ukiro). Carrying the story on from the last time,...",
+        "A 34 map megawad made for vanilla Doom 2, made by the community with a strict line limit of 1000 lines. Using the power of Votex, a vanilla version of the OTEX texture pack by Ola Bj rling (ukiro). Carrying the story on from the last time, the player must fight through 3 new, exciting and totally infested worlds.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/1klinecp2.zip",
         "1klinecp2.wad",
         "23.1 MB",
@@ -166,7 +166,7 @@ static const repo_item_t s_catalog[] = {
         "Snarboo",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Everybody knows that most maps from 1994 are pretty terrible, but what if we took maps from the archive that permit modification and then redetailed them? The purpose of this community wad is to improve on maps from 1994. Most maps from...",
+        "Everybody knows that most maps from 1994 are pretty terrible, but what if we took maps from the archive that permit modification and then redetailed them? The purpose of this community wad is to improve on maps from 1994. Most maps from that time had strong layouts, but poor design decisions such as misaligned textures, bad texture choices, hidden doors and mandatory secrets to progress. The aim of this project is to fix those problems and take what was already strong about...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/1994tu.zip",
         "1994tu.wad",
         "10.5 MB",
@@ -214,7 +214,7 @@ static const repo_item_t s_catalog[] = {
         "Various",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Welcome to 2048 UNLEASHED - An all new 32 level single player megawad for DOOM 2 put together by various authors in the community. Known as the Pcorf Community Project 2 at the Doomworld forums. The aim of this project was simple and it...",
+        "Welcome to 2048 UNLEASHED - An all new 32 level single player megawad for DOOM 2 put together by various authors in the community. Known as the Pcorf Community Project 2 at the Doomworld forums. The aim of this project was simple and it was to create a 2048x2048 Boom compatible level for DOOM 2 using the Whispers of Satan texture wad. 10 months later I received 49 levels divided into two episodes, the first 2048 UNLEASHED which contains the 32 main levels and the second ALL...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/pc_cp2.zip",
         "pc_cp2.wad",
         "6.1 MB",
@@ -262,7 +262,7 @@ static const repo_item_t s_catalog[] = {
         "Stephen Huff",
         "MEGAWAD",
         "DOOM2.WAD",
-        "After destroying the big boss in doom2, you settled down for some r&r, when, suddenly, the cold dead faces of the undead greeted you as you transported in. Realizing the drill, you grabbed your sidearm and wished for some better armament....",
+        "After destroying the big boss in doom2, you settled down for some r&r, when, suddenly, the cold dead faces of the undead greeted you as you transported in. Realizing the drill, you grabbed your sidearm and wished for some better armament. As you fight your way from station to station you realize that overthrowing the big boss has let different factions in hell struggle for power. You have a bad feeling about who is winning that struggle to rule in hell. Your apprehensions...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/30lvls.zip",
         "30lvls.wad",
         "3.6 MB",
@@ -274,7 +274,7 @@ static const repo_item_t s_catalog[] = {
         "Various users of 4chan's /v...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "A megawad compilation of maps made by /vr/ users. Participants were asked to make a map in 300 minutes, with an initial two-week deadline period for submission. There was no particular theme beyond vanilla compatibility / no custom...",
+        "A megawad compilation of maps made by /vr/ users. Participants were asked to make a map in 300 minutes, with an initial two-week deadline period for submission. There was no particular theme beyond vanilla compatibility / no custom textures. At deadline 25 maps had been submitted, so it was decided to allow extra time to complete the set; also the previously submitted maps were bugfixed and polished, and finally the wad released to /idgames. Post-release update: the initial...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/300minvr.zip",
         "300minvr.wad",
         "2.0 MB",
@@ -310,7 +310,7 @@ static const repo_item_t s_catalog[] = {
         "The 32in24 Team!",
         "MEGAWAD",
         "DOOM2.WAD",
-        "'...It was the pinnacle of burgerdom. Finally, the long summer's study in Aberdonian cuisine and bovine mating rituals had yielded of a supple, juicy tower clad with buns too good to slap and the fattest sow the YEDS had ever sewn. The...",
+        "'...It was the pinnacle of burgerdom. Finally, the long summer's study in Aberdonian cuisine and bovine mating rituals had yielded of a supple, juicy tower clad with buns too good to slap and the fattest sow the YEDS had ever sewn. The chief engineer-turned-overlord of foodstuffs, Percival Mechacook, deemed it necessary to awaken Shaitoken from his long winter's slumber to celebrate this yuletide achievement. Together, they would drive the Yeoman Engineers of Software and...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/32in2414.zip",
         "32in2414.wad",
         "13.5 MB",
@@ -322,7 +322,7 @@ static const repo_item_t s_catalog[] = {
         "Brayden 'AD_79' Hart et al.",
         "MEGAWAD",
         "DOOM2.WAD",
-        "50 Monsters is a project I started back in 2014 when I was just really getting into mapping. It got a bit out of hand in the second half of development, and as such the final product is fairly inconsistent in terms of overall quality....",
+        "50 Monsters is a project I started back in 2014 when I was just really getting into mapping. It got a bit out of hand in the second half of development, and as such the final product is fairly inconsistent in terms of overall quality. Still, though, it was a good learning experience and I enjoyed creating it.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/50monstr.zip",
         "50monstr.wad",
         "6.4 MB",
@@ -334,7 +334,7 @@ static const repo_item_t s_catalog[] = {
         "Various",
         "MEGAWAD",
         "DOOM2.WAD",
-        "50 Shades of Graytall is a project designed around creating maps with interesting architecture and gameplay despite being limited to a selection of arguably hideous textures. Started in response to a silly post made in the Editing forum...",
+        "50 Shades of Graytall is a project designed around creating maps with interesting architecture and gameplay despite being limited to a selection of arguably hideous textures. Started in response to a silly post made in the Editing forum which led I and several others to attempt maps using the (slightly edited) rules in the post, hoping the result would be decent. Eventually opened up to the community and here we are! Hope you enjoy the maps and if you don't hey Doom projects...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/50shades.zip",
         "50shades.wad",
         "4.9 MB",
@@ -358,7 +358,7 @@ static const repo_item_t s_catalog[] = {
         "[B0S] Clan",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Third WAD by [B0S] clan. Now it's 32 levels. Plot: 'It all happened because of that strange portal in the cargo compartment of this falling plane. After we loaded the object we had found under kilometers of ice in the cargo hold, the...",
+        "Third WAD by [B0S] clan. Now it's 32 levels. Plot: 'It all happened because of that strange portal in the cargo compartment of this falling plane. After we loaded the object we had found under kilometers of ice in the cargo hold, the commander appointed me to escort the valuable cargo. Who could've known that the mysterious find was going to suddenly come to life? A bright flash is the last thing I remember after liftoff.'",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/alt.zip",
         "alt.wad",
         "11.6 MB",
@@ -370,7 +370,7 @@ static const repo_item_t s_catalog[] = {
         "yylow30",
         "MEGAWAD",
         "DOOM2.WAD",
-        "This is just a collection of maps I've abandoned in my attempt to make a Megawad. =.=''' So I make those into a Megawad. Playable, but expect absolute random themes, horrible textures, random monsters, random stuffs all over the random...",
+        "This is just a collection of maps I've abandoned in my attempt to make a Megawad. =.=''' So I make those into a Megawad. Playable, but expect absolute random themes, horrible textures, random monsters, random stuffs all over the random maps. But do expect some interesting maps that might be better than a few other maps around. Winks! Oh! And expect maps with repeated sections as I might have copied a section or two from maps to maps, but no 2 maps are identical. Expect a few...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/abmega.zip",
         "abmega.wad",
         "3.2 MB",
@@ -406,7 +406,7 @@ static const repo_item_t s_catalog[] = {
         "Various",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Get ready to blaze through 32 action-packed levels fit to play in any port of choice - echoes of past megawad affairs such as Memento Mori and Alien Vendetta helped to shape the inspiration for this project. Akeldama continues in the...",
+        "Get ready to blaze through 32 action-packed levels fit to play in any port of choice - echoes of past megawad affairs such as Memento Mori and Alien Vendetta helped to shape the inspiration for this project. Akeldama continues in the spirit of collecting a group of talented mappers and creating a brand new experience for regular doom2.exe.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/akeldama.zip",
         "akeldama.wad",
         "7.3 MB",
@@ -418,7 +418,7 @@ static const repo_item_t s_catalog[] = {
         "Classic Doom Community",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Alien Vendetta offers 32 all new levels, ranging from small fast-paced tech-styled ones, to complex medieval- and hellish-themed maps. Variety was to be expected considering several authors had a hand in the making of these maps and as no...",
+        "Alien Vendetta offers 32 all new levels, ranging from small fast-paced tech-styled ones, to complex medieval- and hellish-themed maps. Variety was to be expected considering several authors had a hand in the making of these maps and as no specific criteria were given to them. AV originated in '96 as a one-man project, but saw many transitions and was eventually made a team effort in August 1999. What started out as a pure 'Hell Revealed' follower balanced out to be something...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/av.zip",
         "AV.WAD",
         "8.6 MB",
@@ -442,7 +442,7 @@ static const repo_item_t s_catalog[] = {
         "skillsaw",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Demos recorded with the original release of Ancient Aliens are compatible with this update. Version 1.1 includes updates to textures. Version 1.2 includes an update to fix a MAP24 crash in Eternity caused by mistakenly rebuilding the nodes...",
+        "Demos recorded with the original release of Ancient Aliens are compatible with this update. Version 1.1 includes updates to textures. Version 1.2 includes an update to fix a MAP24 crash in Eternity caused by mistakenly rebuilding the nodes in MAP24. Ancient Aliens is a megawad featuring 32 colorful, action-packed maps for Boom compatible ports. Go on a journey to discover the truth about the enigmatic origins of human civilization... I'm not saying it was aliens, but... the...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/aaliens.zip",
         "aaliens_v1_2.wad",
         "38.0 MB",
@@ -454,7 +454,7 @@ static const repo_item_t s_catalog[] = {
         "Paul 'skillsaw' DeBruyne",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Demos recorded with the original release of Ancient Aliens are compatible with this update. Version 1.1 includes updates to textures. Version 1.2 includes an update to fix a MAP24 crash in Eternity caused by mistakenly rebuilding the nodes...",
+        "Demos recorded with the original release of Ancient Aliens are compatible with this update. Version 1.1 includes updates to textures. Version 1.2 includes an update to fix a MAP24 crash in Eternity caused by mistakenly rebuilding the nodes in MAP24. Ancient Aliens is a megawad featuring 32 colorful, action-packed maps for Boom compatible ports. Go on a journey to discover the truth about the enigmatic origins of human civilization... I'm not saying it was aliens, but... the...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/aaliens.zip",
         "aaliens.wad",
         "35.9 MB",
@@ -538,7 +538,7 @@ static const repo_item_t s_catalog[] = {
         "BTSX Team",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Get Out Of My Stations is the first episode of Back to Saturn X, a three-episode partial conversion for Doom II. Back to Saturn X is fully compatible with Doom2.exe and Chocolate Doom. It has also been tested with Eternity Engine,...",
+        "Get Out Of My Stations is the first episode of Back to Saturn X, a three-episode partial conversion for Doom II. Back to Saturn X is fully compatible with Doom2.exe and Chocolate Doom. It has also been tested with Eternity Engine, PrBoom-Plus, ZDoom, GZDoom, and Risen3D.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/btsx_e1.zip",
         "btsx_e1a.wad",
         "17.8 MB",
@@ -550,7 +550,7 @@ static const repo_item_t s_catalog[] = {
         "BTSX Team",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Tower in the Fountain of Sparks is the second episode of Back to Saturn X, a three-episode partial conversion for Doom II. Back to Saturn X is fully compatible with Doom2.exe and Chocolate Doom. It has also been tested with Eternity...",
+        "Tower in the Fountain of Sparks is the second episode of Back to Saturn X, a three-episode partial conversion for Doom II. Back to Saturn X is fully compatible with Doom2.exe and Chocolate Doom. It has also been tested with Eternity Engine, PrBoom-Plus, ZDoom, GZDoom, and Risen3D.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/btsx_e2.zip",
         "btsx_e2a.wad",
         "26.7 MB",
@@ -562,7 +562,7 @@ static const repo_item_t s_catalog[] = {
         "Esselfortium and a lot of w...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Get Out Of My Stations is the first episode of Back to Saturn X, a three-episode partial conversion for Doom II. Back to Saturn X is fully compatible with Doom2.exe and Chocolate Doom. It has also been tested with Eternity Engine,...",
+        "Get Out Of My Stations is the first episode of Back to Saturn X, a three-episode partial conversion for Doom II. Back to Saturn X is fully compatible with Doom2.exe and Chocolate Doom. It has also been tested with Eternity Engine, PrBoom-Plus, ZDoom, GZDoom, and Risen3D.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/btsx_e1.zip",
         "btsx_e1.wad",
         "17.5 MB",
@@ -586,7 +586,7 @@ static const repo_item_t s_catalog[] = {
         "Adam 'Khorus' Woodmansey",
         "MEGAWAD",
         "DOOM2.WAD",
-        "A 3 episode vanilla megawad for Doom 1 containing a total of 27 maps. Set on one of Jupiter's moons called Ganymede, this wad should provide a challenge for a wide variety of skill levels ranging from the humble newbie to veteran...",
+        "A 3 episode vanilla megawad for Doom 1 containing a total of 27 maps. Set on one of Jupiter's moons called Ganymede, this wad should provide a challenge for a wide variety of skill levels ranging from the humble newbie to veteran speedrunner. Each episode has it's own progression rather than the usual base -> hellbase -> hell.",
         "https://youfailit.net/pub/idgames/levels/doom/megawads/bgcomp.zip",
         "BGComp.wad",
         "2.1 MB",
@@ -610,7 +610,7 @@ static const repo_item_t s_catalog[] = {
         "Paul Corfiatis and Chris Ha...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "35 Levels for Zdoom, Plus 5 secret levels. Each level has all new challenges awaiting you. Plenty of use of the features in Zdoom like stealth enemies. There are also some new enemies capable of peforming the most unexpected tricks. There...",
+        "35 Levels for Zdoom, Plus 5 secret levels. Each level has all new challenges awaiting you. Plenty of use of the features in Zdoom like stealth enemies. There are also some new enemies capable of peforming the most unexpected tricks. There is no scripting this wad because I havent figured it out. The new enemies are a Spectre in one of the secret levels and a deadly floating Romero head. The five Secret levels like the two secret levels in the original Bella are all stunning....",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/bella2.zip",
         "bella2.wad",
         "6.8 MB",
@@ -706,7 +706,7 @@ static const repo_item_t s_catalog[] = {
         "Various (List of maps at th...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Cabro's Legacy is a compilatory megawad, created in the year 2014 as an homage to the Cabro's mapping tournaments. It contains maps from the top three winners from each year. These tournaments started in the now extinct Cabro's website in...",
+        "Cabro's Legacy is a compilatory megawad, created in the year 2014 as an homage to the Cabro's mapping tournaments. It contains maps from the top three winners from each year. These tournaments started in the now extinct Cabro's website in the Y2K, and were later continued in the Arcades3D website until the year 2015. They were organized by Cabro in their first entries; and later continued by the Arcades3D users Mojon Man and Wraith, respectively. Rules has changed over the...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/clegacy.zip",
         "clegacy.wad",
         "16.5 MB",
@@ -802,7 +802,7 @@ static const repo_item_t s_catalog[] = {
         "Various",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Claustrophobia 1024 is the community-made, inspirational sequel to Congestion 1024 which was released back in 2005. It's comprised of 32 brand-new maps restricting the player's movements to a 1024x1024 space. Decoration and monsters were...",
+        "Claustrophobia 1024 is the community-made, inspirational sequel to Congestion 1024 which was released back in 2005. It's comprised of 32 brand-new maps restricting the player's movements to a 1024x1024 space. Decoration and monsters were allowed outside of this 1024 squared area. The player is allowed outside of the 1024 boundary given he is killed instantly. The focus of the project was to create a set of fun, quick & good looking maps while being able to work within the...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/1024clau.zip",
         "1024clau.wad",
         "7.6 MB",
@@ -814,7 +814,7 @@ static const repo_item_t s_catalog[] = {
         "Jodwin",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Claustrophobia 1024 2 is the community-made sequel to Claustrophobia 1024 which was released in June 2009. It's comprised of 34 brand-new maps restricting the player's movements to a 1024x1024 space. Decoration and monsters were allowed...",
+        "Claustrophobia 1024 2 is the community-made sequel to Claustrophobia 1024 which was released in June 2009. It's comprised of 34 brand-new maps restricting the player's movements to a 1024x1024 space. Decoration and monsters were allowed outside of this 1024 squared area. The player is allowed outside of the 1024 boundary given he is killed instantly. The focus of the project was to create a set of fun, quick & good looking maps while being able to work within the boundaries...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/1024cla2.zip",
         "1024cla2.wad",
         "8.7 MB",
@@ -826,7 +826,7 @@ static const repo_item_t s_catalog[] = {
         "Unholy Software / http://ww...",
         "MEGAWAD",
         "DOOM.WAD",
-        "This is the rerelease of our old old old TC Hyena, wich was made between 1994 and 1998. It's not testted this time around and it probaly got hundreds of bugs. But it was rereleased by popular demand. (from people who hadn't played it yet....",
+        "This is the rerelease of our old old old TC Hyena, wich was made between 1994 and 1998. It's not testted this time around and it probaly got hundreds of bugs. But it was rereleased by popular demand. (from people who hadn't played it yet. :p) I don't claim it's good. But I as the head developer of it of course love it as it was my baby for 4 years (before I got online and saw what other people did with the engine). Please don't mail me and tell how much you think it suck (if...",
         "https://youfailit.net/pub/idgames/levels/doom/Ports/megawads/hyena.zip",
         "hyena.wad",
         "3.8 MB",
@@ -862,7 +862,7 @@ static const repo_item_t s_catalog[] = {
         "Doomworld Community",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Following the success of the original Community Chest, Community Chest 2 is a 32 map megawad including levels made by 26 different authors from the Doom Community. Originally announced almost one year ago in December 2003, it is now...",
+        "Following the success of the original Community Chest, Community Chest 2 is a 32 map megawad including levels made by 26 different authors from the Doom Community. Originally announced almost one year ago in December 2003, it is now complete and ready for your enjoyment.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/cchest2.zip",
         "cchest2.wad",
         "8.5 MB",
@@ -886,7 +886,7 @@ static const repo_item_t s_catalog[] = {
         "Doomworld Community",
         "MEGAWAD",
         "DOOM2.WAD",
-        "The fourth installment of the series, Community Chest 4 boasts 32 maps made by 20 different authors from the Doom community. After four years of work, they have been made available for your enjoyment. Included in this package is the base...",
+        "The fourth installment of the series, Community Chest 4 boasts 32 maps made by 20 different authors from the Doom community. After four years of work, they have been made available for your enjoyment. Included in this package is the base resource WAD compiled for the project, which can be found in cc4-tex.zip. It may be a good starting point if you need a large, varied, and meticulously organized texture WAD for your project!",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/cchest4.zip",
         "cchest4.wad",
         "22.4 MB",
@@ -898,7 +898,7 @@ static const repo_item_t s_catalog[] = {
         "Samuel Villarreal (svkaiser...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Community is Falling 3 is the third sequal to the 'Community Is Falling' series, which are jokewads based on the drama and comedy inside the Doom community. Lots of inside jokes are involved so those who are outside the community will...",
+        "Community is Falling 3 is the third sequal to the 'Community Is Falling' series, which are jokewads based on the drama and comedy inside the Doom community. Lots of inside jokes are involved so those who are outside the community will probably not understand most of whats going on. Unlike the previous two jokewads, this one is a full fledged 36 - level megawad/TC that abuses as much Zdoom features as possible. The design of this jokewad is not like that of Mock2, or DoTims,...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/cif3.zip",
         "cif3.wad",
         "45.5 MB",
@@ -910,7 +910,7 @@ static const repo_item_t s_catalog[] = {
         "Matt 'cannonball' Powell",
         "MEGAWAD",
         "DOOM.WAD",
-        "3 episode wad for ultimate doom with the usual tech/hell tech/hell setup with a few exceptions from time to time. This is an expansion from my cbspeed.wad I realeased last August, so the first episode is an updated version of cbspeed with...",
+        "3 episode wad for ultimate doom with the usual tech/hell tech/hell setup with a few exceptions from time to time. This is an expansion from my cbspeed.wad I realeased last August, so the first episode is an updated version of cbspeed with hopefully improved gameplay and layout flow. Episodes 2 and 3 were solely built from scratch. The wad is designed to hopefully give a varied and at times challenging gameplay experience.",
         "https://youfailit.net/pub/idgames/levels/doom/megawads/concern.zip",
         "concern.wad",
         "3.5 MB",
@@ -1006,7 +1006,7 @@ static const repo_item_t s_catalog[] = {
         "James Paddock (Jimmy)",
         "MEGAWAD",
         "DOOM.WAD",
-        "A speedily-done Ultimate Doom megawad. The 27 layouts for the three new episodes were first blocked out starting midnight 1st Nov. The 27th map was thingplaced and balanced at about midnight on 10th Nov, so the total build time for this is...",
+        "A speedily-done Ultimate Doom megawad. The 27 layouts for the three new episodes were first blocked out starting midnight 1st Nov. The 27th map was thingplaced and balanced at about midnight on 10th Nov, so the total build time for this is 9 days. A number of days after release were spent on finding bugs and balancing the maps for single and co-op play. No jumping or crouching (enforced). Freelook allowed. As with this mapset's predecessor Griefless, ***A LIMIT-REMOVING PORT...",
         "https://youfailit.net/pub/idgames/levels/doom/Ports/megawads/deathless.zip",
         "deathless.wad",
         "1.7 MB",
@@ -1042,7 +1042,7 @@ static const repo_item_t s_catalog[] = {
         "Adam Windsor",
         "MEGAWAD",
         "DOOM2.WAD",
-        "This WAD replaces all 32 levels of Doom2. All levels are playable solo, co-op or DM, to give you maximum playing opportunity! Short descriptions of each level are included in DFEARLVL.TXT (included with DMONFEAR.ZIP), but the basic ethic...",
+        "This WAD replaces all 32 levels of Doom2. All levels are playable solo, co-op or DM, to give you maximum playing opportunity! Short descriptions of each level are included in DFEARLVL.TXT (included with DMONFEAR.ZIP), but the basic ethic behind the design is simple: I aimed to provide 32 short, sharp shocks for Doom 2 that were both highly playable and visually impressive. I hope I've succeeded.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/dmonfear.zip",
         "Dmonfear.wad",
         "0.7 MB",
@@ -1090,7 +1090,7 @@ static const repo_item_t s_catalog[] = {
         "Various, see below",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Imagine a world where Doom II was never released, and the only information that ever came to light was the level titles. Then imagine that nearly 20 years later, some people decided to make some levels based on how they interpreted the...",
+        "Imagine a world where Doom II was never released, and the only information that ever came to light was the level titles. Then imagine that nearly 20 years later, some people decided to make some levels based on how they interpreted the level name. Those very levels are in this WAD file.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/d2ino.zip",
         "D2INO.wad",
         "6.4 MB",
@@ -1126,7 +1126,7 @@ static const repo_item_t s_catalog[] = {
         "D2TWID Team",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Doom II The Way id Did is the long awaited sequel to 2011's Doom The Way id Did. It comprises 32 levels that endeavour to both look and play as though they've come from Dallas, 1994, from the very toiling hands of Sandy, John and American....",
+        "Doom II The Way id Did is the long awaited sequel to 2011's Doom The Way id Did. It comprises 32 levels that endeavour to both look and play as though they've come from Dallas, 1994, from the very toiling hands of Sandy, John and American. The idea was originally kicked about by Jason Root aka Hellbent, whose passion for the game and knack for growing enthusiasm resulted in one of the most successful community collaborations in Doomworld history not to mention an impressive...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/d2twid.zip",
         "d2twid.wad",
         "1.9 MB",
@@ -1138,7 +1138,7 @@ static const repo_item_t s_catalog[] = {
         "Various",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Welcome to DOOM 2: UNLEASHED - An all new 32 level megawad for DOOM 2 put together by various authors in the community. Known as the Pcorf Community Project at the Doomworld forums. After the release of Whispers of Satan I wanted to make a...",
+        "Welcome to DOOM 2: UNLEASHED - An all new 32 level megawad for DOOM 2 put together by various authors in the community. Known as the Pcorf Community Project at the Doomworld forums. After the release of Whispers of Satan I wanted to make a community megawad. The aim of this project was simple and it was to create a level for DOOM 2 using only stock DOOM 2 textures. 15 months later I received 40 levels divided into two episodes, the first DOOM 2 UNLEASHED which contains the...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/pc_cp.zip",
         "pc_cp.wad",
         "9.0 MB",
@@ -1174,7 +1174,7 @@ static const repo_item_t s_catalog[] = {
         "Adam Windsor / Capellan",
         "MEGAWAD",
         "DOOM2.WAD",
-        "It's a sad life on the Space Marine IT Help Desk. Especially when you're stuck on the graveyard shift. Night after night of 'Did you try rebooting?' Not exactly what you expected when you signed up. You figured this call would be more of...",
+        "It's a sad life on the Space Marine IT Help Desk. Especially when you're stuck on the graveyard shift. Night after night of 'Did you try rebooting?' Not exactly what you expected when you signed up. You figured this call would be more of the same: some garbled voice mail about 'gremlins in the system'. Gremlins? Seriously, how old is the guy who left that? Ninety five? He probably remembers vacuum tubes. Now you're here though, something isn't right. This facility should be...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/doom404.zip",
         "doom404.wad",
         "1.0 MB",
@@ -1234,7 +1234,7 @@ static const repo_item_t s_catalog[] = {
         "Various",
         "MEGAWAD",
         "DOOM2.WAD",
-        "'At some point in time I got the idea that it would be really fun if John Romero dusted off the ol' doom editor and made another map for Doom episode 1 for old time's sake. He once replied to an email saying 'maybe I will!' but never did...",
+        "'At some point in time I got the idea that it would be really fun if John Romero dusted off the ol' doom editor and made another map for Doom episode 1 for old time's sake. He once replied to an email saying 'maybe I will!' but never did get around to it as far as I know. This project asks the contributors to carefully study the original maps and try to make them as John Romero and Sandy Petersen did. The guiding principle in the project is to pretend that id Software...",
         "https://youfailit.net/pub/idgames/levels/doom/megawads/dtwid.zip",
         "DTWID.wad",
         "1.9 MB",
@@ -1246,7 +1246,7 @@ static const repo_item_t s_catalog[] = {
         "Various",
         "MEGAWAD",
         "DOOM.WAD",
-        "Six episodes of classic Doom maps, originally candidates for last year's 'Doom the Way Id Did', arranged in an episodic format. DTWID was a long but fruitful journey, with somewhere around a hundred map submissions in total. Given the...",
+        "Six episodes of classic Doom maps, originally candidates for last year's 'Doom the Way Id Did', arranged in an episodic format. DTWID was a long but fruitful journey, with somewhere around a hundred map submissions in total. Given the strictness of the rules, most of the maps cut were not done so for reasons of quality. On their own they're quite solid maps, deserving their own showcase. This collection, while not 100% complete, contains the vast majority of submissions to...",
         "https://youfailit.net/pub/idgames/levels/doom/Ports/megawads/dtwid-le.zip",
         "dtwid-le.wad",
         "3.7 MB",
@@ -1258,7 +1258,7 @@ static const repo_item_t s_catalog[] = {
         "Various, in no particular o...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "The idea behind this was to create a classic DOOM Megawad in two weeks. You can follow the development of the project at this thread in the doomworld.com forums http://www.doomworld.com/vb/showthread.php?s=&threadid=39487 As calling the...",
+        "The idea behind this was to create a classic DOOM Megawad in two weeks. You can follow the development of the project at this thread in the doomworld.com forums http://www.doomworld.com/vb/showthread.php?s=&threadid=39487 As calling the project DOOM 3 should be way too ambitous, we droped the idea, but the mod follows the plot right where Final DOOM lefts out. There are multiple references and alusion to elements from other chapters in the DOOM series, I'll send a special...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/megaw2.zip",
         "megaw2.wad",
         "2.3 MB",
@@ -1270,7 +1270,7 @@ static const repo_item_t s_catalog[] = {
         "Ofisil",
         "MEGAWAD",
         "DOOM2.WAD",
-        "MegaWad for The Ultimate Doom, with the purpose to be a reboot of the original game. Meant to be experienced in pure vanilla fashion. Some novel ideas here and there, and an attempt to push the engine to its limits at times, but mostly a...",
+        "MegaWad for The Ultimate Doom, with the purpose to be a reboot of the original game. Meant to be experienced in pure vanilla fashion. Some novel ideas here and there, and an attempt to push the engine to its limits at times, but mostly a 'traditional' wad, with a 'gameplay first' mindset, and without any of the modern trends of wad design, like ultra-realistic visuals, walking sims, or slaughtermaps.",
         "https://youfailit.net/pub/idgames/levels/doom/Ports/megawads/ddamn10.zip",
         "DDAMN10.wad",
         "2.4 MB",
@@ -1306,7 +1306,7 @@ static const repo_item_t s_catalog[] = {
         "Various",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Harmata said it best: 'I could've picked random wads from idgames and then combine them in a megawad and it would be exactly the same thing as this project.' The goal of this project was to get as many mappers as possible to contribute to...",
+        "Harmata said it best: 'I could've picked random wads from idgames and then combine them in a megawad and it would be exactly the same thing as this project.' The goal of this project was to get as many mappers as possible to contribute to a single project. All maps were accepted and nobody was rejected. This megawad contains 40 maps from 40 different mappers from the Doomworld forums. VANILLA / LIMIT-REMOVING 01 Bean, by cannonball 02 Daemonum Malum, by DooMAD 03...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/dmp2012.zip",
         "dmp2012.wad",
         "4.2 MB",
@@ -1330,7 +1330,7 @@ static const repo_item_t s_catalog[] = {
         "Various",
         "MEGAWAD",
         "DOOM2.WAD",
-        "The idea and goal of the project was to get maps from as many mappers as possible, one map per person, during the course of the year 2015. Anyone could participate, and there were no restrictions regarding the theme or the quality of the...",
+        "The idea and goal of the project was to get maps from as many mappers as possible, one map per person, during the course of the year 2015. Anyone could participate, and there were no restrictions regarding the theme or the quality of the maps, other than 'no abusive maps that use scripts to change people's settings or are 1 GB while unzipped, etc.'. The maps are split into 3 wads: DMP15A for vanilla and limit-removing compatible maps, DMP15B for Boom compatible maps, and...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/dmp2015.zip",
         "dmp2015.wad",
         "17.6 MB",
@@ -1378,7 +1378,7 @@ static const repo_item_t s_catalog[] = {
         "Samuel A. Villarreal",
         "MEGAWAD",
         "DOOM2.WAD",
-        "32 tough levels that were inspired by Plutonia, Momento Mori and Icraus. The levels aren't super detailed like Darkening or Eternal but just as good as Doom and Doom 2's levels. This is the third and final installment of the Dsv series...",
+        "32 tough levels that were inspired by Plutonia, Momento Mori and Icraus. The levels aren't super detailed like Darkening or Eternal but just as good as Doom and Doom 2's levels. This is the third and final installment of the Dsv series with better detail from my previous two wads. Like my previous work, I like to add new weapon graphics from Unreal, Quake2, and Blood to replace the boring ones. There are some deh modified stuff like the Big Brain (which takes more damage)....",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/war_3.zip",
         "war_3.wad",
         "5.5 MB",
@@ -1390,7 +1390,7 @@ static const repo_item_t s_catalog[] = {
         "Ingmar Derks ('Deathmatcher')",
         "MEGAWAD",
         "DOOM2.WAD",
-        "A hidden UAC base on Phobos: Not satisfied with their achievements, scientists have developed a new kind of teleporter, capable of not only sending things through space, but also through time and into different dimensions. There were two...",
+        "A hidden UAC base on Phobos: Not satisfied with their achievements, scientists have developed a new kind of teleporter, capable of not only sending things through space, but also through time and into different dimensions. There were two prototypes of this machine but one morning, one of them was found missing! Needless to say that one lone marine is sent through the second device, to find out where the missing prototype might be and who is behind the theft...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/dts-t.zip",
         "dts-t.wad",
         "45.2 MB",
@@ -1402,7 +1402,7 @@ static const repo_item_t s_catalog[] = {
         "TerminusEst13 (et al)",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Mapping is hard. A lot of us have been wanting to map for a while, but can't really get over that initial hump. There's only one way to improve, but oh man is it painful to just grind, grind, grind until you get a clue and figure out what...",
+        "Mapping is hard. A lot of us have been wanting to map for a while, but can't really get over that initial hump. There's only one way to improve, but oh man is it painful to just grind, grind, grind until you get a clue and figure out what to do. We get awesome ideas! Oh, man, this would be so cool! Then we jump in and...stare at the grid for hours. For 2016, I really want to better my mapping abilities and put out some good stuff. Two friends, Mystical and Gardevoir, said...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/dump-1.zip",
         "dump-1.wad",
         "14.1 MB",
@@ -1450,7 +1450,7 @@ static const repo_item_t s_catalog[] = {
         "Alexander S. (Eternal)",
         "MEGAWAD",
         "DOOM2.WAD",
-        "All levels are designed for vanilla Doom2. Recommended engines: prBoom-plus with '-complevel 2' and (G)ZDoom in 'DOOM (strict)' compatibility mode. Jumping should be disabled. For OpenGL ports like GZDoom and GLBoom-Plus you can add...",
+        "All levels are designed for vanilla Doom2. Recommended engines: prBoom-plus with '-complevel 2' and (G)ZDoom in 'DOOM (strict)' compatibility mode. Jumping should be disabled. For OpenGL ports like GZDoom and GLBoom-Plus you can add EPIC2GL.WAD after EPIC2.WAD for HI-RES skies: glboom-plus -file epic2.wad epic2gl.wad",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/epic2.zip",
         "epic2.wad",
         "16.5 MB",
@@ -1474,7 +1474,7 @@ static const repo_item_t s_catalog[] = {
         "Foodles",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Estranged is a 32 level megawad that uses stock Doom & Doom2 textures, I would describe the levels as cleanly detailed with a variety of environments. Levels are playable from pistol start. Story: You are a marine stationed on a UAC mining...",
+        "Estranged is a 32 level megawad that uses stock Doom & Doom2 textures, I would describe the levels as cleanly detailed with a variety of environments. Levels are playable from pistol start. Story: You are a marine stationed on a UAC mining facility on a desolate world on the edge of the known galaxy. Whilst performing routine operations you lose communication with the main base, upon your return you find that demons have overrun the facilities. You send a distress signal but...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/estrangd.zip",
         "estrangd.wad",
         "4.9 MB",
@@ -1510,7 +1510,7 @@ static const repo_item_t s_catalog[] = {
         "Nicolás Monti",
         "MEGAWAD",
         "DOOM2.WAD",
-        "classic doom megawad with 34 maps. I started this megawad in 2002! then I abandonned the project and reassumed it in 2011. back in 2002 I made the following maps: 01-11, 21, 23, 26, 70% 0f 24 and the drawing for 25. at that time my...",
+        "classic doom megawad with 34 maps. I started this megawad in 2002! then I abandonned the project and reassumed it in 2011. back in 2002 I made the following maps: 01-11, 21, 23, 26, 70% 0f 24 and the drawing for 25. at that time my computer sucked and I used doome42 for editing, doomed42 is by far the crappiest doom editor ever, it's buggy as hell and too way primitive. it seems that my maps 24 and 25 could'nt be built with it because of its limitations, they crashed every...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/eviltecc.zip",
         "eviltecc.wad",
         "6.1 MB",
@@ -1522,7 +1522,7 @@ static const repo_item_t s_catalog[] = {
         "Dragonfly & Team",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Eviternity is a megawad comprised of six 5-map episodes (called Chapters) plus two secret maps. This project exclusively uses OTEX, a brand new high quality texture pack by ukiro. Eviternity's six chapters explore a series of unique and...",
+        "Eviternity is a megawad comprised of six 5-map episodes (called Chapters) plus two secret maps. This project exclusively uses OTEX, a brand new high quality texture pack by ukiro. Eviternity's six chapters explore a series of unique and varied themes, each featuring classic gameplay with an interest in making each map hold its own unique identity and personality. The themes are 'Medieval', 'Techbase', 'Icy Castles', 'Industrial / Brutalism', 'Hell / Gore / Alien' and...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/eviternity.zip",
         "eviternity.wad",
         "47.6 MB",
@@ -1546,7 +1546,7 @@ static const repo_item_t s_catalog[] = {
         "Original version Ramon Muji...",
         "MEGAWAD",
         "DOOM.WAD",
-        "Final Fantasy 'the best Japanese RPG ever' meets Doom 'the best FPS ever'. Final Fantasy Doom is a Total Conversion for Ultimate Doom with 27 single-player levels (3 complete episodes) and 7 Deathmatch levels (Episode 4). Final Fantasy...",
+        "Final Fantasy 'the best Japanese RPG ever' meets Doom 'the best FPS ever'. Final Fantasy Doom is a Total Conversion for Ultimate Doom with 27 single-player levels (3 complete episodes) and 7 Deathmatch levels (Episode 4). Final Fantasy Doom features new music, sound, monsters, weapons and graphics, all based on the game Final Fantasy 3 by SquareSoft. In Final Fantasy Doom you are MOG, FF3's cutest hero, and you must fight your way through forests, caves, mountains, castles,...",
         "https://youfailit.net/pub/idgames/levels/doom/megawads/ffdoom2.zip",
         "ffdoom2.wad",
         "2.3 MB",
@@ -1570,7 +1570,7 @@ static const repo_item_t s_catalog[] = {
         "Stephen Clark (The Ultimate...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "A 21st century DooM 2 episode that is big, innovative, good-looking, and of course, HARD! This wad features desert and mountain levels, and there are plenty of levels beside the sea. There are also city levels and hi-tech levels. But -...",
+        "A 21st century DooM 2 episode that is big, innovative, good-looking, and of course, HARD! This wad features desert and mountain levels, and there are plenty of levels beside the sea. There are also city levels and hi-tech levels. But - every style is represented here, even if it is only 1 level! (except the Spirit-World style) For those of you who like secrets, there are at least 3 in each level (except 25-27 and 29-32 where there are none). And you'll be pleased to know...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/fragport.zip",
         "fragport.wad",
         "3.3 MB",
@@ -1606,7 +1606,7 @@ static const repo_item_t s_catalog[] = {
         "Alter, Obsidian, Pinchy, Ge...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "You are playing Quake, you walk into the Slipgate only to find out it's Freudian, suddenly, you are in Doom.. #doomtwid realm, you have angered the #doomtwid gods and they throw you into the random maps for invading their privileges on...",
+        "You are playing Quake, you walk into the Slipgate only to find out it's Freudian, suddenly, you are in Doom.. #doomtwid realm, you have angered the #doomtwid gods and they throw you into the random maps for invading their privileges on internet. Are you agitated enough to survive the Bull#$@$ maps?",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/freudslp.zip",
         "freudslp.wad",
         "9.5 MB",
@@ -1618,7 +1618,7 @@ static const repo_item_t s_catalog[] = {
         "Eye del Cul",
         "MEGAWAD",
         "DOOM2.WAD",
-        "A complete episode for Doom2, with all 32 maps replaced... I think that these are quality levels: cool architecture, good light effects, studied use of textures... And I hope, with a exciting gameplay! The two guys that appears in the main...",
+        "A complete episode for Doom2, with all 32 maps replaced... I think that these are quality levels: cool architecture, good light effects, studied use of textures... And I hope, with a exciting gameplay! The two guys that appears in the main screen are Chiquito de la Calzada -'Child of the Road' (!!!), spanish humorist-, and El Fary -'The Fary', matchless spanish singer, like Frank Sinatra, Bob Dylan or other international stars (!!!)-.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/garrulo.zip",
         "garrulo.wad",
         "2.3 MB",
@@ -1630,7 +1630,7 @@ static const repo_item_t s_catalog[] = {
         "Cyriak Harris (mouldy)",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Something sinister is lurking in UAC headquarters. Grab your gun, head to the roof and shoot your way down through the building to get to the bottom of the mystery. This is a 32 map Doom 2 megawad - boom format, complevel 9. Each map is a...",
+        "Something sinister is lurking in UAC headquarters. Grab your gun, head to the roof and shoot your way down through the building to get to the bottom of the mystery. This is a 32 map Doom 2 megawad - boom format, complevel 9. Each map is a floor, each floor has a lift, each lift needs a key. You'll work it out I'm sure, just keep going down. These are small, fairly hard maps with high body-counts, and gameplay I would describe as 'chaotic-evil'. The music tracks are my own...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/gd.zip",
         "gd.wad",
         "8.4 MB",
@@ -1774,7 +1774,7 @@ static const repo_item_t s_catalog[] = {
         "Zoltán Sófalvi (Z86)",
         "MEGAWAD",
         "DOOM2.WAD",
-        "32 map megawad with collections of maps made from different periods of my doom mapping hobby, along with new ones. All old maps are re-polished to make them consistent in look with the newer ones. Maps are 'progressively' chained together...",
+        "32 map megawad with collections of maps made from different periods of my doom mapping hobby, along with new ones. All old maps are re-polished to make them consistent in look with the newer ones. Maps are 'progressively' chained together (so the previous map's end is more or less linked to the next one's start). Difficulty is medium, sometimes hard, but not insane. Experienced players can do it in UV without any problem. HBFM29.wad: the full version of MAP29. Load this if...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/hellbnd.zip",
         "hellbnd.wad",
         "16.7 MB",
@@ -1786,7 +1786,7 @@ static const repo_item_t s_catalog[] = {
         "Robert Babor (Ship by Devon...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "32 levels from scratch. All varied in year and quality, but what can ya do? This text is unfinished, I cannot remember where all these midis are from, frankly I don't care too much, I just want to get this damn thing off my comp, and I...",
+        "32 levels from scratch. All varied in year and quality, but what can ya do? This text is unfinished, I cannot remember where all these midis are from, frankly I don't care too much, I just want to get this damn thing off my comp, and I apologize if I cannot give credit where it is due.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/hellcore.zip",
         "hellcore.wad",
         "22.5 MB",
@@ -1810,7 +1810,7 @@ static const repo_item_t s_catalog[] = {
         "Ian Wilson",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Herian has no story it is simply a 32 level TC made primarily for the single player. The infuence for it came from my favourite games mentioned below. 32 NEW levels, NEW textures, NEW sounds & NEW monsters All levels were made for single...",
+        "Herian has no story it is simply a 32 level TC made primarily for the single player. The infuence for it came from my favourite games mentioned below. 32 NEW levels, NEW textures, NEW sounds & NEW monsters All levels were made for single play. Deathmatch and co-operative play is possible, but not optimized. Many of the levels are too large for deathmatch.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/herian.zip",
         "herian.wad",
         "3.3 MB",
@@ -1822,7 +1822,7 @@ static const repo_item_t s_catalog[] = {
         "Ian Wilson",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Herian2 is fully compatible with only ZDoom version 1.17 or later. Herian2 has a simple story line. The setting, time-wise, is prior to the fearsome adventures that were seen in Doom and Doom2 the likes of which has never been see again....",
+        "Herian2 is fully compatible with only ZDoom version 1.17 or later. Herian2 has a simple story line. The setting, time-wise, is prior to the fearsome adventures that were seen in Doom and Doom2 the likes of which has never been see again. Many tales have been told since but, with few exceptions, most although.... perhaps interesting, do not have you quaking with fear like the originals. Before the days of Doom many of the characters that we came to know in these tales and...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/herian2.zip",
         "herian2.wad",
         "7.3 MB",
@@ -1858,7 +1858,7 @@ static const repo_item_t s_catalog[] = {
         "Shadowman",
         "MEGAWAD",
         "DOOM2.WAD",
-        "The project from iddqd.ru the community, basis of which are maps, made in a speed- mapping course, on which only 4 hours were allowed (each speedmapping contest - 4 hours length). The first speedmapping contest ('Nature'), most maps from...",
+        "The project from iddqd.ru the community, basis of which are maps, made in a speed- mapping course, on which only 4 hours were allowed (each speedmapping contest - 4 hours length). The first speedmapping contest ('Nature'), most maps from which are in this megawad, was in 2008.26.01. The second speedmapping contest ('Hell') has taken place on 2008.02.02. The third ('City') and the fourth ('Boss-level') speed- mapping contests were onto 2009.08.03 and 2009.18.07. Not all maps,...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/ht.zip",
         "ht.wad",
         "4.5 MB",
@@ -1906,7 +1906,7 @@ static const repo_item_t s_catalog[] = {
         "The Interceptors",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Interception is a vanilla-compatible megawad for DOOM II. In the far distant future, you are part of a team of marines, who are sent a distress signal from an archaeology site. Once you arrive, the rest of your team is killed by some nasty...",
+        "Interception is a vanilla-compatible megawad for DOOM II. In the far distant future, you are part of a team of marines, who are sent a distress signal from an archaeology site. Once you arrive, the rest of your team is killed by some nasty hell spawns. Now it's your job to stop the invasion, or die trying. Along the way, you explore ancient military bases, an underground necropolis, and Hell itself. Final Words from the Author: So, I've finally had a chance to sit down and...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/intercep.zip",
         "intercep.wad",
         "3.8 MB",
@@ -1966,7 +1966,7 @@ static const repo_item_t s_catalog[] = {
         "Various",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Japanese Community Project is a 32 level megawad made by Japanese Doomers. Doom is a minor game in Japan, so Doom community in Japan is very small. The community having been weakening year by year, we started this project for strengthening...",
+        "Japanese Community Project is a 32 level megawad made by Japanese Doomers. Doom is a minor game in Japan, so Doom community in Japan is very small. The community having been weakening year by year, we started this project for strengthening our solidarity, improving mapping skill, and so on. We aimed a low-threshold project which anyone could participate. Some doomers were inexperience mappers or beginners, so Tatsurd-Cacocaco, a project leader, supported map's detail and...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/jpcp.zip",
         "jpcp.wad",
         "12.7 MB",
@@ -1978,7 +1978,7 @@ static const repo_item_t s_catalog[] = {
         "James 'Jimmy' Paddock",
         "MEGAWAD",
         "DOOM2.WAD",
-        "The third and final part of my solo megawad. Part 3 of 'Jenesis' adds 12 extra maps to the first twenty (which have all also been modified for the better in some way or another) and replaces the final map, as its predecessor did. 'Jenesis'...",
+        "The third and final part of my solo megawad. Part 3 of 'Jenesis' adds 12 extra maps to the first twenty (which have all also been modified for the better in some way or another) and replaces the final map, as its predecessor did. 'Jenesis' is a 32-level megawad for Boom, complete with a new final boss, a new monster, new status bar graphics and a recolored message font. The aim of this project was mainly to hone my skills in traditional Doom level design, but it was also to...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/jenesis.zip",
         "jenesis.wad",
         "6.4 MB",
@@ -1990,7 +1990,7 @@ static const repo_item_t s_catalog[] = {
         "Jason Wainman",
         "MEGAWAD",
         "DOOM2.WAD",
-        "These levels, which were the results of four months of work from October 1995 to January 1996, are some of the hardest ones you'll ever experience. However, I did notice a few things that I felt needed improvement. I made the textures more...",
+        "These levels, which were the results of four months of work from October 1995 to January 1996, are some of the hardest ones you'll ever experience. However, I did notice a few things that I felt needed improvement. I made the textures more realistic to the surroundings of the boards, eliminated some unwanted items, and installing walls where open space once was -- this would sometimes make the levels too easy to play. Also, on some levels, I changed the passageways from the...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/jow.zip",
         "jow.wad",
         "1.0 MB",
@@ -2014,7 +2014,7 @@ static const repo_item_t s_catalog[] = {
         "Adam 'Khorus' Woodmansey",
         "MEGAWAD",
         "DOOM2.WAD",
-        "A vanilla megawad for Doom 2 containing 32 short, chaotic and challenging maps. The wad's premise was to create at least one speedmap a day. There was no set time limit, times ranged from 1.5 to 3.5 hours. Don't let the word 'speedmap'...",
+        "A vanilla megawad for Doom 2 containing 32 short, chaotic and challenging maps. The wad's premise was to create at least one speedmap a day. There was no set time limit, times ranged from 1.5 to 3.5 hours. Don't let the word 'speedmap' scare you off though! In the author's opinion, this wad contains many of his best maps to date.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/kssht.zip",
         "kssht.wad",
         "1.1 MB",
@@ -2026,7 +2026,7 @@ static const repo_item_t s_catalog[] = {
         "Ruba",
         "MEGAWAD",
         "DOOM2.WAD",
-        "This is an all new a 32 level episode for doom2. You must adventure through many unique worlds killing awful monsters along the way. When you play this in Zdoom you get all the level names. I learnt how to use mapinfo, add new textures and...",
+        "This is an all new a 32 level episode for doom2. You must adventure through many unique worlds killing awful monsters along the way. When you play this in Zdoom you get all the level names. I learnt how to use mapinfo, add new textures and add new music. The first 11 levels are on the ground and then you go into space before heading into a vivid colorful world of beauty. Many arch guys and barons and blue enemies and demons will try and stop you but you have plenty of...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/killadve.zip",
         "killadve.wad",
         "1.2 MB",
@@ -2038,7 +2038,7 @@ static const repo_item_t s_catalog[] = {
         "KDIZD Team (See CREDITS.TXT...",
         "MEGAWAD",
         "DOOM.WAD",
-        "The experience of playing through Knee-Deep in the Dead is one that many gamers will never forget, but through the years the episode has become too easy for many to play through and enjoy the way they did the first time. Knee-Deep in ZDoom...",
+        "The experience of playing through Knee-Deep in the Dead is one that many gamers will never forget, but through the years the episode has become too easy for many to play through and enjoy the way they did the first time. Knee-Deep in ZDoom is an interpretation of Id Software's original groundbreaking production, Knee-Deep in the Dead. The team has focused on expanding the original episode by utilizing the power of Randy Heit's ZDoom port; adding new areas, features, and...",
         "https://youfailit.net/pub/idgames/levels/doom/Ports/megawads/kdizd_12.zip",
         "kdizd_12.wad",
         "23.1 MB",
@@ -2098,7 +2098,7 @@ static const repo_item_t s_catalog[] = {
         "Nicolas Monti",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Well, I'm back. I thought Erkattae e was my last shot but I wanted to make more maps so here we are. Mano Laikas is a full 'classic' Doom2 megawad. Aesthetics are pretty simple, the themes vary from E1, E2, alpha and what I call...",
+        "Well, I'm back. I thought Erkattae e was my last shot but I wanted to make more maps so here we are. Mano Laikas is a full 'classic' Doom2 megawad. Aesthetics are pretty simple, the themes vary from E1, E2, alpha and what I call 'heteroclites' and my goal as for Erkattae e was to make mid sized maps with moderate monster count so they can be completed in 10-15 minutes at best. Also I seem to have developed a style that some praise and some others hate (those who rate my...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/manolaik.zip",
         "manolaik.wad",
         "3.5 MB",
@@ -2110,7 +2110,7 @@ static const repo_item_t s_catalog[] = {
         "Nathan Lineback",
         "MEGAWAD",
         "DOOM2.WAD",
-        "You are a Martian terraformer stuck in a small station in the middle of nowhere. Since the beginning of the terraforming project, the United Organizations of Earth have been threatening to take over. Recent events have prompted an invasion...",
+        "You are a Martian terraformer stuck in a small station in the middle of nowhere. Since the beginning of the terraforming project, the United Organizations of Earth have been threatening to take over. Recent events have prompted an invasion from Earth, only something went wrong with their new 'space-warp' capable ships... that were built by some company with the initials 'MS'.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/marsw301.zip",
         "marsw301.wad",
         "4.2 MB",
@@ -2146,7 +2146,7 @@ static const repo_item_t s_catalog[] = {
         "A buncha schmucks",
         "MEGAWAD",
         "DOOM2.WAD",
-        "After three successful(ish) endeavours and a year of slow-cooking, the MAYhem crew is back with 34 more maps made in May! This time, it's a very gothic edition of MAYhem where we decided to restrict every level to exactly 1,500 lines....",
+        "After three successful(ish) endeavours and a year of slow-cooking, the MAYhem crew is back with 34 more maps made in May! This time, it's a very gothic edition of MAYhem where we decided to restrict every level to exactly 1,500 lines. These maps may be black like our souls, but we hope this WAD brings joy and laughter to those who play it! The Maplist: 01 - No Mayhem! by Walter Confalonieri 02 - The Silencer by Impboy 03 - Venom Canyon by jmickle66666666 04 - Prayers in...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/mayhem15.zip",
         "mayhem15.wad",
         "4.2 MB",
@@ -2158,7 +2158,7 @@ static const repo_item_t s_catalog[] = {
         "A buncha schmucks",
         "MEGAWAD",
         "DOOM2.WAD",
-        "After Two successful...ish endeavors, the MAYhem crew is back for its biggest, most ambitious, and closest to on time campaign yet! (Everything said and done before July!) As usual the maps were made in a one month time span (the month of...",
+        "After Two successful...ish endeavors, the MAYhem crew is back for its biggest, most ambitious, and closest to on time campaign yet! (Everything said and done before July!) As usual the maps were made in a one month time span (the month of May). Only this time, to commemorate the cultural zeitgeist of the era, all the maps were confined to a 2048x2048 playing space, so years from now, we can look back on one of the definitve passtimes of the early months of 2014! While...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/mayhem14.zip",
         "mayhem14.wad",
         "7.0 MB",
@@ -2206,7 +2206,7 @@ static const repo_item_t s_catalog[] = {
         "Wim Vanrie",
         "MEGAWAD",
         "DOOM2.WAD",
-        "A megawad which was 95% finished two years ago. Never got around to adding the final touches until now. The levels are relatively small, hence the name. Other than that, there's no link between them. Some are horrible, some are good. I had...",
+        "A megawad which was 95% finished two years ago. Never got around to adding the final touches until now. The levels are relatively small, hence the name. Other than that, there's no link between them. Some are horrible, some are good. I had planned to add customized level names, rearrange the soundtracks and some other tidbits but have never done so.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/mlm12.zip",
         "mlm12.wad",
         "1.3 MB",
@@ -2242,7 +2242,7 @@ static const repo_item_t s_catalog[] = {
         "Deadwing",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Moonblood is a megawad (32 levels) for Doom 2. The Project has started with remastering the levels from my first wad, Eclipse, but the changes became quite big and I decided to turn it into Moonblood (it was initially called Revclipse,...",
+        "Moonblood is a megawad (32 levels) for Doom 2. The Project has started with remastering the levels from my first wad, Eclipse, but the changes became quite big and I decided to turn it into Moonblood (it was initially called Revclipse, then after Reclipse). The levels were most inspired by early Scythe 1 levels, Jenesis, Mano Laikas and DTWID series.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/moonbld.zip",
         "moonbld.wad",
         "3.9 MB",
@@ -2266,7 +2266,7 @@ static const repo_item_t s_catalog[] = {
         "Various (maplist below)",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Mutiny is a 16-level, Limit Removing Community Project Episode for Doom 2 intended to be the spiritual successor of late 90's cyberpunk themed wads such as STRAIN, Hacx, Nimrod, Dystopia 3, and Perdition's Gate. It features new colorful,...",
+        "Mutiny is a 16-level, Limit Removing Community Project Episode for Doom 2 intended to be the spiritual successor of late 90's cyberpunk themed wads such as STRAIN, Hacx, Nimrod, Dystopia 3, and Perdition's Gate. It features new colorful, high contrast, (intentionally retro) textures inspired by the works of Iika Keranen and Anthony Czerwonka, complete with plenty radioactive signs, warning stripes, computers, slime, and rust.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/mutiny.zip",
         "mutiny.wad",
         "5.3 MB",
@@ -2278,7 +2278,7 @@ static const repo_item_t s_catalog[] = {
         "Sophie Kirschner",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Thirty-two maps, all first made during November and then further refined in December 2018. Wow, talk about an intense month... Nanopineapple was designed for Boom ports and pistol starts. No jumping, crouching, or free aim! This breaks the...",
+        "Thirty-two maps, all first made during November and then further refined in December 2018. Wow, talk about an intense month... Nanopineapple was designed for Boom ports and pistol starts. No jumping, crouching, or free aim! This breaks the WAD. Infinite height is encouraged for a more challenging experience, but turning it off won't break the game. Enjoy!",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/pnano18.zip",
         "pnano18.wad",
         "1.6 MB",
@@ -2314,7 +2314,7 @@ static const repo_item_t s_catalog[] = {
         "Various Authors",
         "MEGAWAD",
         "DOOM2.WAD",
-        "This project started on January 10, 2006. The first NDCP had been completed and released. Towards the end of that project talk had been going on about a sequel, and thus this project was formed. PumpkinSmasher took the reigns as project...",
+        "This project started on January 10, 2006. The first NDCP had been completed and released. Towards the end of that project talk had been going on about a sequel, and thus this project was formed. PumpkinSmasher took the reigns as project leader and started map sign-ups. The goal was not to take near as long as is took to finish the first NDCP. This goal was not achieved.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/ndcp2.zip",
         "ndcp2.wad",
         "19.0 MB",
@@ -2338,7 +2338,7 @@ static const repo_item_t s_catalog[] = {
         "Jerry Lehr, Jr",
         "MEGAWAD",
         "DOOM.WAD",
-        "Nightmares of Loki is a cryptic hallucinagenic Nightmare. This version contains 3 episodes and level starts to the 4th This game was started in 1995 under the name 'doom legacy' After a source port was discovered with the same name, it has...",
+        "Nightmares of Loki is a cryptic hallucinagenic Nightmare. This version contains 3 episodes and level starts to the 4th This game was started in 1995 under the name 'doom legacy' After a source port was discovered with the same name, it has been renamed in 1999 to 'Nightmares of Loki' The story is little to nothing but the levels are the focus. These levels are HUGE and they'll piss you off, so SAVEGAME! works great in zdoom, 2 levels crash in jdoom. made for the original...",
         "https://youfailit.net/pub/idgames/levels/doom/megawads/loki1999.zip",
         "loki1999.wad",
         "4.7 MB",
@@ -2350,7 +2350,7 @@ static const repo_item_t s_catalog[] = {
         "Nigel 'Enjay' Rowand",
         "MEGAWAD",
         "DOOM.WAD",
-        "Olde replacement for the original Doom 3 Episodes. Released purely because of interest in old, cheesy 1994 WADS. This is possibly not the first version of this file, but an early revision. I no longer have the original The file date may or...",
+        "Olde replacement for the original Doom 3 Episodes. Released purely because of interest in old, cheesy 1994 WADS. This is possibly not the first version of this file, but an early revision. I no longer have the original The file date may or may not be accurate. The original was originally uploaded to the Compuserve action games forum in 1994.",
         "https://youfailit.net/pub/idgames/levels/doom/megawads/njdoom.zip",
         "njdoom.wad",
         "1.2 MB",
@@ -2362,7 +2362,7 @@ static const repo_item_t s_catalog[] = {
         "Nigel 'Enjay' Rowand",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Olde replacement for Doom2. Released purely because of interest in old, cheesy 1994 WADS. This is not the first version of this file. It may be based on an early revision but this one has been 'legalised' by removing maps 31 and 32 which...",
+        "Olde replacement for Doom2. Released purely because of interest in old, cheesy 1994 WADS. This is not the first version of this file. It may be based on an early revision but this one has been 'legalised' by removing maps 31 and 32 which were just edited version of the Id originals to make them a little more like the Wolf originals. It is likely that this is not even based on the original version of NJDoom but an early revision. The file date indicated a December 1994...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/njdoom2.zip",
         "njdoom2.wad",
         "1.5 MB",
@@ -2374,7 +2374,7 @@ static const repo_item_t s_catalog[] = {
         "Emil Brundage & Xaser",
         "MEGAWAD",
         "DOOM.WAD",
-        "Oldschool 4-episode adventure for The Ultimate Doom, featuring some of the most devilish map design this side of 1994. 'Nuff said... ish. Similar to DTWID, the spirit of id is ever-present, albeit cranked up to 11 with a devious new spin...",
+        "Oldschool 4-episode adventure for The Ultimate Doom, featuring some of the most devilish map design this side of 1994. 'Nuff said... ish. Similar to DTWID, the spirit of id is ever-present, albeit cranked up to 11 with a devious new spin on the classic episodes' themes. Along the way, you'll enter parallel worlds, explore derelict spaceships still floating in the sky, and return to some eerily familiar locales on the far side of Phobos and beyond.",
         "https://youfailit.net/pub/idgames/levels/doom/Ports/megawads/neis.zip",
         "neis.wad",
         "6.1 MB",
@@ -2386,7 +2386,7 @@ static const repo_item_t s_catalog[] = {
         "TeamNOVA 2",
         "MEGAWAD",
         "DOOM2.WAD",
-        "//////FILE UPDATED (Ver 1.2) 3/27/16////// 32 maps for any limit removing port. Like its predecessor, NOVA II is a megawad designed to give new mappers a chance to flex their mapping muscles and develop their abilities with the help of...",
+        "//////FILE UPDATED (Ver 1.2) 3/27/16////// 32 maps for any limit removing port. Like its predecessor, NOVA II is a megawad designed to give new mappers a chance to flex their mapping muscles and develop their abilities with the help of veteran mappers. Not all the maps in here are from newbies, but for the most part what you'll see in here are people's first forays into the world of Doom mapping.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/nova2.zip",
         "nova2.wad",
         "13.8 MB",
@@ -2398,7 +2398,7 @@ static const repo_item_t s_catalog[] = {
         "TeamNOVA",
         "MEGAWAD",
         "DOOM2.WAD",
-        "//////FILE UPDATED (Ver 1.1) 8/31/15////// Here we worked on creating a 32 map megawad consisting of efforts by those who are new to the Doom mapping experience. The restrictions are as follows: - All maps must be in limit removing format...",
+        "//////FILE UPDATED (Ver 1.1) 8/31/15////// Here we worked on creating a 32 map megawad consisting of efforts by those who are new to the Doom mapping experience. The restrictions are as follows: - All maps must be in limit removing format (-complevel 2 if that definition means anything to you) - All maps are to be made entirely from stock Doom II textures.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/nova.zip",
         "nova.wad",
         "7.2 MB",
@@ -2410,7 +2410,7 @@ static const repo_item_t s_catalog[] = {
         "Angelo Jefferson",
         "MEGAWAD",
         "DOOM2.WAD",
-        "There was hexen and hexen2, startrek and startrek the next generation, quake and quake2. What do they all have in common? The sequel was a hell of a lot better than the original which was good any ways. Well now theirs #1kill the next...",
+        "There was hexen and hexen2, startrek and startrek the next generation, quake and quake2. What do they all have in common? The sequel was a hell of a lot better than the original which was good any ways. Well now theirs #1kill the next generation which follows the tradition. It features 23 never before seen levels with new textures and music from all off doom ever created under Id. It was built with the experience of building 13 levels for doom/doom2 and the experience of...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/1killtng.zip",
         "1killtng.wad",
         "2.0 MB",
@@ -2482,7 +2482,7 @@ static const repo_item_t s_catalog[] = {
         "Gabriel Valderrama (Kotomet...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Pinochestein 3D edicion GL (GL edition) is a total conversion of the original pinochestein 3D that tries to take the best advantage of the new features of ZDoom based ports through UDMF format mapping and lighting implemented by hardware...",
+        "Pinochestein 3D edicion GL (GL edition) is a total conversion of the original pinochestein 3D that tries to take the best advantage of the new features of ZDoom based ports through UDMF format mapping and lighting implemented by hardware acceleration through OpenGL (hence the name). This version not only improves lighting decorations, also fixes all of the maps to give a more Doom-ish style and a more futuristic touch according to the previous history of the game.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/gzp8glv2.zip",
         "gzp8glv2.wad",
         "33.1 MB",
@@ -2494,7 +2494,7 @@ static const repo_item_t s_catalog[] = {
         "Gabriel Valderrama (Kotomet...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Pinochestein 3D edicion GL (GL edition) is a total conversion of the original pinochestein 3D that tries to take the best advantage of the new features of ZDoom based ports through UDMF format mapping and lighting implemented by hardware...",
+        "Pinochestein 3D edicion GL (GL edition) is a total conversion of the original pinochestein 3D that tries to take the best advantage of the new features of ZDoom based ports through UDMF format mapping and lighting implemented by hardware acceleration through OpenGL (hence the name). This version not only improves lighting decorations, also fixes all of the maps to give a more Doom-ish style and a more futuristic touch according to the previous history of the game.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/znp8glv2.zip",
         "znp8glv2.wad",
         "19.8 MB",
@@ -2602,7 +2602,7 @@ static const repo_item_t s_catalog[] = {
         "Doomkid & Co.",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Ray is BACK and ready for more vanilla-compatible action in the tropics! This is a community project and sequel to my older wad, Ray Mohawk's Manic Monday. --- STORY: A year has passed since Ray successfully destroyed the UAC and several...",
+        "Ray is BACK and ready for more vanilla-compatible action in the tropics! This is a community project and sequel to my older wad, Ray Mohawk's Manic Monday. --- STORY: A year has passed since Ray successfully destroyed the UAC and several of their Nukage production compounds. Soon after Ray completed his mission, the prestigious General Kawasaki, one of the last surviving military leaders on Earth, sought him out and rewarded him with a Medal of Courage for his heroic effort....",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/mohawks2.zip",
         "mohawks2.wad",
         "6.7 MB",
@@ -2662,7 +2662,7 @@ static const repo_item_t s_catalog[] = {
         "Whymes",
         "MEGAWAD",
         "DOOM2.WAD",
-        "A 32-map single player/cooperative wad. Contains basic support for deathmatch, as well as difficulty levels. It entails two episodes, with episode 1 being map 1-15, and episode 2 being map16-30. There is a secret level on map 15 as well as...",
+        "A 32-map single player/cooperative wad. Contains basic support for deathmatch, as well as difficulty levels. It entails two episodes, with episode 1 being map 1-15, and episode 2 being map16-30. There is a secret level on map 15 as well as a credits map after map 30.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/rdeimosa.zip",
         "rdeimosa.wad",
         "20.9 MB",
@@ -2674,7 +2674,7 @@ static const repo_item_t s_catalog[] = {
         "Josh Sealy with Guest Mappe...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Resurgence is a 32 maps megawad project, an upgrade from the unfinished Surge project. The maps are similar to Speed of Doom, ranging from Scythe/Plutonia-like maps to Speed of Doom to Resurgence-unique. The difficulty is considerably less...",
+        "Resurgence is a 32 maps megawad project, an upgrade from the unfinished Surge project. The maps are similar to Speed of Doom, ranging from Scythe/Plutonia-like maps to Speed of Doom to Resurgence-unique. The difficulty is considerably less in places but there are several challenging maps to plow through with the occasional slaughtermaps. (For those who don't like slaughter, avoid Map11,25,27,28,30) Sizes vary greatly (for the sake of variety), ranging from quick paced maps...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/resurge.zip",
         "resurge.wad",
         "13.2 MB",
@@ -2734,7 +2734,7 @@ static const repo_item_t s_catalog[] = {
         "Doomkid",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Rowdy Rudy is back and he's madder than ever! THE BACKSTORY: 8 months have passed since Rudy took out the evil cult known as the Protectors, avenged his brother and saved his home city. Impressed by his efforts, many different entities...",
+        "Rowdy Rudy is back and he's madder than ever! THE BACKSTORY: 8 months have passed since Rudy took out the evil cult known as the Protectors, avenged his brother and saved his home city. Impressed by his efforts, many different entities reached out to him and offered him money for mercenary work. Rudy was not interested, he just wanted to live a somewhat normal life and continually refused offers. Having realized it wouldn't stop and could potentially lead to confrontation,...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/rudy2.zip",
         "rudy2.wad",
         "6.3 MB",
@@ -2758,7 +2758,7 @@ static const repo_item_t s_catalog[] = {
         "Scientist",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Made for 'vanilla' doom2.exe and includes: -20 single player maps (map01 upto 20 = all 11 maps from sci.wad + 9 new maps), -10 bonus deathmatch maps (map21-30) -some new textures and sprites including some weapons and a renewed scientist...",
+        "Made for 'vanilla' doom2.exe and includes: -20 single player maps (map01 upto 20 = all 11 maps from sci.wad + 9 new maps), -10 bonus deathmatch maps (map21-30) -some new textures and sprites including some weapons and a renewed scientist sprite.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/sci2.zip",
         "sci2.wad",
         "4.1 MB",
@@ -2770,7 +2770,7 @@ static const repo_item_t s_catalog[] = {
         "Cycloid",
         "MEGAWAD",
         "DOOM2.WAD",
-        "20 shortish levels split into three episodes: Rear Entry, Knee Deep in the Sludge and Into the Blood 'The Source' - That's what they call it. No one quite knows what it is, apart from the birthing grounds of the monstrous army that invaded...",
+        "20 shortish levels split into three episodes: Rear Entry, Knee Deep in the Sludge and Into the Blood 'The Source' - That's what they call it. No one quite knows what it is, apart from the birthing grounds of the monstrous army that invaded your planet. Your team was sent to destroy it, but the way in was heavily guarded, and now only you survive. You'll have to find another way in... The maps are all relatively small with 2 min par times as average. all are designed to be...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/scimitar.zip",
         "scimitar.wad",
         "1.9 MB",
@@ -2782,7 +2782,7 @@ static const repo_item_t s_catalog[] = {
         "Erik Alm",
         "MEGAWAD",
         "DOOM2.WAD",
-        "A 32 level megawad for doom2. This megawad doesn't have perfect texture alignment, insane detail and fantasticly hard gameplay. Instead it focuses on small fun maps to blast through without much thought about defense. The difficulty rises...",
+        "A 32 level megawad for doom2. This megawad doesn't have perfect texture alignment, insane detail and fantasticly hard gameplay. Instead it focuses on small fun maps to blast through without much thought about defense. The difficulty rises steadily as you go through the maps and the last few should challenge even the best.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/scythe.zip",
         "SCYTHE.WAD",
         "2.0 MB",
@@ -2794,7 +2794,7 @@ static const repo_item_t s_catalog[] = {
         "Erik Alm",
         "MEGAWAD",
         "DOOM2.WAD",
-        "This is the sequel to my old megawad 'Scythe'. Expect better looking and bigger levels. unfortunately, the last 3 levels are missing, because I am so lazy and I haven't been satisfied with my attempts at making map28. I _might_ release the...",
+        "This is the sequel to my old megawad 'Scythe'. Expect better looking and bigger levels. unfortunately, the last 3 levels are missing, because I am so lazy and I haven't been satisfied with my attempts at making map28. I _might_ release the last 3 maps some time in the future, but do not count on it. (Update: the last 3 maps are now completed!)",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/scythe2.zip",
         "scythe2.wad",
         "10.1 MB",
@@ -2866,7 +2866,7 @@ static const repo_item_t s_catalog[] = {
         "Joshua 'Dragonfly' O'Sullivan",
         "MEGAWAD",
         "DOOM2.WAD",
-        "SKULLDASH OVERVIEW: Welcome to Skulldash, the fast-paced speedrun arcade mod For Doom II. The objective in skulldash is to collect the Skulltokens scattered around each level to unlock the exit. While collecting the Skulltokens you have to...",
+        "SKULLDASH OVERVIEW: Welcome to Skulldash, the fast-paced speedrun arcade mod For Doom II. The objective in skulldash is to collect the Skulltokens scattered around each level to unlock the exit. While collecting the Skulltokens you have to race against the clock, as there is a time limit to beat all while defending yourself from the hordes of monsters from hell. FAST PACED GAMEPLAY: While on the hunt for the hundreds of Skulltokens scattered across the various realms, you re...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/skuldash.zip",
         "skuldash.wad",
         "18.2 MB",
@@ -2914,7 +2914,7 @@ static const repo_item_t s_catalog[] = {
         "Russian Doom Community (see...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Megawad, based on the results of three speedmapping contests, held on www.iddqd.ru in 2014-2016, with next themes: 1. Industrial 2. Ancient city 3. Free disigned style, but there was limit of 3-colours of textures/floors on map All maps...",
+        "Megawad, based on the results of three speedmapping contests, held on www.iddqd.ru in 2014-2016, with next themes: 1. Industrial 2. Ancient city 3. Free disigned style, but there was limit of 3-colours of textures/floors on map All maps were built in limit of 4 hours, than were sent to a contest judge and there was voting for best maps. Later, maps we not be able to upgraded, but with fix of some major bugs and gameplay balance.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/spmaster.zip",
         "spmaster.wad",
         "23.8 MB",
@@ -2950,7 +2950,7 @@ static const repo_item_t s_catalog[] = {
         "Alias Zeratul 982",
         "MEGAWAD",
         "DOOM2.WAD",
-        "20 levels: Some short, some deadly, most with stone-like textures, and each with midis from Doom, Doom 2, Requiem, Momento Mori 2, etc. (Look under 'Level Information' for more info) Be sure to look for the 'inspiration points' in certain...",
+        "20 levels: Some short, some deadly, most with stone-like textures, and each with midis from Doom, Doom 2, Requiem, Momento Mori 2, etc. (Look under 'Level Information' for more info) Be sure to look for the 'inspiration points' in certain maps.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/stone.zip",
         "stone.wad",
         "1.0 MB",
@@ -2962,7 +2962,7 @@ static const repo_item_t s_catalog[] = {
         "The Alpha Dog Alliance",
         "MEGAWAD",
         "DOOM2.WAD",
-        "STRAIN is THE largest DOOM II Total Conversion. And it's FREE! This is the product of our painstaking effort at a true successor to DOOM II. We hope you'll agree that it is much better than 90% of all those $50 shovelware first person...",
+        "STRAIN is THE largest DOOM II Total Conversion. And it's FREE! This is the product of our painstaking effort at a true successor to DOOM II. We hope you'll agree that it is much better than 90% of all those $50 shovelware first person shooters that wish they were DOOM! STRAIN includes 32 new levels, all new music, and a complete story which carries through the levels. It also contains 100+ new textures, and many new baddies, weapons, graphics, and sound effects. Yes, that's...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/strain10.zip",
         "strain10.wad",
         "4.8 MB",
@@ -2974,7 +2974,7 @@ static const repo_item_t s_catalog[] = {
         "Alpha Dog Alliance",
         "MEGAWAD",
         "DOOM2.WAD",
-        "This is a reupload of the legendary 1997 total conversion STRAIN to repackage it in a manner suitable for modern users. The original version uploaded to /idgames on September 14, 1997 was distributed as a self-extracting LZH file, which...",
+        "This is a reupload of the legendary 1997 total conversion STRAIN to repackage it in a manner suitable for modern users. The original version uploaded to /idgames on September 14, 1997 was distributed as a self-extracting LZH file, which one could run only in DOS, split into four pieces so the user could copy them to four 3 -inch floppy disks and install the WAD that way if they wanted. Because both DOS and floppy disks have been obsolete for decades, this method now serves...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/strain.zip",
         "STRAIN.WAD",
         "9.4 MB",
@@ -2998,7 +2998,7 @@ static const repo_item_t s_catalog[] = {
         "Ribbiks & Dannebubinga",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Sunlust is a set of 32 boom-compatible maps for Doom II, designed to be played from pistol start. The maps meander through a range of themes, from traditional bases and temples to abstract hellish, void, and tech aesthetics. UV is designed...",
+        "Sunlust is a set of 32 boom-compatible maps for Doom II, designed to be played from pistol start. The maps meander through a range of themes, from traditional bases and temples to abstract hellish, void, and tech aesthetics. UV is designed primarily for ubermensch doom-gods, thus we encourage most players to start off on HMP or lower.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/sunlust.zip",
         "sunlust.wad",
         "23.3 MB",
@@ -3010,7 +3010,7 @@ static const repo_item_t s_catalog[] = {
         "Stephen Clark (The Ultimate...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "A DooM 2 episode with a Sonic influence throughout, courtesy of a brainwave I had during the map drawing phase of Licence to Spell DooM. It has the Sonic layout (zones, acts, bosses) and also has some Sonic features (monitors, springs,...",
+        "A DooM 2 episode with a Sonic influence throughout, courtesy of a brainwave I had during the map drawing phase of Licence to Spell DooM. It has the Sonic layout (zones, acts, bosses) and also has some Sonic features (monitors, springs, water). It also uses the health system seen in map 09 of Fragport (which was also Sonic-inspired) but will still look and play like a normal DooM 2 megawad.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/sonic.zip",
         "sonic.wad",
         "17.9 MB",
@@ -3034,7 +3034,7 @@ static const repo_item_t s_catalog[] = {
         "franckFRAG (guest mappers J...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Swift Death is an extremely hard megawad, calibrated for speedrunners. I recommanded for novice players to play in 'easy' ('Toilet Break', or 'Soft Event'). SD is realized in speedmapping sessions, for the most parts of maps. These maps...",
+        "Swift Death is an extremely hard megawad, calibrated for speedrunners. I recommanded for novice players to play in 'easy' ('Toilet Break', or 'Soft Event'). SD is realized in speedmapping sessions, for the most parts of maps. These maps are generally small, and contain on average 75 monsters. They are also compatible for the duel / deathmatch.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/swideath.zip",
         "swideath.wad",
         "1.5 MB",
@@ -3082,7 +3082,7 @@ static const repo_item_t s_catalog[] = {
         "Various members of the ZDoo...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Fuzzball Fox came up with the concept of using only 10 textures for a map, and challenged the ZDoom forum members to create 15 single player maps and 5 multiplayer maps that used this limit, and also limit the player to a 2048x2048 area....",
+        "Fuzzball Fox came up with the concept of using only 10 textures for a map, and challenged the ZDoom forum members to create 15 single player maps and 5 multiplayer maps that used this limit, and also limit the player to a 2048x2048 area. The resulting mapset is split into two episodes, SinglePlayer (starting MAP01 and ending on MAP15) and Multiplayer, which can be played either as a second single player episode, or with up to 3 other players co-operatively (starting on MAP16...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/tcp.zip",
         "tcp.wad",
         "15.1 MB",
@@ -3130,7 +3130,7 @@ static const repo_item_t s_catalog[] = {
         "Jan Van der Veken",
         "MEGAWAD",
         "DOOM2.WAD",
-        "It has been 3 years since the destruction of the huge demon that masterminded the invasion of Earth. Your journey back home was almost as difficult and bloodthirsty as your journey into hell, but you made it. You had expected to be made a...",
+        "It has been 3 years since the destruction of the huge demon that masterminded the invasion of Earth. Your journey back home was almost as difficult and bloodthirsty as your journey into hell, but you made it. You had expected to be made a hero; after all, you had saved Earth and all it's worlds from a fate worse than death. But it was not to be that way. Upon your return, you discovered that things had begun to change. The UAC, deprived of some of it's key personnel, had...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/darken.zip",
         "darken.wad",
         "1.6 MB",
@@ -3142,7 +3142,7 @@ static const repo_item_t s_catalog[] = {
         "Ola Björling",
         "MEGAWAD",
         "DOOM2.WAD",
-        "After a hard nights driving about in the galaxy, your trusted space vessel 'Margie' runs out of fuel and you crash on some ugly planet. Uhm... thats it I think. Oh yeah; You have to kill stuff too. (If you depserately need a storyline, go...",
+        "After a hard nights driving about in the galaxy, your trusted space vessel 'Margie' runs out of fuel and you crash on some ugly planet. Uhm... thats it I think. Oh yeah; You have to kill stuff too. (If you depserately need a storyline, go play something else or think of one yourself.)",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/darken2.zip",
         "Darken2.wad",
         "4.3 MB",
@@ -3166,7 +3166,7 @@ static const repo_item_t s_catalog[] = {
         "Alando1 (Alan)",
         "MEGAWAD",
         "DOOM2.WAD",
-        "This is a re-interpretation of the original DOOM & DOOM II levels. It pretty much is a retelling of the DOOM story in a more up-to-date format. This wad contains 34 levels and it is an attempt to recreate the original DOOM maps while still...",
+        "This is a re-interpretation of the original DOOM & DOOM II levels. It pretty much is a retelling of the DOOM story in a more up-to-date format. This wad contains 34 levels and it is an attempt to recreate the original DOOM maps while still keeping the classic DOOM experience.This wad includes cut-scenes (that are skipable), smooth DOOM weapon animations, a couple of new weapons including the railgun with sniper scope, and a second pistol you can pick up and go Lara Croft on...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/doomtrib.zip",
         "doomtrib.wad",
         "47.0 MB",
@@ -3178,7 +3178,7 @@ static const repo_item_t s_catalog[] = {
         "TheCupboard & Worst-vd-Plas",
         "MEGAWAD",
         "DOOM2.WAD",
-        "The Great Bicycle Mystery 2 is a 32 level journey that will take you to the lowest pits of hell to the brownest of techbases to the highest of mountain teleportation testing facilities to the greasiest of restaurants to the most obligatory...",
+        "The Great Bicycle Mystery 2 is a 32 level journey that will take you to the lowest pits of hell to the brownest of techbases to the highest of mountain teleportation testing facilities to the greasiest of restaurants to the most obligatory of sewer maps. Along the way, you'll encounter 9 new monsters, new textures, catchy music, and stuff.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/bm2surv.zip",
         "bm2surv.wad",
         "7.2 MB",
@@ -3190,7 +3190,7 @@ static const repo_item_t s_catalog[] = {
         "hervoheebo",
         "MEGAWAD",
         "DOOM2.WAD",
-        "A new 32-map megawad for DOOM II, focusing on short to medium length levels, played in a series or from pistol start, in single player or cooperative. THE JOURNEY takes you across a variety of locales, challenging you along the way with...",
+        "A new 32-map megawad for DOOM II, focusing on short to medium length levels, played in a series or from pistol start, in single player or cooperative. THE JOURNEY takes you across a variety of locales, challenging you along the way with insidious traps and vicious monsters. The levels are easy to understand, but don't underestimate them because of the lack of massive hordes! Close quarters and strategical monster and item placement will test your skills. The average time to...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/tj.zip",
         "tj.wad",
         "3.2 MB",
@@ -3202,7 +3202,7 @@ static const repo_item_t s_catalog[] = {
         "Walter 'Daimon' Confalonieri",
         "MEGAWAD",
         "DOOM2.WAD",
-        "This is my last jokewad, as the title suggest. after this i will made only fuckin' cool things. Maybe (and i repeat MAYBE) i'll plan to made a sequel of the bleha saga, but it will a semiserious thing like in bella 2 of paul corfiatis. Oh...",
+        "This is my last jokewad, as the title suggest. after this i will made only fuckin' cool things. Maybe (and i repeat MAYBE) i'll plan to made a sequel of the bleha saga, but it will a semiserious thing like in bella 2 of paul corfiatis. Oh and don't forget that mordeth thing of the community joke!!!!!!! btw, lets start with the description of this wad! This wad is based upon joke megawads like 1337.wad, mock2.wad, white0.wad, ocb.wad and awsome.wad SO EXPECT SOMENTHING OF...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/dai_lj.zip",
         "dai_lj.wad",
         "2.3 MB",
@@ -3226,7 +3226,7 @@ static const repo_item_t s_catalog[] = {
         "hervoheebo",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Presented as an immediate sequel to Doom ][, The Long Trek Back Home sees you through the old levels in reverse order; Icon of Sin is the first and Entryway the last. Though the respective areas are familiar, great upheavals have taken...",
+        "Presented as an immediate sequel to Doom ][, The Long Trek Back Home sees you through the old levels in reverse order; Icon of Sin is the first and Entryway the last. Though the respective areas are familiar, great upheavals have taken place: destruction and Hellish subversion ensure that there is as much new as there is old. From the caved-in ruins of Hell to the corrupted cityscape to the former spaceport suffused in demonic magic, the road home is long... This is the...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/longtrek.zip",
         "LONGTREK.WAD",
         "3.5 MB",
@@ -3262,7 +3262,7 @@ static const repo_item_t s_catalog[] = {
         "Paul Corfiatis",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Its the 43rd century, year 662, month 3 day 25. The universe is a wreck and you must sort out all this mess. So you have to go on a new adventure and kill Paul Corfiatis. Once he is beaten you will be a proud champion. This Wod requires...",
+        "Its the 43rd century, year 662, month 3 day 25. The universe is a wreck and you must sort out all this mess. So you have to go on a new adventure and kill Paul Corfiatis. Once he is beaten you will be a proud champion. This Wod requires ZDOOM!!",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/0cb.zip",
         "0cb.wad",
         "1.2 MB",
@@ -3274,7 +3274,7 @@ static const repo_item_t s_catalog[] = {
         "Ernie Stockham, Brian Davis...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "HI!! after about 34 months of hard work and late nights up at the computer, our levels for THE NEW DOOM! are finally finished! We have named it THE NEW DOOM because we replaced all of the OLD DOOM! We hope you like these levels, because I...",
+        "HI!! after about 34 months of hard work and late nights up at the computer, our levels for THE NEW DOOM! are finally finished! We have named it THE NEW DOOM because we replaced all of the OLD DOOM! We hope you like these levels, because I have had to get a thicker glasses perscription twice this year from all the late nights with no rest. Our grades have also dropped approximately two letters each class because of the work we put into this. Anyway, let's not use this whole...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/1337.zip",
         "1337.wad",
         "1.2 MB",
@@ -3310,7 +3310,7 @@ static const repo_item_t s_catalog[] = {
         "Paul Corfiatis",
         "MEGAWAD",
         "DOOM2.WAD",
-        "32 all new classic levels for Doom 2. The twilight zone dosen't really have a story to it. The Twilight Zone was finished in Janurary 1998 where Level 17 and 18 were Crossing Acheron and Dante's gate. But I did a new level 17 and 18 myself...",
+        "32 all new classic levels for Doom 2. The twilight zone dosen't really have a story to it. The Twilight Zone was finished in Janurary 1998 where Level 17 and 18 were Crossing Acheron and Dante's gate. But I did a new level 17 and 18 myself so Dr Sleep wouldn't get angry.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/twzone.zip",
         "TWZONE.WAD",
         "1.3 MB",
@@ -3346,7 +3346,7 @@ static const repo_item_t s_catalog[] = {
         "Morten Stromsvold (morten_s...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "At last I am done with my first and last MegaWad. After years of building. But I admit I haven't dedicated my entire life to Doom.....:) If I had I would probably had launched the wad much earlier in my dooming career. By the way I havn't...",
+        "At last I am done with my first and last MegaWad. After years of building. But I admit I haven't dedicated my entire life to Doom.....:) If I had I would probably had launched the wad much earlier in my dooming career. By the way I havn't introduced myself. My name is Morten Stromsvold. Also known as The Big One among friends. (TBO for shortening). Ok...enough of the chit-chat. Her is some information about The World Of Deth. The World Of Death is an original Doom 2 MegaWad....",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/world.zip",
         "world.wad",
         "2.2 MB",
@@ -3358,7 +3358,7 @@ static const repo_item_t s_catalog[] = {
         "Scypek2",
         "MEGAWAD",
         "DOOM2.WAD",
-        "A vanilla-compatible mapset created for NaNoWadMo 2019. It tells the story of three people and the different challenges they face trying to survive and save each other after the research facility they're stationed at is struck by a hellish...",
+        "A vanilla-compatible mapset created for NaNoWadMo 2019. It tells the story of three people and the different challenges they face trying to survive and save each other after the research facility they're stationed at is struck by a hellish invasion...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/3iac.zip",
         "3IAC.wad",
         "2.8 MB",
@@ -3370,7 +3370,7 @@ static const repo_item_t s_catalog[] = {
         "Various (see credits below)",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Ty Halderman, the essential pillar of the Doom community, passed away in 2015. He is greatly missed and his contributions to the Doom scene have helped keep this old game alive and kicking. This project tries to honor Ty with levels that...",
+        "Ty Halderman, the essential pillar of the Doom community, passed away in 2015. He is greatly missed and his contributions to the Doom scene have helped keep this old game alive and kicking. This project tries to honor Ty with levels that pay tribute to his work be it in the form of his levels or contribution to the Boom sourceport. For more information on Ty go to this website, which has links to everything you need to know about him as well as the community's condolences:...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/thtthren.zip",
         "thtthren.wad",
         "13.0 MB",
@@ -3382,7 +3382,7 @@ static const repo_item_t s_catalog[] = {
         "TimeOfDeath (Chris Balch)",
         "MEGAWAD",
         "DOOM2.WAD",
-        "TOM is a boom compatible wad that uses only doom2 format line actions (except some boom light transfers) and sector effects. -complevel 9 in PrBoom-Plus is required for some rising stairs and 'floor lower to 8 above highest floor'...",
+        "TOM is a boom compatible wad that uses only doom2 format line actions (except some boom light transfers) and sector effects. -complevel 9 in PrBoom-Plus is required for some rising stairs and 'floor lower to 8 above highest floor' behaviour. Some maps don't work properly in ZDoom. This isn't intended to be a traditional map set. Instead, it's a compilation of random maps and mapping experiments (for me) with random themes that are sorted by date (mostly), rather than...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/tom19.zip",
         "tom19.wad",
         "5.6 MB",
@@ -3406,7 +3406,7 @@ static const repo_item_t s_catalog[] = {
         "Various, see below.",
         "MEGAWAD",
         "DOOM2.WAD",
-        "TNT: Revilution is a fan made community project that acts as a sequel to TeamTNT's Evilution. The goal of this project was to capture the spirit of what made Evilution so great, while at the same time bringing the quality of the visuals &...",
+        "TNT: Revilution is a fan made community project that acts as a sequel to TeamTNT's Evilution. The goal of this project was to capture the spirit of what made Evilution so great, while at the same time bringing the quality of the visuals & game play up to modern standards.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/tntr.zip",
         "TNTR.WAD",
         "8.3 MB",
@@ -3430,7 +3430,7 @@ static const repo_item_t s_catalog[] = {
         "Doom Community",
         "MEGAWAD",
         "DOOM2.WAD",
-        "You're one tough marine. You know it, and everyone that knows you knows it. Once stationed on Mars, you fought alone through the bloody cooridors of UACs science facilities and then into hell itself...just to stop an alien invasion. Next...",
+        "You're one tough marine. You know it, and everyone that knows you knows it. Once stationed on Mars, you fought alone through the bloody cooridors of UACs science facilities and then into hell itself...just to stop an alien invasion. Next you witnessed your home planet, Earth, be overrun by the demons you fought so bravely to destroy. They wrecked havoc, they took countless lives, and they really stank up the place. The remaining citizens of Earth took to the escape ships and...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/ultimate.zip",
         "ultimate.wad",
         "2.5 MB",
@@ -3478,7 +3478,7 @@ static const repo_item_t s_catalog[] = {
         "Cheesewheel",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Uprising is a narrative driven DOOM2 megawad for limit removing ports. It features an extensive dehacked patch with changes to weapons and monsters, alongside varied maps and gameplay. You'll be fighting through wastelands, abandoned...",
+        "Uprising is a narrative driven DOOM2 megawad for limit removing ports. It features an extensive dehacked patch with changes to weapons and monsters, alongside varied maps and gameplay. You'll be fighting through wastelands, abandoned facilities, hellish installations, ruined cities, frozen techbases and beyond...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/uprising.zip",
         "UPRISING.WAD",
         "9.0 MB",
@@ -3490,7 +3490,7 @@ static const repo_item_t s_catalog[] = {
         "riderr3",
         "MEGAWAD",
         "DOOM2.WAD",
-        "You need Plutonia IWAD for this. Plot: Urania - a planet that suddenly appeared in the solar system. Many years ago there lived advanced civilizations, and now it is teeming with monsters. You were sent to Urania as part of the...",
+        "You need Plutonia IWAD for this. Plot: Urania - a planet that suddenly appeared in the solar system. Many years ago there lived advanced civilizations, and now it is teeming with monsters. You were sent to Urania as part of the international battalion, in order to eliminate the cause of the monsters spawning from portals which terrorize the population and prevent us us excavate on the nearby planets. But now your comrades are killed and you are left alone face to face with...",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/urania.zip",
         "URANIA.WAD",
         "3.7 MB",
@@ -3502,7 +3502,7 @@ static const repo_item_t s_catalog[] = {
         "skillsaw",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Valiant is a MBF megawad for Doom II featuring 32 new maps spanning 5 themed episodes. Each map is designed to be played from a pistol start, but some effort has been made to support continuous play as well. Additionally, Valiant includes...",
+        "Valiant is a MBF megawad for Doom II featuring 32 new maps spanning 5 themed episodes. Each map is designed to be played from a pistol start, but some effort has been made to support continuous play as well. Additionally, Valiant includes a number of new monsters and weapons implemented through an extensive MBF format DeHackEd patch. As a result, Valiant is not compatible with gameplay mods, and can only be played in ports with full MBF DeHackEd support. At present, these...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/valiant.zip",
         "Valiant.wad",
         "24.4 MB",
@@ -3514,7 +3514,7 @@ static const repo_item_t s_catalog[] = {
         "Paul 'skillsaw' DeBruyne",
         "MEGAWAD",
         "DOOM2.WAD",
-        "This edition of Valiant strips out all of the MBF DeHackEd work from the original release, which means this version is compatible with gameplay mods! If you really disliked the additional monsters and weapons in Valiant, you could also...",
+        "This edition of Valiant strips out all of the MBF DeHackEd work from the original release, which means this version is compatible with gameplay mods! If you really disliked the additional monsters and weapons in Valiant, you could also play this version as an alternative, since none of that content is present. Have fun! It's probably going to be a bit easy, though.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/valve.zip",
         "valve.wad",
         "26.9 MB",
@@ -3526,7 +3526,7 @@ static const repo_item_t s_catalog[] = {
         "Bobby (lolmcswagger), DCG R...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Vigor is a vanilla compatible megawad with a focus on fast and frantic gameplay. Inspired by E.M's 'Gotta Go Fast,' Vigor is Scythe styled by design, a good number of the maps on display were made within a short period of time and feature...",
+        "Vigor is a vanilla compatible megawad with a focus on fast and frantic gameplay. Inspired by E.M's 'Gotta Go Fast,' Vigor is Scythe styled by design, a good number of the maps on display were made within a short period of time and feature tight, punchy gameplay.",
         "https://youfailit.net/pub/idgames/levels/doom2/megawads/vigor.zip",
         "VIGOR.WAD",
         "1.9 MB",
@@ -3574,7 +3574,7 @@ static const repo_item_t s_catalog[] = {
         "Russian Doom Community (see...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Megawad, based on the results of a four speedmapping contests, held on www.iddqd.ru in 2013, with such themes, as winter, thaw, precipices, and ancient civilizations. Maps were finalized some time later (some - very significantly), and...",
+        "Megawad, based on the results of a four speedmapping contests, held on www.iddqd.ru in 2013, with such themes, as winter, thaw, precipices, and ancient civilizations. Maps were finalized some time later (some - very significantly), and several maps were built from scratch. This megawad tells us the fate of the Marine, who was going to celebrate the New Year. Suddenly, however, the monsters changed seasons' offset, and as a result - they stole the winter. We have to go...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/white2.zip",
         "white2.wad",
         "41.0 MB",
@@ -3586,7 +3586,7 @@ static const repo_item_t s_catalog[] = {
         "Wraith",
         "MEGAWAD",
         "DOOM2.WAD",
-        "I just wanted all doomers to play Orginal Doom one more time. All maps are similar in design and difficulty to their originals, but they are build from scratch. I know, they simply look like originals, but they are still better than just...",
+        "I just wanted all doomers to play Orginal Doom one more time. All maps are similar in design and difficulty to their originals, but they are build from scratch. I know, they simply look like originals, but they are still better than just modified ID`s levels..",
         "https://youfailit.net/pub/idgames/levels/doom/megawads/wd13.zip",
         "WD13.WAD",
         "1.6 MB",
@@ -3598,7 +3598,7 @@ static const repo_item_t s_catalog[] = {
         "mrthejoshmon, cannonball, S...",
         "MEGAWAD",
         "DOOM2.WAD",
-        "Before I say a thing, this is a jokewad for ZDoom (YAY JUST WHAT WE NEED MORE OF!) so if you do not want to play some of the worst maps available (as was the projects intention) then skip this. This is WOOO, an exhilarating experience into...",
+        "Before I say a thing, this is a jokewad for ZDoom (YAY JUST WHAT WE NEED MORE OF!) so if you do not want to play some of the worst maps available (as was the projects intention) then skip this. This is WOOO, an exhilarating experience into mapping... If it was done by monkeys. You can't just blame me for this mess, you have these guys to blame: Mappers, project manegers, 'artwork' providers, reviewers, anybody unlucky enough to post in the thread and awareness providers...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/wooo.zip",
         "wooo.wad",
         "6.6 MB",
@@ -3610,7 +3610,7 @@ static const repo_item_t s_catalog[] = {
         "Various",
         "MEGAWAD",
         "DOOM2.WAD",
-        "This is the highly anticipated sequel to WOOO! (The ZDoom orientated jokewad that nobody asked for) This is a jokewad which is meant to be awful, silly and just plain weird. This time we have more than 32 maps of pure unbridled crap! We...",
+        "This is the highly anticipated sequel to WOOO! (The ZDoom orientated jokewad that nobody asked for) This is a jokewad which is meant to be awful, silly and just plain weird. This time we have more than 32 maps of pure unbridled crap! We have maps that will crush your soul, maps that will make you question the world as we know it, maps that will make you fear pizza, maps that will challenge you and maps that will make you think... For all the wrong reasons! People responsible...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/wooo2.zip",
         "wooo2.wad",
         "12.8 MB",
@@ -3622,7 +3622,7 @@ static const repo_item_t s_catalog[] = {
         "Various",
         "MEGAWAD",
         "DOOM2.WAD",
-        "'Here it FINALLY is! The EXCITING (citation needed) CONCLUSION (please god) to the CRITICALLY PANNED WOOO series! In this EXCITING (citation needed) installment you will be forced into MULTIPLE MAPS on a quest to AVENGE A CLAYMATION demon...",
+        "'Here it FINALLY is! The EXCITING (citation needed) CONCLUSION (please god) to the CRITICALLY PANNED WOOO series! In this EXCITING (citation needed) installment you will be forced into MULTIPLE MAPS on a quest to AVENGE A CLAYMATION demon guy (or some shit) with FULLY VOICED FMV CUTSCENES and STUNNING VISUALS that PUSH THE ENGINE TO ITS LIMIT (and you) as the GRIPPING STORY continues. Only YOU can save SOMEBODY by doing SOMETHING, I'm sure of it!' WOOO 3 is... Well, tries to...",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/wooo3.zip",
         "wooo3.wad",
         "48.4 MB",
@@ -3634,7 +3634,7 @@ static const repo_item_t s_catalog[] = {
         "Various authors",
         "MEGAWAD",
         "DOOM2.WAD",
-        "As the successor to the ZDCMP1, the second take follows the same rules: Various mappers and modders are working on fixed dates/slots on the map and continueing where the prior person has stopped. Expect a high quality Doom experience with...",
+        "As the successor to the ZDCMP1, the second take follows the same rules: Various mappers and modders are working on fixed dates/slots on the map and continueing where the prior person has stopped. Expect a high quality Doom experience with countless surprises and numerous things that push ZDoom to its limits.",
         "https://youfailit.net/pub/idgames/levels/doom2/Ports/megawads/zdcmp2.zip",
         "zdcmp2.wad",
         "51.4 MB",
@@ -3931,7 +3931,7 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/0.9.9 (Nintendo 3DS)");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.0 (Nintendo 3DS)");
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 600L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
     // Optimized buffer sizes for faster 3DS network throughput
@@ -3973,19 +3973,199 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
     return true;
 }
 
+static int Downloader_WordWrap(const char *text, char lines[][64], int max_lines, int max_chars)
+{
+    if (!text || !text[0]) return 0;
+    int line_count = 0;
+    const char *p = text;
+
+    while (*p && line_count < max_lines) {
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p) break;
+
+        int len = strlen(p);
+        if (len <= max_chars) {
+            strncpy(lines[line_count], p, sizeof(lines[line_count]) - 1);
+            lines[line_count][sizeof(lines[line_count]) - 1] = '\0';
+            line_count++;
+            break;
+        }
+
+        int break_pos = max_chars;
+        while (break_pos > 0 && p[break_pos] != ' ' && p[break_pos] != '\n') {
+            break_pos--;
+        }
+        if (break_pos == 0) {
+            break_pos = max_chars;
+        }
+
+        int copy_len = break_pos;
+        if (copy_len >= 64) copy_len = 63;
+        strncpy(lines[line_count], p, copy_len);
+        lines[line_count][copy_len] = '\0';
+        line_count++;
+
+        p += break_pos;
+        while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+    }
+
+    return line_count;
+}
+
+static void Downloader_ShowDescriptionModal(const repo_item_t *item)
+{
+    if (!item) return;
+
+    char lines[64][64];
+    int line_count = Downloader_WordWrap(item->desc, lines, 64, 56);
+    if (line_count == 0) {
+        strcpy(lines[0], "Keine Beschreibung verfuegbar.");
+        line_count = 1;
+    }
+
+    int visible_lines = 11;
+    int scroll_line = 0;
+    int max_scroll = (line_count > visible_lines) ? (line_count - visible_lines) : 0;
+    int debounce = 10;
+
+    while (aptMainLoop()) {
+        hidScanInput();
+        u32 kd = hidKeysDown();
+        u32 kh = hidKeysHeld();
+        touchPosition touch;
+        hidTouchRead(&touch);
+
+        if (debounce > 0) {
+            debounce--;
+        } else {
+            if (kd & (KEY_B | KEY_X | KEY_A | KEY_START)) {
+                break;
+            }
+
+            if ((kd & KEY_UP) || (kh & KEY_UP)) {
+                if (scroll_line > 0) scroll_line--;
+            }
+            if ((kd & KEY_DOWN) || (kh & KEY_DOWN)) {
+                if (scroll_line < max_scroll) scroll_line++;
+            }
+
+            if (kd & KEY_TOUCH) {
+                // Button Up: py: 36..80
+                if (touch.py >= 36 && touch.py <= 80 && touch.px >= 20 && touch.px <= 300) {
+                    if (scroll_line > 0) scroll_line--;
+                }
+                // Button Down: py: 130..174
+                else if (touch.py >= 130 && touch.py <= 174 && touch.px >= 20 && touch.px <= 300) {
+                    if (scroll_line < max_scroll) scroll_line++;
+                }
+                // Button Back: py: 190..235
+                else if (touch.py >= 190 && touch.py <= 235 && touch.px >= 20 && touch.px <= 300) {
+                    break;
+                }
+            }
+        }
+
+        // Top Screen: Description Text
+        u8 *top_fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+        if (top_fb) {
+            WP_FillRect(top_fb, 400, 0, 0, 400, 240, 18, 20, 24);
+
+            // Crimson Header
+            WP_FillRect(top_fb, 400, 0, 0, 400, 32, 130, 20, 20);
+            WP_FillRect(top_fb, 400, 0, 30, 400, 2, 210, 40, 40);
+            WP_DrawText(top_fb, 400, 16, 8, item->title, 255, 255, 255, 1);
+            WP_DrawText(top_fb, 400, 280, 10, "[BESCHREIBUNG]", 255, 215, 0, 1);
+
+            // Sub-header metadata
+            char sub_str[96];
+            snprintf(sub_str, sizeof(sub_str), "AUTOR: %s  |  BASIS: %s  |  GROESSE: %s",
+                     item->author[0] ? item->author : "Unbekannt", item->base_iwad, item->size_str);
+            WP_DrawText(top_fb, 400, 16, 36, sub_str, 180, 210, 240, 1);
+
+            // Viewport Box (Y: 50 to 208, H: 158)
+            WP_FillRect(top_fb, 400, 12, 50, 376, 158, 26, 28, 34);
+            WP_DrawRect(top_fb, 400, 12, 50, 376, 158, 65, 115, 180);
+
+            for (int i = 0; i < visible_lines; i++) {
+                int line_idx = scroll_line + i;
+                if (line_idx < line_count) {
+                    int line_y = 56 + i * 13;
+                    WP_DrawText(top_fb, 400, 20, line_y, lines[line_idx], 230, 235, 245, 1);
+                }
+            }
+
+            // Scrollbar
+            if (max_scroll > 0) {
+                int bar_total_h = 154;
+                int thumb_h = (visible_lines * bar_total_h) / line_count;
+                if (thumb_h < 16) thumb_h = 16;
+                int thumb_y = 52 + (scroll_line * (bar_total_h - thumb_h)) / max_scroll;
+
+                WP_FillRect(top_fb, 400, 381, 52, 5, bar_total_h, 35, 38, 45);
+                WP_FillRect(top_fb, 400, 381, thumb_y, 5, thumb_h, 100, 180, 255);
+            }
+
+            // Footer
+            WP_FillRect(top_fb, 400, 12, 214, 376, 20, 22, 24, 28);
+            WP_DrawRect(top_fb, 400, 12, 214, 376, 20, 50, 50, 60);
+            WP_DrawText(top_fb, 400, 18, 220, "D-PAD: Scrollen   [B] / [X]: Schliessen", 255, 215, 0, 1);
+            if (max_scroll > 0) {
+                char page_buf[32];
+                snprintf(page_buf, sizeof(page_buf), "%d / %d", scroll_line + 1, max_scroll + 1);
+                WP_DrawText(top_fb, 400, 340, 220, page_buf, 180, 180, 200, 1);
+            }
+        }
+
+        // Bottom Screen: Touch controls
+        u8 *bot_fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+        if (bot_fb) {
+            WP_FillRect(bot_fb, 320, 0, 0, 320, 240, 16, 16, 20);
+
+            // Header bar
+            WP_FillRect(bot_fb, 320, 0, 0, 320, 28, 30, 35, 45);
+            WP_DrawCenteredText(bot_fb, 320, 0, 0, 320, 28, "BESCHREIBUNG & INFOS", 255, 215, 0, 1);
+
+            bool can_up = (scroll_line > 0);
+            WP_FillRect(bot_fb, 320, 20, 36, 280, 44, can_up ? 25 : 18, can_up ? 70 : 25, can_up ? 120 : 35);
+            WP_DrawRect(bot_fb, 320, 20, 36, 280, 44, can_up ? 80 : 40, can_up ? 160 : 50, can_up ? 255 : 60);
+            WP_DrawCenteredText(bot_fb, 320, 20, 36, 280, 44, "[ ▲ ]  NACH OBEN SCROLLEN", can_up ? 255 : 120, can_up ? 255 : 120, can_up ? 255 : 120, 1);
+
+            char status_str[64];
+            snprintf(status_str, sizeof(status_str), "Zeile %d bis %d von %d",
+                     scroll_line + 1, (scroll_line + visible_lines > line_count) ? line_count : scroll_line + visible_lines, line_count);
+            WP_FillRect(bot_fb, 320, 20, 86, 280, 38, 22, 24, 30);
+            WP_DrawCenteredText(bot_fb, 320, 20, 86, 280, 38, status_str, 200, 220, 255, 1);
+
+            bool can_down = (scroll_line < max_scroll);
+            WP_FillRect(bot_fb, 320, 20, 130, 280, 44, can_down ? 25 : 18, can_down ? 70 : 25, can_down ? 120 : 35);
+            WP_DrawRect(bot_fb, 320, 20, 130, 280, 44, can_down ? 80 : 40, can_down ? 160 : 50, can_down ? 255 : 60);
+            WP_DrawCenteredText(bot_fb, 320, 20, 130, 280, 44, "[ ▼ ]  NACH UNTEN SCROLLEN", can_down ? 255 : 120, can_down ? 255 : 120, can_down ? 255 : 120, 1);
+
+            WP_FillRect(bot_fb, 320, 20, 188, 280, 42, 120, 30, 30);
+            WP_DrawRect(bot_fb, 320, 20, 188, 280, 42, 220, 60, 60);
+            WP_DrawCenteredText(bot_fb, 320, 20, 188, 280, 42, "[ B / X ]  ZURUECK ZUR LISTE", 255, 255, 255, 1);
+        }
+
+        gfxFlushBuffers();
+        gfxSwapBuffers();
+        gspWaitForVBlank();
+    }
+}
+
 static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_idx, int total_count, bool installed)
 {
-    // Background
-    WP_FillRect(fb, 400, 0, 0, 400, 240, 20, 20, 24);
+    // Background: Dark gunmetal gray
+    WP_FillRect(fb, 400, 0, 0, 400, 240, 20, 20, 22);
 
-    // Header bar
-    WP_FillRect(fb, 400, 0, 0, 400, 32, 20, 60, 120);
-    WP_FillRect(fb, 400, 0, 30, 400, 2, 80, 160, 255);
-    WP_DrawText(fb, 400, 16, 8, "TRINITY3DS WAD STORE", 255, 255, 255, 2);
+    // Header banner: Deep Crimson
+    WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
+    WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
+    WP_DrawText(fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
+    WP_DrawText(fb, 400, 280, 12, "v1.0.0 WAD STORE", 255, 215, 0, 1);
 
-    // Graphical 3-bar WiFi Indicator
-    u8 wifi = osGetWifiStrength();
-    int wx = 300;
+    // WiFi signal
+    int wifi = osGetWifiStrength();
+    int wx = 190;
     int wy = 10;
 
     // Draw signal bars (green if active, dark grey if inactive)
@@ -4004,124 +4184,84 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
         return;
     }
 
-    // Card Box
+    // Card Box (Total width: 376, Left: X=12, Right: X=388, Top: Y=40, Bottom: Y=176)
     WP_FillRect(fb, 400, 12, 40, 376, 136, 30, 32, 38);
     WP_DrawRect(fb, 400, 12, 40, 376, 136, 70, 130, 200);
 
-    // Title
-    if (strlen(cur->title) <= 22) {
-        WP_DrawText(fb, 400, 22, 48, cur->title, 255, 255, 255, 2);
+    // LEFT SIDE: Metadata Info (X: 20 to 266)
+    // 1. Name
+    if (strlen(cur->title) <= 17) {
+        WP_DrawText(fb, 400, 20, 46, cur->title, 255, 255, 255, 2);
     } else {
-        WP_DrawText(fb, 400, 22, 50, cur->title, 255, 255, 255, 1);
+        WP_DrawText(fb, 400, 20, 48, cur->title, 255, 255, 255, 1);
     }
 
-    // Author
-    char author_str[96];
+    // 2. Autor
+    char author_str[64];
     snprintf(author_str, sizeof(author_str), "AUTOR: %s", cur->author[0] ? cur->author : "Unbekannt");
-    WP_DrawText(fb, 400, 22, 70, author_str, 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 20, 66, author_str, 255, 215, 0, 1);
 
-    // Category Badge
+    // 3. Kategorie
     if (cur->is_iwad) {
-        WP_FillRect(fb, 400, 22, 88, 140, 16, 20, 120, 40);
-        WP_DrawCenteredText(fb, 400, 22, 88, 140, 16, "[STANDALONE IWAD]", 255, 255, 255, 1);
+        WP_FillRect(fb, 400, 20, 80, 125, 15, 20, 120, 40);
+        WP_DrawCenteredText(fb, 400, 20, 80, 125, 15, "[STANDALONE IWAD]", 255, 255, 255, 1);
     } else {
-        WP_FillRect(fb, 400, 22, 88, 140, 16, 20, 70, 130);
-        WP_DrawCenteredText(fb, 400, 22, 88, 140, 16, "[COMMUNITY MOD/WAD]", 180, 230, 255, 1);
+        WP_FillRect(fb, 400, 20, 80, 140, 15, 20, 70, 130);
+        WP_DrawCenteredText(fb, 400, 20, 80, 140, 15, "[COMMUNITY MOD/WAD]", 180, 230, 255, 1);
     }
 
-    // Requirement & Size
-    char req_str[96];
-    snprintf(req_str, sizeof(req_str), "BASIS: %s   GROESSE: %s", cur->base_iwad, cur->size_str);
-    WP_DrawText(fb, 400, 22, 110, req_str, 200, 200, 200, 1);
+    // 4. Basis
+    char req_str[64];
+    snprintf(req_str, sizeof(req_str), "BASIS: %s", cur->base_iwad);
+    WP_DrawText(fb, 400, 20, 98, req_str, 180, 215, 245, 1);
 
-    // Description Ticker (Lauftext)
-    static int s_ticker_last_idx = -1;
-    static int s_ticker_pos = 0;
-    static int s_ticker_pause = 60; // 60 frames = 1 sec pause at start/reset
+    // 5. Groesse
+    char sz_str[64];
+    snprintf(sz_str, sizeof(sz_str), "GROESSE: %s", cur->size_str);
+    WP_DrawText(fb, 400, 20, 112, sz_str, 200, 200, 200, 1);
 
-    if (sel_idx != s_ticker_last_idx) {
-        s_ticker_last_idx = sel_idx;
-        s_ticker_pos = 0;
-        s_ticker_pause = 60;
-    } else {
-        if (s_ticker_pause > 0) {
-            s_ticker_pause--;
-        } else {
-            s_ticker_pos++;
-        }
-    }
-
-    int box_x = 20;
-    int ticker_y = 127;
-    int box_w = 360;
-    int ticker_h = 24;
-
-    // Recessed background panel
-    WP_FillRect(fb, 400, box_x, ticker_y, box_w, ticker_h, 20, 22, 26);
-    WP_DrawRect(fb, 400, box_x, ticker_y, box_w, ticker_h, 50, 70, 95);
-
-    // Left [INFO] tag badge
-    int tag_w = 46;
-    WP_FillRect(fb, 400, box_x, ticker_y, tag_w, ticker_h, 32, 50, 75);
-    WP_DrawRect(fb, 400, box_x, ticker_y, tag_w, ticker_h, 60, 95, 140);
-    WP_DrawCenteredText(fb, 400, box_x, ticker_y, tag_w, ticker_h, "INFO", 255, 215, 0, 1);
-
-    // Viewport for scrolling text
-    int clip_x1 = box_x + tag_w + 8; // 74
-    int clip_x2 = box_x + box_w - 6; // 374
-    int view_w = clip_x2 - clip_x1;  // 300
-    int text_y = ticker_y + 8;       // 135 (centered)
-
-    const char *desc = cur->desc[0] ? cur->desc : "Keine Beschreibung verfuegbar.";
-    int text_len = strlen(desc);
-    int text_w = text_len * 6;
-
-    if (text_w <= view_w) {
-        // Fits entirely within viewport: display static text
-        WP_DrawText(fb, 400, clip_x1, text_y, desc, 190, 220, 250, 1);
-    } else {
-        // Smooth continuous looping Lauftext
-        const char *sep = "   ***   ";
-        int sep_w = 9 * 6; // 54px
-        int cycle_w = text_w + sep_w;
-
-        if (s_ticker_pos >= cycle_w) {
-            s_ticker_pos = 0;
-            s_ticker_pause = 60; // pause at loop reset
-        }
-
-        int start_x = clip_x1 - (s_ticker_pos % cycle_w);
-
-        WP_DrawClippedText(fb, 400, clip_x1, clip_x2, start_x, text_y, desc, 190, 220, 250, 1);
-        WP_DrawClippedText(fb, 400, clip_x1, clip_x2, start_x + text_w, text_y, sep, 255, 215, 0, 1);
-
-        if (start_x + cycle_w < clip_x2) {
-            WP_DrawClippedText(fb, 400, clip_x1, clip_x2, start_x + cycle_w, text_y, desc, 190, 220, 250, 1);
-        }
-    }
-
-    // Install status on card
+    // 6. Installationsstatus
     if (installed) {
-        WP_FillRect(fb, 400, 240, 88, 140, 16, 20, 100, 30);
-        WP_DrawCenteredText(fb, 400, 240, 88, 140, 16, "BEREITS INSTALLIERT", 100, 255, 120, 1);
+        WP_FillRect(fb, 400, 20, 128, 145, 16, 20, 105, 30);
+        WP_DrawCenteredText(fb, 400, 20, 128, 145, 16, "BEREITS INSTALLIERT", 100, 255, 120, 1);
     } else {
-        WP_FillRect(fb, 400, 240, 88, 140, 16, 90, 70, 15);
-        WP_DrawCenteredText(fb, 400, 240, 88, 140, 16, "NICHT INSTALLIERT", 255, 215, 0, 1);
+        WP_FillRect(fb, 400, 20, 128, 145, 16, 90, 70, 15);
+        WP_DrawCenteredText(fb, 400, 20, 128, 145, 16, "NICHT INSTALLIERT", 255, 215, 0, 1);
     }
 
-    // Position indicator
+    // 7. [X] BESCHREIBUNG Button & Position
+    WP_FillRect(fb, 400, 20, 150, 145, 18, 40, 60, 95);
+    WP_DrawRect(fb, 400, 20, 150, 145, 18, 80, 140, 220);
+    WP_DrawCenteredText(fb, 400, 20, 150, 145, 18, "[X] BESCHREIBUNG", 255, 255, 255, 1);
+
     char pos_buf[32];
-    snprintf(pos_buf, sizeof(pos_buf), "#%d / %d", sel_idx + 1, total_count);
-    WP_DrawText(fb, 400, 330, 158, pos_buf, 160, 160, 180, 1);
+    snprintf(pos_buf, sizeof(pos_buf), "#%d/%d", sel_idx + 1, total_count);
+    WP_DrawText(fb, 400, 175, 154, pos_buf, 160, 160, 180, 1);
+
+    // RIGHT SIDE: Cover Art Box (X: 274, Y: 46, W: 106, H: 124)
+    int cover_x = 274;
+    int cover_y = 46;
+    int cover_w = 106;
+    int cover_h = 124;
+
+    WP_FillRect(fb, 400, cover_x, cover_y, cover_w, cover_h, 16, 18, 22);
+    WP_DrawRect(fb, 400, cover_x, cover_y, cover_w, cover_h, 70, 95, 130);
+
+    WP_UpdateCoverByFilename(cur->target_file);
+    if (WP_HasCover()) {
+        WP_DrawCover(fb, 400, cover_x + 1, cover_y + 1, cover_w - 2, cover_h - 2);
+    } else {
+        WP_DrawCenteredText(fb, 400, cover_x, cover_y + 40, cover_w, 18, "KEIN", 110, 120, 135, 2);
+        WP_DrawCenteredText(fb, 400, cover_x, cover_y + 62, cover_w, 18, "COVER", 110, 120, 135, 2);
+    }
 
     // Controls Help Box (Bottom)
     WP_FillRect(fb, 400, 12, 182, 376, 50, 24, 24, 28);
     WP_DrawRect(fb, 400, 12, 182, 376, 50, 70, 70, 80);
     WP_DrawText(fb, 400, 20, 189, "STEUERUNG:", 255, 215, 0, 1);
-    WP_DrawText(fb, 400, 100, 189, "D-PAD: Scrollen   L / R: A-Z Buchstabensprung", 200, 200, 200, 1);
-    WP_DrawText(fb, 400, 20, 209, "A / TOUCH: Herunterladen   B: Zurueck zum WAD-Browser", 100, 255, 120, 1);
+    WP_DrawText(fb, 400, 100, 189, "D-PAD: Scrollen   L / R: A-Z Sprung", 200, 200, 200, 1);
+    WP_DrawText(fb, 400, 20, 209, "A: Download   X / TOUCH: Beschreibung   B: Zurueck", 100, 255, 120, 1);
 }
-
 static void Downloader_RenderBottomScreen(u8 *fb, const repo_item_t *items, const bool *installed_flags, int count, int sel_idx, int scroll_offset)
 {
     // Background
@@ -4177,24 +4317,30 @@ static void Downloader_RenderBottomScreen(u8 *fb, const repo_item_t *items, cons
     }
 
     // Bottom Action Buttons:
-    // Left: [HERUNTERLADEN] (X: 6, Y: 202, W: 200, H: 34)
-    // Right: [ZURUECK] (X: 212, Y: 202, W: 102, H: 34)
+    // Left: [A] LADEN (X: 6, Y: 202, W: 125, H: 34)
+    // Middle: [X] DETAILS (X: 136, Y: 202, W: 100, H: 34)
+    // Right: [B] ZURUECK (X: 242, Y: 202, W: 72, H: 34)
     bool already_inst = (count > 0 && sel_idx < count && installed_flags) ? installed_flags[sel_idx] : false;
 
     if (already_inst) {
-        WP_FillRect(fb, 320, 6, 202, 200, 34, 30, 70, 40);
-        WP_DrawRect(fb, 320, 6, 202, 200, 34, 60, 150, 70);
-        WP_DrawCenteredText(fb, 320, 6, 202, 200, 34, "NEU LADEN [A]", 200, 255, 200, 1);
+        WP_FillRect(fb, 320, 6, 202, 125, 34, 30, 70, 40);
+        WP_DrawRect(fb, 320, 6, 202, 125, 34, 60, 150, 70);
+        WP_DrawCenteredText(fb, 320, 6, 202, 125, 34, "NEU LADEN [A]", 200, 255, 200, 1);
     } else {
-        WP_FillRect(fb, 320, 6, 202, 200, 34, 20, 120, 45);
-        WP_DrawRect(fb, 320, 6, 202, 200, 34, 60, 230, 90);
-        WP_DrawCenteredText(fb, 320, 6, 202, 200, 34, "HERUNTERLADEN", 255, 255, 255, 2);
+        WP_FillRect(fb, 320, 6, 202, 125, 34, 20, 120, 45);
+        WP_DrawRect(fb, 320, 6, 202, 125, 34, 60, 230, 90);
+        WP_DrawCenteredText(fb, 320, 6, 202, 125, 34, "[A] LADEN", 255, 255, 255, 1);
     }
 
+    // Info / Description Button
+    WP_FillRect(fb, 320, 136, 202, 100, 34, 35, 55, 85);
+    WP_DrawRect(fb, 320, 136, 202, 100, 34, 70, 120, 210);
+    WP_DrawCenteredText(fb, 320, 136, 202, 100, 34, "[X] DETAILS", 255, 255, 255, 1);
+
     // Back button
-    WP_FillRect(fb, 320, 212, 202, 102, 34, 30, 30, 36);
-    WP_DrawRect(fb, 320, 212, 202, 102, 34, 80, 80, 95);
-    WP_DrawCenteredText(fb, 320, 212, 202, 102, 34, "[B] ZURUECK", 255, 255, 255, 1);
+    WP_FillRect(fb, 320, 242, 202, 72, 34, 30, 30, 36);
+    WP_DrawRect(fb, 320, 242, 202, 72, 34, 80, 80, 95);
+    WP_DrawCenteredText(fb, 320, 242, 202, 72, 34, "[B] ZURUECK", 255, 255, 255, 1);
 }
 
 static void Downloader_ShowModal(const char *title, const char *msg1, const char *msg2, u8 r, u8 g, u8 b)
@@ -4325,14 +4471,26 @@ bool WAD_Downloader_Run(void)
                 }
             }
 
-            // Touch on Bottom Action Button: [HERUNTERLADEN]
-            if (touch.py >= 202 && touch.py <= 236 && touch.px >= 6 && touch.px <= 206) {
+            // Touch on Bottom Action Button: [A] LADEN
+            if (touch.py >= 202 && touch.py <= 236 && touch.px >= 6 && touch.px <= 131) {
                 kDown |= KEY_A;
             }
 
-            // Touch on Right Button: [ZURUECK]
-            if (touch.py >= 202 && touch.py <= 236 && touch.px >= 206 && touch.px <= 314) {
+            // Touch on Middle Button: [X] DETAILS
+            if (touch.py >= 202 && touch.py <= 236 && touch.px >= 136 && touch.px <= 236) {
+                kDown |= KEY_X;
+            }
+
+            // Touch on Right Button: [B] ZURUECK
+            if (touch.py >= 202 && touch.py <= 236 && touch.px >= 242 && touch.px <= 314) {
                 kDown |= KEY_B;
+            }
+        }
+
+        // Show Description: [X] or [SELECT]
+        if ((kDown & KEY_X) || (kDown & KEY_SELECT)) {
+            if (count > 0 && selected_idx < count) {
+                Downloader_ShowDescriptionModal(&s_catalog[selected_idx]);
             }
         }
 

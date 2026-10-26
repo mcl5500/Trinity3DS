@@ -17,6 +17,12 @@ void WP_DrawText(u8 *fb, int width, int x, int y, const char *text, u8 r, u8 g, 
 void WP_DrawClippedText(u8 *fb, int width, int clip_x1, int clip_x2, int x, int y, const char *text, u8 r, u8 g, u8 b, int scale);
 void WP_DrawCenteredText(u8 *fb, int width, int box_x, int box_y, int box_w, int box_h, const char *text, u8 r, u8 g, u8 b, int scale);
 
+// Cover loading & rendering
+void WP_UpdateCoverByFilename(const char *target_filename);
+bool WP_HasCover(void);
+void WP_DrawCover(u8 *fb, int fb_width, int dest_x, int dest_y, int dest_w, int dest_h);
+void WP_FreeCover(void);
+
 // Rescans SD card for IWADs and PWADs
 void WP_RescanWads(void);
 
