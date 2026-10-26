@@ -683,6 +683,86 @@ void WP_RescanWads(void)
     }
 }
 
+static bool WP_LoadWadMetadata(const char *filename, char *out_author, size_t author_len, char *out_base, size_t base_len, char *out_desc, size_t desc_len)
+{
+    if (!filename || !filename[0]) return false;
+
+    char base_name[64];
+    strncpy(base_name, filename, sizeof(base_name) - 1);
+    base_name[sizeof(base_name) - 1] = '\0';
+    char *dot = strrchr(base_name, '.');
+    if (dot) *dot = '\0';
+
+    char meta_path[256];
+    snprintf(meta_path, sizeof(meta_path), "sdmc:/3ds/Trinity3DS/wads/%s.txt", base_name);
+
+    if (out_author && author_len > 0) out_author[0] = '\0';
+    if (out_base && base_len > 0) out_base[0] = '\0';
+    if (out_desc && desc_len > 0) out_desc[0] = '\0';
+
+    FILE *mfp = fopen(meta_path, "r");
+    if (mfp) {
+        char line[512];
+        bool in_desc = false;
+
+        while (fgets(line, sizeof(line), mfp)) {
+            char *nl = strchr(line, '\r');
+            if (nl) *nl = '\0';
+            nl = strchr(line, '\n');
+            if (nl) *nl = '\0';
+
+            if (!strncasecmp(line, "AUTOR:", 6) || !strncasecmp(line, "AUTHOR:", 7)) {
+                char *val = strchr(line, ':') + 1;
+                while (*val == ' ') val++;
+                if (out_author && author_len > 0) {
+                    strncpy(out_author, val, author_len - 1);
+                    out_author[author_len - 1] = '\0';
+                }
+            } else if (!strncasecmp(line, "BASIS:", 6) || !strncasecmp(line, "BASE:", 5)) {
+                char *val = strchr(line, ':') + 1;
+                while (*val == ' ') val++;
+                if (out_base && base_len > 0) {
+                    strncpy(out_base, val, base_len - 1);
+                    out_base[base_len - 1] = '\0';
+                }
+            } else if (!strncasecmp(line, "BESCHREIBUNG:", 13) || !strncasecmp(line, "DESCRIPTION:", 12)) {
+                in_desc = true;
+            } else {
+                if (out_desc && desc_len > 0 && (in_desc || out_desc[0] == '\0')) {
+                    if (out_desc[0] != '\0') strncat(out_desc, " ", desc_len - strlen(out_desc) - 1);
+                    strncat(out_desc, line, desc_len - strlen(out_desc) - 1);
+                }
+            }
+        }
+        fclose(mfp);
+        if (out_desc && out_desc[0] != '\0') return true;
+    }
+
+    // Auto-resolve from catalog if not present on SD card yet
+    const repo_item_t *item = Downloader_FindCatalogItem(filename);
+    if (item) {
+        if (out_author && author_len > 0) strncpy(out_author, item->author[0] ? item->author : "Unbekannt", author_len - 1);
+        if (out_base && base_len > 0) strncpy(out_base, item->base_iwad[0] ? item->base_iwad : "DOOM2.WAD", base_len - 1);
+        if (out_desc && desc_len > 0) strncpy(out_desc, item->desc, desc_len - 1);
+
+        // Auto-cache to .txt so subsequent loads are fast
+        FILE *wfp = fopen(meta_path, "w");
+        if (wfp) {
+            fprintf(wfp, "AUTOR: %s\nBASIS: %s\nBESCHREIBUNG:\n%s\n",
+                    item->author[0] ? item->author : "Unbekannt",
+                    item->base_iwad[0] ? item->base_iwad : "DOOM2.WAD",
+                    item->desc);
+            fclose(wfp);
+        }
+        return true;
+    }
+
+    if (out_author && author_len > 0) strncpy(out_author, "Unbekannt", author_len - 1);
+    if (out_base && base_len > 0) strncpy(out_base, "DOOM2.WAD", base_len - 1);
+    if (out_desc && desc_len > 0) strncpy(out_desc, "Keine Beschreibung vorhanden. Druecke [Y], um Metadaten abzurufen.", desc_len - 1);
+    return false;
+}
+
 static void WP_RenderTopScreen(u8 *fb)
 {
     // Background: Dark gunmetal gray
@@ -692,7 +772,7 @@ static void WP_RenderTopScreen(u8 *fb)
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, "v1.0.3 WAD MANAGER", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 280, 12, "v1.0.4 WAD MANAGER", 255, 215, 0, 1);
 
     if (s_wad_count == 0) {
         WP_DrawText(fb, 400, 20, 100, "KEINE WAD-DATEIEN GEFUNDEN!", 255, 50, 50, 2);
@@ -757,13 +837,27 @@ static void WP_RenderTopScreen(u8 *fb)
     snprintf(path_buf, sizeof(path_buf), "DATEI: %s", cur->filename);
     WP_DrawText(fb, 400, info_x, 110, path_buf, 160, 210, 255, 1);
 
-    // Status hint
-    if (cur->is_iwad) {
-        WP_DrawText(fb, 400, info_x, 134, "* EIGENSTAENDIGES SPIEL", 100, 255, 120, 1);
-        WP_DrawText(fb, 400, info_x, 148, "* STARTET DIREKT", 100, 255, 120, 1);
+    // Metadata snippet (Author & Description preview)
+    char meta_auth[64] = "";
+    char meta_base[32] = "";
+    char meta_desc[256] = "";
+    bool has_meta = WP_LoadWadMetadata(cur->filename, meta_auth, sizeof(meta_auth), meta_base, sizeof(meta_base), meta_desc, sizeof(meta_desc));
+
+    if (has_meta && meta_auth[0] && strcasecmp(meta_auth, "Unbekannt") != 0) {
+        char auth_buf[64];
+        snprintf(auth_buf, sizeof(auth_buf), "AUTOR: %s", meta_auth);
+        WP_DrawText(fb, 400, info_x, 130, auth_buf, 255, 215, 0, 1);
     } else {
-        WP_DrawText(fb, 400, info_x, 134, "* MEGAWAD / COMMUNITY MOD", 255, 200, 80, 1);
-        WP_DrawText(fb, 400, info_x, 148, "* LAEUFT MIT DOOM II BASIS", 255, 200, 80, 1);
+        WP_DrawText(fb, 400, info_x, 130, cur->is_iwad ? "* EIGENSTAENDIGES SPIEL" : "* MEGAWAD / MOD", 100, 255, 120, 1);
+    }
+
+    if (has_meta && meta_desc[0]) {
+        char short_desc[48];
+        strncpy(short_desc, meta_desc, sizeof(short_desc) - 1);
+        short_desc[sizeof(short_desc) - 1] = '\0';
+        WP_DrawText(fb, 400, info_x, 146, short_desc, 200, 200, 210, 1);
+    } else {
+        WP_DrawText(fb, 400, info_x, 146, cur->is_iwad ? "* STARTET DIREKT" : "* LAEUFT MIT DOOM II BASIS", 200, 200, 200, 1);
     }
 
     // Controls Help Box (Bottom)
@@ -771,7 +865,7 @@ static void WP_RenderTopScreen(u8 *fb)
     WP_DrawRect(fb, 400, 12, 182, 376, 50, 70, 70, 80);
     WP_DrawText(fb, 400, 20, 189, "STEUERUNG:", 255, 215, 0, 1);
     WP_DrawText(fb, 400, 100, 189, "D-PAD: Scrollen   L / R: A-Z Buchstabensprung", 200, 200, 200, 1);
-    WP_DrawText(fb, 400, 20, 209, "A: Starten   X: WAD-Optionen   Y: Store   START: Zuletzt", 100, 255, 120, 1);
+    WP_DrawText(fb, 400, 20, 209, "A: Starten   X: Info & Optionen   Y: Store   START: Zuletzt", 100, 255, 120, 1);
 }
 
 static void WP_RenderBottomScreen(u8 *fb)
@@ -833,7 +927,7 @@ static void WP_RenderBottomScreen(u8 *fb)
     // Center: [[X] OPTIONEN] (X=142, Y=202, W=92, H=34)
     WP_FillRect(fb, 320, 142, 202, 92, 34, 110, 40, 20);
     WP_DrawRect(fb, 320, 142, 202, 92, 34, 230, 90, 50);
-    WP_DrawCenteredText(fb, 320, 142, 202, 92, 34, "[X] OPTION", 255, 255, 255, 1);
+    WP_DrawCenteredText(fb, 320, 142, 202, 92, 34, "[X] INFO", 255, 255, 255, 1);
 
     // Right: [[Y] STORE] (X=240, Y=202, W=74, H=34)
     WP_FillRect(fb, 320, 240, 202, 74, 34, 25, 60, 120);
@@ -847,24 +941,20 @@ static bool WP_ManageWadModal(int wad_idx)
     if (wad_idx < 0 || wad_idx >= s_wad_count) return false;
     wad_info_t *wad = &s_wads[wad_idx];
 
-    // Read existing .txt metadata if present
-    char meta_path[256];
     char base_name[64];
     strncpy(base_name, wad->filename, sizeof(base_name) - 1);
     base_name[sizeof(base_name) - 1] = '\0';
     char *dot = strrchr(base_name, '.');
     if (dot) *dot = '\0';
-    snprintf(meta_path, sizeof(meta_path), "sdmc:/3ds/Trinity3DS/wads/%s.txt", base_name);
 
-    char meta_desc[256] = "Keine lokale Beschreibung vorhanden.";
-    FILE *mfp = fopen(meta_path, "r");
-    if (mfp) {
-        if (fgets(meta_desc, sizeof(meta_desc), mfp)) {
-            char *nl = strchr(meta_desc, '\n');
-            if (nl) *nl = '\0';
-        }
-        fclose(mfp);
-    }
+    char meta_author[64] = "Unbekannt";
+    char meta_base[32] = "DOOM2.WAD";
+    char meta_desc[1024] = "";
+
+    WP_LoadWadMetadata(wad->filename, meta_author, sizeof(meta_author), meta_base, sizeof(meta_base), meta_desc, sizeof(meta_desc));
+
+    char status_msg[128] = "Waehle eine Aktion unten:";
+    u8 status_r = 200, status_g = 220, status_b = 255;
 
     bool delete_requested = false;
 
@@ -878,17 +968,60 @@ static bool WP_ManageWadModal(int wad_idx)
 
         // Touch handling
         if (kDown & KEY_TOUCH) {
-            // [LOESCHEN] button (X: 18, Y: 180, W: 136, H: 34)
-            if (touch.py >= 180 && touch.py <= 214 && touch.px >= 18 && touch.px <= 154) {
+            // Button 1: [A] BESCHREIBUNG (X: 16, Y: 34, W: 138, H: 44)
+            if (touch.py >= 34 && touch.py <= 78 && touch.px >= 16 && touch.px <= 154) {
+                kDown |= KEY_A;
+            }
+            // Button 2: [Y] INFO ABRUFEN (X: 166, Y: 34, W: 138, H: 44)
+            if (touch.py >= 34 && touch.py <= 78 && touch.px >= 166 && touch.px <= 304) {
+                kDown |= KEY_Y;
+            }
+            // Button 3: [X] LOESCHEN (X: 16, Y: 86, W: 138, H: 44)
+            if (touch.py >= 86 && touch.py <= 130 && touch.px >= 16 && touch.px <= 154) {
                 kDown |= KEY_X;
             }
-            // [ZURUECK] button (X: 166, Y: 180, W: 136, H: 34)
-            if (touch.py >= 180 && touch.py <= 214 && touch.px >= 166 && touch.px <= 302) {
+            // Button 4: [B] ZURUECK (X: 166, Y: 86, W: 138, H: 44)
+            if (touch.py >= 86 && touch.py <= 130 && touch.px >= 166 && touch.px <= 304) {
                 kDown |= KEY_B;
             }
         }
 
-        // Action: Delete WAD [X]
+        // Action: [A] Show Full Description Screen
+        if (kDown & KEY_A) {
+            char size_str[32];
+            float mb = (float)wad->file_size / (1024.0f * 1024.0f);
+            snprintf(size_str, sizeof(size_str), "%.2f MB", mb);
+            Downloader_ShowDescriptionCustom(wad->display_name, meta_author, meta_base, size_str, meta_desc);
+            continue;
+        }
+
+        // Action: [Y] Fetch / Update Metadata & Cover
+        if (kDown & KEY_Y) {
+            // Render "Fetching..." message on bottom screen first
+            u8 *bot_loading = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+            if (bot_loading) {
+                WP_FillRect(bot_loading, 320, 16, 140, 288, 88, 25, 30, 45);
+                WP_DrawRect(bot_loading, 320, 16, 140, 288, 88, 80, 160, 255);
+                WP_DrawCenteredText(bot_loading, 320, 16, 155, 288, 20, "METADATEN WERDEN ABGERUFEN...", 255, 255, 255, 1);
+                WP_DrawCenteredText(bot_loading, 320, 16, 180, 288, 20, "Suche im Katalog & online...", 200, 220, 255, 1);
+                gfxFlushBuffers();
+                gfxSwapBuffers();
+            }
+
+            bool ok = Downloader_FetchMetadataForWad(wad->filename, meta_author, sizeof(meta_author), meta_base, sizeof(meta_base), meta_desc, sizeof(meta_desc));
+            WP_UpdateCoverByFilename(wad->filename);
+
+            if (ok) {
+                snprintf(status_msg, sizeof(status_msg), "Metadaten & Cover geladen!");
+                status_r = 80; status_g = 255; status_b = 100;
+            } else {
+                snprintf(status_msg, sizeof(status_msg), "Keine neuen Daten gefunden.");
+                status_r = 255; status_g = 200; status_b = 80;
+            }
+            continue;
+        }
+
+        // Action: [X] Delete WAD
         if (kDown & KEY_X) {
             // Confirm deletion dialog
             bool confirm_del = false;
@@ -946,7 +1079,9 @@ static bool WP_ManageWadModal(int wad_idx)
                 unlink(png_del);
                 snprintf(png_del, sizeof(png_del), "sdmc:/3ds/Trinity3DS/wads/%s.PNG", base_name);
                 unlink(png_del);
-                unlink(meta_path);
+                char meta_del[256];
+                snprintf(meta_del, sizeof(meta_del), "sdmc:/3ds/Trinity3DS/wads/%s.txt", base_name);
+                unlink(meta_del);
 
                 delete_requested = true;
                 break;
@@ -957,40 +1092,96 @@ static bool WP_ManageWadModal(int wad_idx)
         u8 *top = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
         if (top) {
             WP_FillRect(top, 400, 0, 0, 400, 240, 20, 20, 22);
-            WP_FillRect(top, 400, 0, 0, 400, 32, 110, 30, 20);
-            WP_DrawText(top, 400, 16, 8, "WAD-VERWALTUNG", 255, 255, 255, 2);
+            WP_FillRect(top, 400, 0, 0, 400, 30, 110, 30, 20);
+            WP_DrawText(top, 400, 16, 8, "WAD INFORMATION & OPTIONEN", 255, 255, 255, 2);
 
-            WP_FillRect(top, 400, 16, 46, 368, 176, 28, 28, 32);
-            WP_DrawRect(top, 400, 16, 46, 368, 176, 180, 150, 40);
+            // Card Box: Y: 36, H: 84
+            WP_FillRect(top, 400, 12, 36, 376, 84, 28, 28, 32);
+            WP_DrawRect(top, 400, 12, 36, 376, 84, 180, 150, 40);
 
-            WP_DrawText(top, 400, 28, 58, wad->display_name, 255, 215, 0, 2);
+            // Cover Art Box (Left: X=16, Y=40, W=60, H=76)
+            WP_FillRect(top, 400, 16, 40, 60, 76, 15, 15, 18);
+            WP_DrawRect(top, 400, 16, 40, 60, 76, 70, 70, 80);
+            if (s_cur_cover && s_cur_cover->pixels) {
+                WP_DrawCover(top, 400, 17, 41, 58, 74);
+            } else {
+                WP_DrawText(top, 400, 26, 68, "COVER", 120, 120, 130, 1);
+            }
 
-            char buf[128];
+            // Info Section (Right of cover: X=84)
+            int info_x = 84;
+            if (strlen(wad->display_name) <= 24) {
+                WP_DrawText(top, 400, info_x, 42, wad->display_name, 255, 215, 0, 2);
+            } else {
+                WP_DrawText(top, 400, info_x, 44, wad->display_name, 255, 215, 0, 1);
+            }
+
+            char auth_buf[64];
+            snprintf(auth_buf, sizeof(auth_buf), "AUTOR: %s", meta_author);
+            WP_DrawText(top, 400, info_x, 66, auth_buf, 255, 255, 255, 1);
+
+            char sub_buf[96];
             float mb = (float)wad->file_size / (1024.0f * 1024.0f);
-            snprintf(buf, sizeof(buf), "DATEI: %s (%.2f MB)", wad->filename, mb);
-            WP_DrawText(top, 400, 28, 86, buf, 180, 220, 255, 1);
+            snprintf(sub_buf, sizeof(sub_buf), "BASIS: %s  |  %.2f MB", meta_base, mb);
+            WP_DrawText(top, 400, info_x, 82, sub_buf, 180, 220, 255, 1);
 
-            WP_DrawText(top, 400, 28, 108, "STATUS / BESCHREIBUNG:", 255, 255, 255, 1);
-            WP_DrawText(top, 400, 28, 126, meta_desc, 200, 200, 200, 1);
+            char file_buf[96];
+            snprintf(file_buf, sizeof(file_buf), "DATEI: %s", wad->filename);
+            WP_DrawText(top, 400, info_x, 98, file_buf, 160, 180, 200, 1);
 
-            WP_DrawText(top, 400, 28, 176, "* Installiert in /3ds/Trinity3DS/wads/", 100, 255, 120, 1);
+            // Description Viewport Box: Y: 124, H: 108
+            WP_FillRect(top, 400, 12, 124, 376, 108, 24, 26, 32);
+            WP_DrawRect(top, 400, 12, 124, 376, 108, 80, 140, 220);
+            WP_DrawText(top, 400, 18, 128, "BESCHREIBUNG:", 255, 215, 0, 1);
+
+            // Word wrap description up to 5 visible lines
+            char d_lines[16][64];
+            int d_count = Downloader_WordWrap(meta_desc, d_lines, 16, 56);
+            for (int l = 0; l < 5 && l < d_count; l++) {
+                WP_DrawText(top, 400, 20, 144 + l * 14, d_lines[l], 220, 225, 235, 1);
+            }
+            if (d_count > 5) {
+                WP_DrawText(top, 400, 220, 216, "[A] VOLLBILD LESEN...", 100, 255, 120, 1);
+            }
         }
 
         u8 *bot = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
         if (bot) {
             WP_FillRect(bot, 320, 0, 0, 320, 240, 16, 16, 18);
             WP_FillRect(bot, 320, 0, 0, 320, 26, 45, 25, 20);
-            WP_DrawText(bot, 320, 12, 8, "AKTION AUSWAEHLEN:", 255, 215, 0, 1);
+            WP_DrawText(bot, 320, 12, 8, "WAD-VERWALTUNG & INFOS:", 255, 215, 0, 1);
 
-            // Button 1: [X] WAD LOESCHEN (Rot)
-            WP_FillRect(bot, 320, 18, 180, 136, 34, 140, 25, 25);
-            WP_DrawRect(bot, 320, 18, 180, 136, 34, 255, 70, 70);
-            WP_DrawCenteredText(bot, 320, 18, 180, 136, 34, "[X] LOESCHEN", 255, 255, 255, 1);
+            // Row 1 Buttons (Y: 34, H: 44)
+            // Button 1: [A] BESCHREIBUNG (Blau)
+            WP_FillRect(bot, 320, 16, 34, 138, 44, 25, 60, 110);
+            WP_DrawRect(bot, 320, 16, 34, 138, 44, 80, 170, 255);
+            WP_DrawCenteredText(bot, 320, 16, 34, 138, 44, "[A] TEXT LESEN", 255, 255, 255, 1);
 
-            // Button 2: [B] ZURUECK (Grau)
-            WP_FillRect(bot, 320, 166, 180, 136, 34, 35, 35, 42);
-            WP_DrawRect(bot, 320, 166, 180, 136, 34, 90, 90, 100);
-            WP_DrawCenteredText(bot, 320, 166, 180, 136, 34, "[B] ZURUECK", 255, 255, 255, 1);
+            // Button 2: [Y] METADATEN ABRUFEN (Gruen/Cyan)
+            WP_FillRect(bot, 320, 166, 34, 138, 44, 20, 95, 80);
+            WP_DrawRect(bot, 320, 166, 34, 138, 44, 50, 220, 180);
+            WP_DrawCenteredText(bot, 320, 166, 34, 138, 44, "[Y] INFO ABRUFEN", 255, 255, 255, 1);
+
+            // Row 2 Buttons (Y: 86, H: 44)
+            // Button 3: [X] LOESCHEN (Rot)
+            WP_FillRect(bot, 320, 16, 86, 138, 44, 130, 25, 25);
+            WP_DrawRect(bot, 320, 16, 86, 138, 44, 255, 70, 70);
+            WP_DrawCenteredText(bot, 320, 16, 86, 138, 44, "[X] LOESCHEN", 255, 255, 255, 1);
+
+            // Button 4: [B] ZURUECK (Grau)
+            WP_FillRect(bot, 320, 166, 86, 138, 44, 38, 38, 45);
+            WP_DrawRect(bot, 320, 166, 86, 138, 44, 100, 100, 110);
+            WP_DrawCenteredText(bot, 320, 166, 86, 138, 44, "[B] ZURUECK", 255, 255, 255, 1);
+
+            // Status Area (Y: 138 to 230)
+            WP_FillRect(bot, 320, 16, 140, 288, 88, 24, 25, 30);
+            WP_DrawRect(bot, 320, 16, 140, 288, 88, 60, 65, 80);
+
+            WP_DrawCenteredText(bot, 320, 16, 148, 288, 16, status_msg, status_r, status_g, status_b, 1);
+
+            WP_DrawText(bot, 320, 24, 172, "* [A]: Vollstaendige Beschreibung", 200, 200, 210, 1);
+            WP_DrawText(bot, 320, 24, 188, "* [Y]: Infos & Cover online/Katalog abrufen", 100, 220, 255, 1);
+            WP_DrawText(bot, 320, 24, 204, "* [X]: WAD-Datei von SD-Karte loeschen", 255, 120, 120, 1);
         }
 
         gfxFlushBuffers();

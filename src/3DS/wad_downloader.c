@@ -3,6 +3,7 @@
 #include <png.h>
 #include <3ds.h>
 #include <curl/curl.h>
+#include <json-c/json.h>
 #include <minizip/unzip.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,18 +52,104 @@ static void Downloader_ExitNetwork(void)
     }
 }
 
-typedef struct {
-    char title[64];
-    char author[64];
-    char category[32];   // "STANDALONE", "MEGAWAD", "EPISODE"
-    char base_iwad[32];  // e.g. "DOOM2.WAD", "DOOM.WAD", "KEINE"
-    char desc[512];
-    char url[256];
-    char target_file[64];// Primary wad to check for installation
-    char size_str[32];
-    bool is_zip;
-    bool is_iwad;
-} repo_item_t;
+static const repo_item_t s_iwad_metadata[] = {
+    {
+        "DOOM / ULTIMATE DOOM",
+        "id Software (1993/1995)",
+        "STANDALONE",
+        "KEINE",
+        "Der bahnbrechende Urvater moderner Ego-Shooter. Als Space Marine kaempfst du dich durch Phobos, Deimos und die Hoelle. Enthaelt die 4 legendaeren Episoden Knee-Deep in the Dead, The Shores of Hell, Inferno und Thy Flesh Consumed.",
+        "",
+        "doom.wad",
+        "12.4 MB",
+        false,
+        true
+    },
+    {
+        "DOOM II: HELL ON EARTH",
+        "id Software (1994)",
+        "STANDALONE",
+        "KEINE",
+        "Die Hoelle hat die Erde ueberrannt. 32 riesige Level, das Debuet der legendaeren Super Shotgun und neuer gefaehrlicher Monster wie Arch-Vile, Revenant und Mancubus.",
+        "",
+        "doom2.wad",
+        "14.6 MB",
+        false,
+        true
+    },
+    {
+        "FINAL DOOM: TNT EVILUTION",
+        "TeamTNT & id Software (1996)",
+        "STANDALONE",
+        "KEINE",
+        "Eine vollstaendige 32-Level Kampagne mit komplett neuem Soundtrack und herausforderndem Leveldesign auf einem UAC-Stuetzpunkt auf dem Mond Io.",
+        "",
+        "tnt.wad",
+        "18.2 MB",
+        false,
+        true
+    },
+    {
+        "FINAL DOOM: THE PLUTONIA EXPERIMENT",
+        "Dario & Milo Casali (1996)",
+        "STANDALONE",
+        "KEINE",
+        "Fuer Meister-Doomer entworfen. 32 hochgradig toedliche und taktische Level mit erbarmungslosen Gegnergruppen und genialer Fallen-Architektur.",
+        "",
+        "plutonia.wad",
+        "17.4 MB",
+        false,
+        true
+    },
+    {
+        "SIGIL",
+        "John Romero (2019)",
+        "MEGAWAD",
+        "DOOM.WAD",
+        "Die inoffizielle fuenfte Episode fuer das originale DOOM, erschaffen von id Software Mitbegruender John Romero. 9 diabolischer gestaltete Level mit hoellischer Atmosphaere.",
+        "",
+        "sigil.wad",
+        "3.2 MB",
+        false,
+        false
+    },
+    {
+        "SIGIL II",
+        "John Romero (2023)",
+        "MEGAWAD",
+        "DOOM.WAD",
+        "Die sechste Episode von John Romero zum 30. Jubilaeum von DOOM. Enthaelt 9 brandneue Level voller kniffliger Raetsel und epischer Gefechte.",
+        "",
+        "sigil2.wad",
+        "4.5 MB",
+        false,
+        false
+    },
+    {
+        "HERETIC: SHADOW OF THE SERPENT RIDERS",
+        "Raven Software & id Software (1994)",
+        "STANDALONE",
+        "KEINE",
+        "Dunkle Fantasy mit der DOOM-Engine. Spiele als Corvus gegen die Truppen von D'Sparil mit Inventargegenstaenden und magischen Waffen.",
+        "",
+        "heretic.wad",
+        "14.2 MB",
+        false,
+        true
+    },
+    {
+        "HEXEN: BEYOND HERETIC",
+        "Raven Software (1995)",
+        "STANDALONE",
+        "KEINE",
+        "Drei Charakterklassen (Krieger, Kleriker, Magier), Hub-basierte Levelstrukturen und zerstoerbare Umgebungen im Kampf gegen Korax.",
+        "",
+        "hexen.wad",
+        "20.1 MB",
+        false,
+        true
+    }
+};
 
 // Comprehensive alphabetical catalog of Doom community masterpieces & standalone games
 static const repo_item_t s_catalog[] = {
@@ -3708,6 +3795,81 @@ static void Downloader_RefreshInstalledCache(void)
     }
 }
 
+static char *Downloader_strcasestr(const char *haystack, const char *needle)
+{
+    if (!haystack || !needle) return NULL;
+    if (!*needle) return (char *)haystack;
+    for (; *haystack; haystack++) {
+        if (tolower((unsigned char)*haystack) == tolower((unsigned char)*needle)) {
+            const char *h = haystack;
+            const char *n = needle;
+            while (*h && *n && tolower((unsigned char)*h) == tolower((unsigned char)*n)) {
+                h++;
+                n++;
+            }
+            if (!*n) return (char *)haystack;
+        }
+    }
+    return NULL;
+}
+
+const repo_item_t* Downloader_FindCatalogItem(const char *filename)
+{
+    if (!filename || !filename[0]) return NULL;
+
+    char base[64];
+    strncpy(base, filename, sizeof(base) - 1);
+    base[sizeof(base) - 1] = '\0';
+    char *dot = strrchr(base, '.');
+    if (dot) *dot = '\0';
+
+    // 1. Check official IWADs & expansions
+    int iwad_count = sizeof(s_iwad_metadata) / sizeof(s_iwad_metadata[0]);
+    for (int i = 0; i < iwad_count; i++) {
+        if (!strcasecmp(filename, s_iwad_metadata[i].target_file) ||
+            !strcasecmp(base, s_iwad_metadata[i].target_file)) {
+            return &s_iwad_metadata[i];
+        }
+        char ibase[64];
+        strncpy(ibase, s_iwad_metadata[i].target_file, sizeof(ibase) - 1);
+        ibase[sizeof(ibase) - 1] = '\0';
+        char *idot = strrchr(ibase, '.');
+        if (idot) *idot = '\0';
+        if (!strcasecmp(base, ibase)) {
+            return &s_iwad_metadata[i];
+        }
+    }
+
+    // 2. Exact match on target_file in s_catalog
+    for (int i = 0; i < CATALOG_COUNT; i++) {
+        if (!strcasecmp(filename, s_catalog[i].target_file)) {
+            return &s_catalog[i];
+        }
+    }
+
+    // 3. Basename match on target_file
+    for (int i = 0; i < CATALOG_COUNT; i++) {
+        char cat_base[64];
+        strncpy(cat_base, s_catalog[i].target_file, sizeof(cat_base) - 1);
+        cat_base[sizeof(cat_base) - 1] = '\0';
+        char *cat_dot = strrchr(cat_base, '.');
+        if (cat_dot) *cat_dot = '\0';
+
+        if (!strcasecmp(base, cat_base)) {
+            return &s_catalog[i];
+        }
+    }
+
+    // 4. Partial match against title
+    for (int i = 0; i < CATALOG_COUNT; i++) {
+        if (Downloader_strcasestr(s_catalog[i].title, base) || Downloader_strcasestr(base, s_catalog[i].title)) {
+            return &s_catalog[i];
+        }
+    }
+
+    return NULL;
+}
+
 // Download progress state
 typedef struct {
     curl_off_t dltotal;
@@ -4101,7 +4263,7 @@ static bool Downloader_ExtractTitlepicToPng(const char *wad_path, const char *ou
     return ok;
 }
 
-static bool Downloader_FetchOnlineCover(const char *target_filename, const char *out_png_path)
+bool Downloader_FetchOnlineCover(const char *target_filename, const char *out_png_path)
 {
     if (!target_filename || !out_png_path) return false;
     if (osGetWifiStrength() == 0) return false;
@@ -4298,10 +4460,22 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
     // Reload cover immediately so store and launcher display it!
     WP_UpdateCoverByFilename(item->target_file);
 
+    // Automatically save local .txt metadata file
+    char meta_path[256];
+    snprintf(meta_path, sizeof(meta_path), "sdmc:/3ds/Trinity3DS/wads/%s.txt", base_name);
+    FILE *mfp = fopen(meta_path, "w");
+    if (mfp) {
+        fprintf(mfp, "AUTOR: %s\nBASIS: %s\nBESCHREIBUNG:\n%s\n",
+                item->author[0] ? item->author : "Unbekannt",
+                item->base_iwad[0] ? item->base_iwad : "DOOM2.WAD",
+                item->desc);
+        fclose(mfp);
+    }
+
     return true;
 }
 
-static int Downloader_WordWrap(const char *text, char lines[][64], int max_lines, int max_chars)
+int Downloader_WordWrap(const char *text, char lines[][64], int max_lines, int max_chars)
 {
     if (!text || !text[0]) return 0;
     int line_count = 0;
@@ -4340,12 +4514,12 @@ static int Downloader_WordWrap(const char *text, char lines[][64], int max_lines
     return line_count;
 }
 
-static void Downloader_ShowDescriptionModal(const repo_item_t *item)
+void Downloader_ShowDescriptionCustom(const char *title, const char *author, const char *base_iwad, const char *size_str, const char *desc)
 {
-    if (!item) return;
+    if (!desc || !desc[0]) return;
 
     char lines[64][64];
-    int line_count = Downloader_WordWrap(item->desc, lines, 64, 56);
+    int line_count = Downloader_WordWrap(desc, lines, 64, 56);
     if (line_count == 0) {
         strcpy(lines[0], "Keine Beschreibung verfuegbar.");
         line_count = 1;
@@ -4401,13 +4575,15 @@ static void Downloader_ShowDescriptionModal(const repo_item_t *item)
             // Crimson Header
             WP_FillRect(top_fb, 400, 0, 0, 400, 32, 130, 20, 20);
             WP_FillRect(top_fb, 400, 0, 30, 400, 2, 210, 40, 40);
-            WP_DrawText(top_fb, 400, 16, 8, item->title, 255, 255, 255, 1);
+            WP_DrawText(top_fb, 400, 16, 8, title ? title : "WAD DETAILS", 255, 255, 255, 1);
             WP_DrawText(top_fb, 400, 280, 10, "[BESCHREIBUNG]", 255, 215, 0, 1);
 
             // Sub-header metadata
             char sub_str[96];
             snprintf(sub_str, sizeof(sub_str), "AUTOR: %s  |  BASIS: %s  |  GROESSE: %s",
-                     item->author[0] ? item->author : "Unbekannt", item->base_iwad, item->size_str);
+                     (author && author[0]) ? author : "Unbekannt",
+                     (base_iwad && base_iwad[0]) ? base_iwad : "DOOM2.WAD",
+                     (size_str && size_str[0]) ? size_str : "-");
             WP_DrawText(top_fb, 400, 16, 36, sub_str, 180, 210, 240, 1);
 
             // Viewport Box (Y: 50 to 208, H: 158)
@@ -4436,7 +4612,7 @@ static void Downloader_ShowDescriptionModal(const repo_item_t *item)
             // Footer
             WP_FillRect(top_fb, 400, 12, 214, 376, 20, 22, 24, 28);
             WP_DrawRect(top_fb, 400, 12, 214, 376, 20, 50, 50, 60);
-            WP_DrawText(top_fb, 400, 18, 220, "D-PAD: Scrollen   [B] / [X]: Schliessen", 255, 215, 0, 1);
+            WP_DrawText(top_fb, 400, 18, 220, "D-PAD: Scrollen   [B] / [X] / [A]: Schliessen", 255, 215, 0, 1);
             if (max_scroll > 0) {
                 char page_buf[32];
                 snprintf(page_buf, sizeof(page_buf), "%d / %d", scroll_line + 1, max_scroll + 1);
@@ -4480,6 +4656,167 @@ static void Downloader_ShowDescriptionModal(const repo_item_t *item)
     }
 }
 
+void Downloader_ShowDescriptionModal(const repo_item_t *item)
+{
+    if (!item) return;
+    Downloader_ShowDescriptionCustom(item->title, item->author, item->base_iwad, item->size_str, item->desc);
+}
+
+typedef struct {
+    char *data;
+    size_t size;
+} curl_buf_t;
+
+static size_t CurlWriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
+{
+    size_t realsize = size * nmemb;
+    curl_buf_t *mem = (curl_buf_t *)userp;
+    if (mem->size + realsize > 65535) return 0;
+    char *ptr = realloc(mem->data, mem->size + realsize + 1);
+    if (!ptr) return 0;
+    mem->data = ptr;
+    memcpy(&(mem->data[mem->size]), contents, realsize);
+    mem->size += realsize;
+    mem->data[mem->size] = 0;
+    return realsize;
+}
+
+bool Downloader_FetchMetadataForWad(const char *filename, char *out_author, size_t author_len, char *out_base, size_t base_len, char *out_desc, size_t desc_len)
+{
+    if (!filename || !filename[0]) return false;
+
+    char base_name[64];
+    strncpy(base_name, filename, sizeof(base_name) - 1);
+    base_name[sizeof(base_name) - 1] = '\0';
+    char *dot = strrchr(base_name, '.');
+    if (dot) *dot = '\0';
+
+    // 1. Check local catalog first (instant, 300+ entries)
+    const repo_item_t *item = Downloader_FindCatalogItem(filename);
+    if (item) {
+        if (out_author && author_len > 0) {
+            strncpy(out_author, item->author[0] ? item->author : "Unbekannt", author_len - 1);
+            out_author[author_len - 1] = '\0';
+        }
+        if (out_base && base_len > 0) {
+            strncpy(out_base, item->base_iwad[0] ? item->base_iwad : "DOOM2.WAD", base_len - 1);
+            out_base[base_len - 1] = '\0';
+        }
+        if (out_desc && desc_len > 0) {
+            strncpy(out_desc, item->desc, desc_len - 1);
+            out_desc[desc_len - 1] = '\0';
+        }
+
+        // Save to .txt file
+        char meta_path[256];
+        snprintf(meta_path, sizeof(meta_path), "sdmc:/3ds/Trinity3DS/wads/%s.txt", base_name);
+        FILE *fp = fopen(meta_path, "w");
+        if (fp) {
+            fprintf(fp, "AUTOR: %s\nBASIS: %s\nBESCHREIBUNG:\n%s\n",
+                    item->author[0] ? item->author : "Unbekannt",
+                    item->base_iwad[0] ? item->base_iwad : "DOOM2.WAD",
+                    item->desc);
+            fclose(fp);
+        }
+
+        // Try cover download if missing
+        char png_path[256];
+        snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.png", base_name);
+        if (access(png_path, F_OK) != 0) {
+            Downloader_InitNetwork();
+            Downloader_FetchOnlineCover(filename, png_path);
+        }
+
+        return true;
+    }
+
+    // 2. Not in catalog: Query idgames API online
+    if (!Downloader_InitNetwork()) return false;
+
+    char url[256];
+    snprintf(url, sizeof(url), "http://www.doomworld.com/idgames/api/api.php?action=search&query=%s&type=filename&out=json", base_name);
+
+    curl_buf_t chunk = { malloc(1), 0 };
+    if (!chunk.data) return false;
+    chunk.data[0] = '\0';
+
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        free(chunk.data);
+        return false;
+    }
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteMemoryCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/1.0.4 (Nintendo 3DS)");
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 6L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 4L);
+
+    CURLcode res = curl_easy_perform(curl);
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    curl_easy_cleanup(curl);
+
+    bool found = false;
+    if (res == CURLE_OK && http_code == 200 && chunk.data && chunk.size > 0) {
+        struct json_object *root = json_tokener_parse(chunk.data);
+        if (root) {
+            struct json_object *content = NULL;
+            if (json_object_object_get_ex(root, "content", &content)) {
+                struct json_object *file = NULL;
+                if (json_object_object_get_ex(content, "file", &file)) {
+                    struct json_object *entry = file;
+                    if (json_object_is_type(file, json_type_array) && json_object_array_length(file) > 0) {
+                        entry = json_object_array_get_idx(file, 0);
+                    }
+                    if (entry) {
+                        struct json_object *auth_obj = NULL;
+                        struct json_object *desc_obj = NULL;
+                        char a_str[64] = "Unbekannt";
+                        char d_str[512] = "";
+
+                        if (json_object_object_get_ex(entry, "author", &auth_obj)) {
+                            strncpy(a_str, json_object_get_string(auth_obj), sizeof(a_str) - 1);
+                        }
+                        if (json_object_object_get_ex(entry, "description", &desc_obj)) {
+                            strncpy(d_str, json_object_get_string(desc_obj), sizeof(d_str) - 1);
+                        }
+
+                        if (d_str[0]) {
+                            found = true;
+                            if (out_author && author_len > 0) strncpy(out_author, a_str, author_len - 1);
+                            if (out_base && base_len > 0) strncpy(out_base, "DOOM2.WAD", base_len - 1);
+                            if (out_desc && desc_len > 0) strncpy(out_desc, d_str, desc_len - 1);
+
+                            // Save to .txt
+                            char meta_path[256];
+                            snprintf(meta_path, sizeof(meta_path), "sdmc:/3ds/Trinity3DS/wads/%s.txt", base_name);
+                            FILE *fp = fopen(meta_path, "w");
+                            if (fp) {
+                                fprintf(fp, "AUTOR: %s\nBASIS: DOOM2.WAD\nBESCHREIBUNG:\n%s\n", a_str, d_str);
+                                fclose(fp);
+                            }
+                        }
+                    }
+                }
+            }
+            json_object_put(root);
+        }
+    }
+    free(chunk.data);
+
+    // Try cover download if missing
+    char png_path[256];
+    snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.png", base_name);
+    if (access(png_path, F_OK) != 0) {
+        Downloader_FetchOnlineCover(filename, png_path);
+    }
+
+    return found;
+}
+
 static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_idx, int total_count, bool installed)
 {
     // Background: Dark gunmetal gray
@@ -4489,7 +4826,7 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, "v1.0.3 WAD STORE", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 280, 12, "v1.0.4 WAD STORE", 255, 215, 0, 1);
 
     // WiFi signal
     int wifi = osGetWifiStrength();
