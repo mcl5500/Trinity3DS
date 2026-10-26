@@ -546,7 +546,7 @@ static bool Downloader_CheckFileOnDisk(const char *target_filename)
 
     char path[256];
     // Check exact
-    snprintf(path, sizeof(path), "sdmc:/3ds/Boom3DS/wads/%s", target_filename);
+    snprintf(path, sizeof(path), "sdmc:/3ds/Trinity3DS/wads/%s", target_filename);
     if (access(path, R_OK) == 0) return true;
 
     // Check lowercase
@@ -554,7 +554,7 @@ static bool Downloader_CheckFileOnDisk(const char *target_filename)
     strncpy(lower, target_filename, sizeof(lower) - 1);
     lower[sizeof(lower) - 1] = '\0';
     for (int i = 0; lower[i]; i++) lower[i] = tolower((unsigned char)lower[i]);
-    snprintf(path, sizeof(path), "sdmc:/3ds/Boom3DS/wads/%s", lower);
+    snprintf(path, sizeof(path), "sdmc:/3ds/Trinity3DS/wads/%s", lower);
     if (access(path, R_OK) == 0) return true;
 
     // Check uppercase
@@ -562,7 +562,7 @@ static bool Downloader_CheckFileOnDisk(const char *target_filename)
     strncpy(upper, target_filename, sizeof(upper) - 1);
     upper[sizeof(upper) - 1] = '\0';
     for (int i = 0; upper[i]; i++) upper[i] = toupper((unsigned char)upper[i]);
-    snprintf(path, sizeof(path), "sdmc:/3ds/Boom3DS/wads/%s", upper);
+    snprintf(path, sizeof(path), "sdmc:/3ds/Trinity3DS/wads/%s", upper);
     if (access(path, R_OK) == 0) return true;
 
     return false;
@@ -758,15 +758,15 @@ static bool Downloader_ExtractZip(const char *zip_path, const char *dest_dir, ch
 static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t err_len)
 {
     mkdir("sdmc:/3ds", 0777);
-    mkdir("sdmc:/3ds/Boom3DS", 0777);
-    mkdir("sdmc:/3ds/Boom3DS/wads", 0777);
-    mkdir("sdmc:/3ds/Boom3DS/downloads", 0777);
+    mkdir("sdmc:/3ds/Trinity3DS", 0777);
+    mkdir("sdmc:/3ds/Trinity3DS/wads", 0777);
+    mkdir("sdmc:/3ds/Trinity3DS/downloads", 0777);
 
     char temp_file[256];
     if (item->is_zip) {
-        snprintf(temp_file, sizeof(temp_file), "sdmc:/3ds/Boom3DS/downloads/temp_dl.zip");
+        snprintf(temp_file, sizeof(temp_file), "sdmc:/3ds/Trinity3DS/downloads/temp_dl.zip");
     } else {
-        snprintf(temp_file, sizeof(temp_file), "sdmc:/3ds/Boom3DS/wads/%s", item->target_file);
+        snprintf(temp_file, sizeof(temp_file), "sdmc:/3ds/Trinity3DS/wads/%s", item->target_file);
     }
 
     FILE *fp = fopen(temp_file, "wb");
@@ -799,7 +799,7 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Boom3DS/0.9.5 (Nintendo 3DS)");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Trinity3DS/0.9.6 (Nintendo 3DS)");
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 600L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
     // Optimized buffer sizes for faster 3DS network throughput
@@ -833,7 +833,7 @@ static bool Downloader_Download(const repo_item_t *item, char *err_msg, size_t e
             gfxSwapBuffers();
         }
 
-        bool ext_ok = Downloader_ExtractZip(temp_file, "sdmc:/3ds/Boom3DS/wads", err_msg, err_len);
+        bool ext_ok = Downloader_ExtractZip(temp_file, "sdmc:/3ds/Trinity3DS/wads", err_msg, err_len);
         unlink(temp_file);
         if (!ext_ok) return false;
     }
@@ -849,7 +849,7 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     // Header bar
     WP_FillRect(fb, 400, 0, 0, 400, 32, 20, 60, 120);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 80, 160, 255);
-    WP_DrawText(fb, 400, 16, 8, "BOOM3DS WAD REPOSITORY", 255, 255, 255, 2);
+    WP_DrawText(fb, 400, 16, 8, "TRINITY3DS WAD STORE", 255, 255, 255, 2);
 
     // Graphical 3-bar WiFi Indicator
     u8 wifi = osGetWifiStrength();
@@ -1141,7 +1141,7 @@ bool WAD_Downloader_Run(void)
             }
 
             // Touch on Right Button: [ZURUECK]
-            if (touch.py >= 202 && touch.py <= 236 && touch.px >= 212 && touch.px <= 314) {
+            if (touch.py >= 202 && touch.py <= 236 && touch.px >= 206 && touch.px <= 314) {
                 kDown |= KEY_B;
             }
         }

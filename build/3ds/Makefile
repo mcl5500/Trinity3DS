@@ -31,7 +31,7 @@ include $(DEVKITARM)/3ds_rules
 #     - icon.png
 #     - <libctru folder>/default_icon.png
 #---------------------------------------------------------------------------------
-TARGET		:=	Boom3DS
+TARGET		:=	Trinity3DS
 BUILD		:=	build
 
 SOURCES     :=  ../../src \

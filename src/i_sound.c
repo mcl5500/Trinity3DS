@@ -625,10 +625,10 @@ void I_InitSound(void)
 
 #ifdef __3DS__
   // Point Timidity to the eawpats soundfont/patch directory before Mix_OpenAudio
-  if (access("sdmc:/3ds/Boom3DS/eawpats/timidity.cfg", R_OK) == 0) {
-    setenv("TIMIDITY_CFG", "sdmc:/3ds/Boom3DS/eawpats/timidity.cfg", 1);
-  } else if (access("/3ds/Boom3DS/eawpats/timidity.cfg", R_OK) == 0) {
-    setenv("TIMIDITY_CFG", "/3ds/Boom3DS/eawpats/timidity.cfg", 1);
+  if (access("sdmc:/3ds/Trinity3DS/eawpats/timidity.cfg", R_OK) == 0) {
+    setenv("TIMIDITY_CFG", "sdmc:/3ds/Trinity3DS/eawpats/timidity.cfg", 1);
+  } else if (access("/3ds/Trinity3DS/eawpats/timidity.cfg", R_OK) == 0) {
+    setenv("TIMIDITY_CFG", "/3ds/Trinity3DS/eawpats/timidity.cfg", 1);
   } else if (access("/etc/timidity.cfg", R_OK) == 0) {
     setenv("TIMIDITY_CFG", "/etc/timidity.cfg", 1);
   }
@@ -791,7 +791,7 @@ void I_InitMusic(void)
 {
   if (!music_tmp) {
 #ifdef __3DS__
-    music_tmp = strdup("sdmc:/3ds/Boom3DS/doom.tmp");
+    music_tmp = strdup("sdmc:/3ds/Trinity3DS/doom.tmp");
 #else
     music_tmp = strdup("doom.tmp");
 #endif

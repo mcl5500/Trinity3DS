@@ -32,9 +32,9 @@ static void WP_StartBGM(void)
     s_music_inited = true;
 
     const char *paths[] = {
-        "sdmc:/3ds/Boom3DS/launcher.ogg",
-        "/3ds/Boom3DS/launcher.ogg",
-        "sdmc:/3ds/Boom3DS/wads/launcher.ogg",
+        "sdmc:/3ds/Trinity3DS/launcher.ogg",
+        "/3ds/Trinity3DS/launcher.ogg",
+        "sdmc:/3ds/Trinity3DS/wads/launcher.ogg",
         NULL
     };
 
@@ -65,8 +65,8 @@ static void WP_StopBGM(void)
 }
 
 #define MAX_WADS 512
-#define LAST_WAD_FILE "sdmc:/3ds/Boom3DS/last_wad.txt"
-#define WAD_CACHE_FILE "sdmc:/3ds/Boom3DS/wads_cache.bin"
+#define LAST_WAD_FILE "sdmc:/3ds/Trinity3DS/last_wad.txt"
+#define WAD_CACHE_FILE "sdmc:/3ds/Trinity3DS/wads_cache.bin"
 #define CACHE_MAGIC 0x44415742 // 'BWAD'
 #define CACHE_VERSION 2
 
@@ -342,18 +342,18 @@ static void WP_UpdateCurrentCover(int idx)
     wad_info_t *wad = &s_wads[idx];
     char png_path[256];
 
-    // 1. Direct path in sdmc:/3ds/Boom3DS/wads/<filename_without_ext>.png
+    // 1. Direct path in sdmc:/3ds/Trinity3DS/wads/<filename_without_ext>.png
     char base_name[64];
     strncpy(base_name, wad->filename, sizeof(base_name) - 1);
     base_name[sizeof(base_name) - 1] = '\0';
     char *dot = strrchr(base_name, '.');
     if (dot) *dot = '\0';
 
-    snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Boom3DS/wads/%s.png", base_name);
+    snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.png", base_name);
     s_cur_cover = WP_LoadPNG(png_path);
     if (s_cur_cover) return;
 
-    snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Boom3DS/wads/%s.PNG", base_name);
+    snprintf(png_path, sizeof(png_path), "sdmc:/3ds/Trinity3DS/wads/%s.PNG", base_name);
     s_cur_cover = WP_LoadPNG(png_path);
     if (s_cur_cover) return;
 
@@ -599,9 +599,9 @@ void WP_RescanWads(void)
 {
     s_wad_count = 0;
     unlink(WAD_CACHE_FILE);
-    WP_ScanDirectory("sdmc:/3ds/Boom3DS/wads", 0);
+    WP_ScanDirectory("sdmc:/3ds/Trinity3DS/wads", 0);
     if (s_wad_count == 0) {
-        WP_ScanDirectory("/3ds/Boom3DS/wads", 0);
+        WP_ScanDirectory("/3ds/Trinity3DS/wads", 0);
     }
     if (s_wad_count > 0) {
         qsort(s_wads, s_wad_count, sizeof(wad_info_t), WP_CompareWads);
@@ -617,13 +617,13 @@ static void WP_RenderTopScreen(u8 *fb)
     // Header banner: Deep Crimson
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
-    WP_DrawText(fb, 400, 16, 8, "BOOM3DS DUALSCREEN", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, "v0.9.5 WAD BROWSER", 255, 215, 0, 1);
+    WP_DrawText(fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
+    WP_DrawText(fb, 400, 280, 12, "v0.9.6 WAD MANAGER", 255, 215, 0, 1);
 
     if (s_wad_count == 0) {
         WP_DrawText(fb, 400, 20, 100, "KEINE WAD-DATEIEN GEFUNDEN!", 255, 50, 50, 2);
         WP_DrawText(fb, 400, 20, 130, "Bitte kopiere .wad Dateien nach:", 200, 200, 200, 1);
-        WP_DrawText(fb, 400, 20, 145, "/3ds/Boom3DS/wads/ oder /3ds/Boom3DS/", 100, 220, 255, 1);
+        WP_DrawText(fb, 400, 20, 145, "/3ds/Trinity3DS/wads/ oder /3ds/Trinity3DS/", 100, 220, 255, 1);
         return;
     }
 
@@ -802,7 +802,7 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
         if (top_fb) {
             WP_FillRect(top_fb, 400, 0, 0, 400, 240, 20, 20, 22);
             WP_FillRect(top_fb, 400, 0, 0, 400, 32, 130, 20, 20);
-            WP_DrawText(top_fb, 400, 16, 8, "BOOM3DS DUALSCREEN", 255, 255, 255, 2);
+            WP_DrawText(top_fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
             WP_DrawText(top_fb, 400, 20, 100, "SCANNE WAD-DATEIEN...", 255, 215, 0, 2);
             WP_DrawText(top_fb, 400, 20, 130, "Bitte einen kurzen Moment Geduld...", 200, 200, 200, 1);
             gfxFlushBuffers();
@@ -810,9 +810,9 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
         }
 
         // Scan ONLY the designated WAD folder (no redundant scans)
-        WP_ScanDirectory("sdmc:/3ds/Boom3DS/wads", 0);
+        WP_ScanDirectory("sdmc:/3ds/Trinity3DS/wads", 0);
         if (s_wad_count == 0) {
-            WP_ScanDirectory("/3ds/Boom3DS/wads", 0);
+            WP_ScanDirectory("/3ds/Trinity3DS/wads", 0);
         }
 
         if (s_wad_count > 0) {
@@ -830,11 +830,11 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
         if (top_fb) {
             WP_FillRect(top_fb, 400, 0, 0, 400, 240, 20, 20, 22);
             WP_FillRect(top_fb, 400, 0, 0, 400, 32, 130, 20, 20);
-            WP_DrawText(top_fb, 400, 16, 8, "BOOM3DS WAD BROWSER", 255, 255, 255, 2);
+            WP_DrawText(top_fb, 400, 16, 8, "TRINITY3DS WAD MANAGER", 255, 255, 255, 2);
             WP_DrawText(top_fb, 400, 20, 60, "KEINE WADS IM SCAN GEFUNDEN!", 255, 80, 80, 2);
             WP_DrawText(top_fb, 400, 20, 95, "Bitte kopiere WADs in einen dieser Ordner:", 200, 200, 200, 1);
-            WP_DrawText(top_fb, 400, 20, 115, "* sdmc:/3ds/Boom3DS/wads/", 100, 220, 255, 1);
-            WP_DrawText(top_fb, 400, 20, 130, "* sdmc:/3ds/Boom3DS/", 100, 220, 255, 1);
+            WP_DrawText(top_fb, 400, 20, 115, "* sdmc:/3ds/Trinity3DS/wads/", 100, 220, 255, 1);
+            WP_DrawText(top_fb, 400, 20, 130, "* sdmc:/3ds/Trinity3DS/", 100, 220, 255, 1);
             WP_DrawText(top_fb, 400, 20, 160, "Druecke [A] um mit Standard-IWAD zu starten", 255, 215, 0, 1);
         }
         if (bot_fb) {

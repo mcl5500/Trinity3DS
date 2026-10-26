@@ -1963,7 +1963,7 @@ static void D_DoomMainSetup(void)
   if (ds_picked_pwad && *ds_picked_pwad) {
     modifiedgame = true;
     D_AddFile(ds_picked_pwad, source_pwad);
-    lprintf(LO_CONFIRM, "Boom3DS: Loaded Megawad/PWAD: %s\n", ds_picked_pwad);
+    lprintf(LO_CONFIRM, "Trinity3DS: Loaded Megawad/PWAD: %s\n", ds_picked_pwad);
 
     // Check for matching companion .wad (e.g. SIGIL_SHREDS.wad or <name>_music.wad)
     char companion_wad[256];
@@ -1979,10 +1979,10 @@ static void D_DoomMainSetup(void)
 
       if (strstr(lower_pwad, "sigil.wad")) {
         char shreds_path[256];
-        snprintf(shreds_path, sizeof(shreds_path), "sdmc:/3ds/Boom3DS/wads/SIGIL_SHREDS.wad");
+        snprintf(shreds_path, sizeof(shreds_path), "sdmc:/3ds/Trinity3DS/wads/SIGIL_SHREDS.wad");
         if (access(shreds_path, R_OK) == 0) {
           D_AddFile(shreds_path, source_pwad);
-          lprintf(LO_CONFIRM, "Boom3DS: Autoloaded companion SIGIL_SHREDS soundtrack!\n");
+          lprintf(LO_CONFIRM, "Trinity3DS: Autoloaded companion SIGIL_SHREDS soundtrack!\n");
         }
       }
     }
@@ -2211,12 +2211,12 @@ static void D_DoomMainSetup(void)
     if (dot) {
       strcpy(dot, ".deh");
       if (access(deh_path, R_OK) == 0) {
-        lprintf(LO_CONFIRM, "Boom3DS: Autoloading companion DeHackEd patch: %s\n", deh_path);
+        lprintf(LO_CONFIRM, "Trinity3DS: Autoloading companion DeHackEd patch: %s\n", deh_path);
         ProcessDehFile(deh_path, D_dehout(), 0);
       } else {
         strcpy(dot, ".bex");
         if (access(deh_path, R_OK) == 0) {
-          lprintf(LO_CONFIRM, "Boom3DS: Autoloading companion BEX patch: %s\n", deh_path);
+          lprintf(LO_CONFIRM, "Trinity3DS: Autoloading companion BEX patch: %s\n", deh_path);
           ProcessDehFile(deh_path, D_dehout(), 0);
         }
       }

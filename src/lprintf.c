@@ -67,9 +67,9 @@ int lprintf(OutputLevels pri, const char *s, ...)
   va_end(v);
 
 #ifdef __3DS__
-  FILE *logfile = fopen("sdmc:/3ds/Boom3DS/log.txt", "a");
+  FILE *logfile = fopen("sdmc:/3ds/Trinity3DS/log.txt", "a");
   if (!logfile) {
-    logfile = fopen("/3ds/Boom3DS/log.txt", "a");
+    logfile = fopen("/3ds/Trinity3DS/log.txt", "a");
   }
 
   if (logfile)

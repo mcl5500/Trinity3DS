@@ -1,11 +1,11 @@
 BasicInfo:
-  Title                   : "BOOM3DS"
-  ProductCode             : "CTR-H-BOOM"
+  Title                   : "TRINITY3DS"
+  ProductCode             : "CTR-H-TRIN"
   Logo                    : Homebrew # Nintendo / Licensed / Distributed / iQue / iQueForSystem
 
 TitleInfo:
   Category                : Application
-  UniqueId                : 0xB003D
+  UniqueId                : 0xB003E
 
 Option:
   UseOnSD                 : true # true if App is to be installed to SD

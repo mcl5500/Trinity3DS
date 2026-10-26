@@ -28,29 +28,29 @@ if [ "$ACCESS" != "allowed" ]; then
 fi
 
 # Ensure folders exist
-curl -s -X POST -H "$HDR" -d "path=/3ds/Boom3DS" "http://$IP/api/folder" >/dev/null || true
-curl -s -X POST -H "$HDR" -d "path=/3ds/Boom3DS/wads" "http://$IP/api/folder" >/dev/null || true
+curl -s -X POST -H "$HDR" -d "path=/3ds/Trinity3DS" "http://$IP/api/folder" >/dev/null || true
+curl -s -X POST -H "$HDR" -d "path=/3ds/Trinity3DS/wads" "http://$IP/api/folder" >/dev/null || true
 curl -s -X POST -H "$HDR" -d "path=/cias" "http://$IP/api/folder" >/dev/null || true
 
-# 1. Upload .3dsx and .smdh to /3ds/Boom3DS/
-if [ -f "$DIR/Boom3DS.3dsx" ]; then
-    echo "--> Uploading Boom3DS.3dsx to /3ds/Boom3DS/Boom3DS.3dsx..."
+# 1. Upload .3dsx and .smdh to /3ds/Trinity3DS/
+if [ -f "$DIR/Trinity3DS.3dsx" ]; then
+    echo "--> Uploading Trinity3DS.3dsx to /3ds/Trinity3DS/Trinity3DS.3dsx..."
     curl -s -X PUT -H "$HDR" \
-      --data-binary @"$DIR/Boom3DS.3dsx" \
-      "http://$IP/api/file?path=%2F3ds%2FBoom3DS%2FBoom3DS.3dsx&replace=1" >/dev/null
+      --data-binary @"$DIR/Trinity3DS.3dsx" \
+      "http://$IP/api/file?path=%2F3ds%2FBoom3DS%2FTrinity3DS.3dsx&replace=1" >/dev/null
     echo "    Upload complete!"
 fi
 
-if [ -f "$DIR/Boom3DS.smdh" ]; then
-    echo "--> Uploading Boom3DS.smdh to /3ds/Boom3DS/Boom3DS.smdh..."
+if [ -f "$DIR/Trinity3DS.smdh" ]; then
+    echo "--> Uploading Trinity3DS.smdh to /3ds/Trinity3DS/Trinity3DS.smdh..."
     curl -s -X PUT -H "$HDR" \
-      --data-binary @"$DIR/Boom3DS.smdh" \
-      "http://$IP/api/file?path=%2F3ds%2FBoom3DS%2FBoom3DS.smdh&replace=1" >/dev/null
+      --data-binary @"$DIR/Trinity3DS.smdh" \
+      "http://$IP/api/file?path=%2F3ds%2FBoom3DS%2FTrinity3DS.smdh&replace=1" >/dev/null
     echo "    Upload complete!"
 fi
 
 if [ -f "$DIR/prboom-plus.wad" ]; then
-    echo "--> Uploading prboom-plus.wad to /3ds/Boom3DS/prboom-plus.wad..."
+    echo "--> Uploading prboom-plus.wad to /3ds/Trinity3DS/prboom-plus.wad..."
     curl -s -X PUT -H "$HDR" \
       --data-binary @"$DIR/prboom-plus.wad" \
       "http://$IP/api/file?path=%2F3ds%2FBoom3DS%2Fprboom-plus.wad&replace=1" >/dev/null
@@ -58,7 +58,7 @@ if [ -f "$DIR/prboom-plus.wad" ]; then
 fi
 
 if [ -f "$DIR/launcher.ogg" ]; then
-    echo "--> Uploading Launcher Music (Doom 1 E1M1) to /3ds/Boom3DS/launcher.ogg..."
+    echo "--> Uploading Launcher Music (Doom 1 E1M1) to /3ds/Trinity3DS/launcher.ogg..."
     curl -s -X PUT -H "$HDR" \
       --data-binary @"$DIR/launcher.ogg" \
       "http://$IP/api/file?path=%2F3ds%2FBoom3DS%2Flauncher.ogg&replace=1" >/dev/null
@@ -68,16 +68,16 @@ fi
 
 
 # 2. Upload and install CIA
-if [ -f "$DIR/Boom3DS-Dualscreen.cia" ]; then
-    echo "--> Uploading Boom3DS-Dualscreen.cia to /cias/..."
+if [ -f "$DIR/Trinity3DS.cia" ]; then
+    echo "--> Uploading Trinity3DS.cia to /cias/..."
     curl -s -X PUT -H "$HDR" \
-      --data-binary @"$DIR/Boom3DS-Dualscreen.cia" \
-      "http://$IP/api/file?path=%2Fcias%2FBoom3DS-Dualscreen.cia&replace=1" >/dev/null
+      --data-binary @"$DIR/Trinity3DS.cia" \
+      "http://$IP/api/file?path=%2Fcias%2FTrinity3DS.cia&replace=1" >/dev/null
     echo "    Upload complete!"
 
     echo "--> Triggering CIA install on 3DS..."
     curl -s -X POST -H "$HDR" \
-      -d "paths=/cias/Boom3DS-Dualscreen.cia" \
+      -d "paths=/cias/Trinity3DS.cia" \
       "http://$IP/api/install" >/dev/null
     echo "    Installation command sent to 3DS!"
 fi

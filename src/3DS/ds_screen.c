@@ -617,8 +617,8 @@ static void DS_DrawDashboard(u8 *fb)
 
     // Title banner
     DS_FillRect(fb, 0, 0, 320, 36, 28, 32, 42);
-    DS_DrawString(fb, 45, 10, "BOOM3DS DUALSCREEN", 240, 60, 50, 2);
-    DS_DrawString(fb, 120, 26, BOOM3DS_DUALSCREEN_VERSION_STR, 100, 180, 255, 1);
+    DS_DrawString(fb, 45, 10, "TRINITY3DS", 240, 60, 50, 2);
+    DS_DrawString(fb, 120, 26, TRINITY3DS_VERSION_STR, 100, 180, 255, 1);
 
     // Info card
     DS_FillRect(fb, 16, 48, 288, 55, 22, 26, 36);

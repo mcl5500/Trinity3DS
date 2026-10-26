@@ -32,23 +32,23 @@ RES="$DIR/build/3ds/res"
 
 echo "=== Creating Banner and SMDH ==="
 $BANNERTOOL makebanner -i "$RES/banner.png" -a "$RES/banner.wav" -o "$RES/banner.bin"
-$BANNERTOOL makesmdh -i "$RES/icon.png" -s "Boom3DS" -l "Boom3DS Dualscreen v0.9.5" -p "Sheldor & id Software" -f visible,allow3d,recordusage -o "$RES/icon.bin"
+$BANNERTOOL makesmdh -i "$RES/icon.png" -s "Trinity3DS" -l "Trinity3DS v0.9.6" -p "Sheldor & id Software" -f visible,allow3d,recordusage -o "$RES/icon.bin"
 
 echo "=== Packaging CIA with makerom ==="
 $MAKEROM -f cia -target t -exefslogo \
-    -o "$DIR/Boom3DS-Dualscreen.cia" \
-    -elf "$DIR/build/3ds/Boom3DS.elf" \
+    -o "$DIR/Trinity3DS.cia" \
+    -elf "$DIR/build/3ds/Trinity3DS.elf" \
     -rsf "$RES/build-cia.rsf" \
     -banner "$RES/banner.bin" \
     -icon "$RES/icon.bin" \
     -logo "$RES/logo.bcma.lz" \
-    -major 0 -minor 9 -micro 5 \
+    -major 0 -minor 9 -micro 6 \
     -DAPP_VERSION_MAJOR=0
 
-cp "$DIR/build/3ds/Boom3DS.3dsx" "$DIR/Boom3DS-Dualscreen.3dsx"
-cp "$DIR/build/3ds/Boom3DS.3dsx" "$DIR/Boom3DS.3dsx"
-cp "$RES/icon.bin" "$DIR/Boom3DS.smdh"
+cp "$DIR/build/3ds/Trinity3DS.3dsx" "$DIR/Trinity3DS.3dsx"
+cp "$DIR/build/3ds/Trinity3DS.3dsx" "$DIR/Trinity3DS.3dsx"
+cp "$RES/icon.bin" "$DIR/Trinity3DS.smdh"
 
 echo "=== Build Complete! ==="
 echo "Artifacts:"
-ls -lh "$DIR/Boom3DS-Dualscreen.cia" "$DIR/Boom3DS-Dualscreen.3dsx"
+ls -lh "$DIR/Trinity3DS.cia" "$DIR/Trinity3DS.3dsx"
