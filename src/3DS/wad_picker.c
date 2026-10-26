@@ -705,7 +705,7 @@ static void WP_RenderTopScreen(u8 *fb)
     WP_DrawRect(fb, 400, 12, 182, 376, 50, 70, 70, 80);
     WP_DrawText(fb, 400, 20, 189, "STEUERUNG:", 255, 215, 0, 1);
     WP_DrawText(fb, 400, 100, 189, "D-PAD: Scrollen   L / R: A-Z Buchstabensprung", 200, 200, 200, 1);
-    WP_DrawText(fb, 400, 20, 209, "A/TOUCH: Starten   START: Zuletzt   Y: WAD Downloader", 100, 255, 120, 1);
+    WP_DrawText(fb, 400, 20, 209, "A: Starten   X: WAD-Optionen   Y: Store   START: Zuletzt", 100, 255, 120, 1);
 }
 
 static void WP_RenderBottomScreen(u8 *fb)
@@ -758,16 +758,181 @@ static void WP_RenderBottomScreen(u8 *fb)
         }
     }
 
-    // Bottom Action Buttons
-    // Left: [SPIEL STARTEN] (X=6, Y=202, W=194, H=34)
-    WP_FillRect(fb, 320, 6, 202, 194, 34, 20, 130, 40);
-    WP_DrawRect(fb, 320, 6, 202, 194, 34, 80, 255, 100);
-    WP_DrawCenteredText(fb, 320, 6, 202, 194, 34, "SPIEL STARTEN", 255, 255, 255, 2);
+    // Bottom Action Buttons (3 Buttons: Starten, Verwalten [X], Store [Y])
+    // Left: [SPIEL STARTEN] (X=6, Y=202, W=130, H=34)
+    WP_FillRect(fb, 320, 6, 202, 130, 34, 20, 130, 40);
+    WP_DrawRect(fb, 320, 6, 202, 130, 34, 80, 255, 100);
+    WP_DrawCenteredText(fb, 320, 6, 202, 130, 34, "STARTEN", 255, 255, 255, 2);
 
-    // Right: [[Y] STORE] (X=206, Y=202, W=108, H=34)
-    WP_FillRect(fb, 320, 206, 202, 108, 34, 25, 60, 120);
-    WP_DrawRect(fb, 320, 206, 202, 108, 34, 80, 160, 255);
-    WP_DrawCenteredText(fb, 320, 206, 202, 108, 34, "[Y] STORE", 255, 255, 255, 1);
+    // Center: [[X] OPTIONEN] (X=142, Y=202, W=92, H=34)
+    WP_FillRect(fb, 320, 142, 202, 92, 34, 110, 40, 20);
+    WP_DrawRect(fb, 320, 142, 202, 92, 34, 230, 90, 50);
+    WP_DrawCenteredText(fb, 320, 142, 202, 92, 34, "[X] OPTION", 255, 255, 255, 1);
+
+    // Right: [[Y] STORE] (X=240, Y=202, W=74, H=34)
+    WP_FillRect(fb, 320, 240, 202, 74, 34, 25, 60, 120);
+    WP_DrawRect(fb, 320, 240, 202, 74, 34, 80, 160, 255);
+    WP_DrawCenteredText(fb, 320, 240, 202, 74, 34, "[Y] STORE", 255, 255, 255, 1);
+}
+
+// WAD Management Modal: Delete WAD or Show/Fetch Metadata
+static bool WP_ManageWadModal(int wad_idx)
+{
+    if (wad_idx < 0 || wad_idx >= s_wad_count) return false;
+    wad_info_t *wad = &s_wads[wad_idx];
+
+    // Read existing .txt metadata if present
+    char meta_path[256];
+    char base_name[64];
+    strncpy(base_name, wad->filename, sizeof(base_name) - 1);
+    base_name[sizeof(base_name) - 1] = '\0';
+    char *dot = strrchr(base_name, '.');
+    if (dot) *dot = '\0';
+    snprintf(meta_path, sizeof(meta_path), "sdmc:/3ds/Trinity3DS/wads/%s.txt", base_name);
+
+    char meta_desc[256] = "Keine lokale Beschreibung vorhanden.";
+    FILE *mfp = fopen(meta_path, "r");
+    if (mfp) {
+        if (fgets(meta_desc, sizeof(meta_desc), mfp)) {
+            char *nl = strchr(meta_desc, '\n');
+            if (nl) *nl = '\0';
+        }
+        fclose(mfp);
+    }
+
+    bool delete_requested = false;
+
+    while (aptMainLoop()) {
+        hidScanInput();
+        u32 kDown = hidKeysDown();
+        touchPosition touch;
+        hidTouchRead(&touch);
+
+        if (kDown & KEY_B) break;
+
+        // Touch handling
+        if (kDown & KEY_TOUCH) {
+            // [LOESCHEN] button (X: 18, Y: 180, W: 136, H: 34)
+            if (touch.py >= 180 && touch.py <= 214 && touch.px >= 18 && touch.px <= 154) {
+                kDown |= KEY_X;
+            }
+            // [ZURUECK] button (X: 166, Y: 180, W: 136, H: 34)
+            if (touch.py >= 180 && touch.py <= 214 && touch.px >= 166 && touch.px <= 302) {
+                kDown |= KEY_B;
+            }
+        }
+
+        // Action: Delete WAD [X]
+        if (kDown & KEY_X) {
+            // Confirm deletion dialog
+            bool confirm_del = false;
+            while (aptMainLoop()) {
+                hidScanInput();
+                u32 subDown = hidKeysDown();
+                touchPosition subTouch;
+                hidTouchRead(&subTouch);
+
+                if (subDown & KEY_B) break;
+                if (subDown & KEY_A) { confirm_del = true; break; }
+
+                if (subDown & KEY_TOUCH) {
+                    if (subTouch.py >= 170 && subTouch.py <= 204 && subTouch.px >= 20 && subTouch.px <= 140) {
+                        confirm_del = true;
+                        break;
+                    }
+                    if (subTouch.py >= 170 && subTouch.py <= 204 && subTouch.px >= 180 && subTouch.px <= 300) {
+                        break;
+                    }
+                }
+
+                u8 *bot = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+                if (bot) {
+                    WP_FillRect(bot, 320, 0, 0, 320, 240, 15, 15, 18);
+                    WP_FillRect(bot, 320, 10, 30, 300, 180, 45, 15, 15);
+                    WP_DrawRect(bot, 320, 10, 30, 300, 180, 255, 60, 60);
+
+                    WP_DrawCenteredText(bot, 320, 10, 45, 300, 20, "WIRKLICH LOESCHEN?", 255, 80, 80, 2);
+                    WP_DrawCenteredText(bot, 320, 10, 75, 300, 16, wad->filename, 255, 255, 255, 1);
+                    WP_DrawCenteredText(bot, 320, 10, 100, 300, 16, "Datei & Cover werden unwiderruflich", 200, 200, 200, 1);
+                    WP_DrawCenteredText(bot, 320, 10, 116, 300, 16, "von der SD-Karte entfernt!", 200, 200, 200, 1);
+
+                    // [JA, LOESCHEN]
+                    WP_FillRect(bot, 320, 20, 170, 120, 34, 160, 20, 20);
+                    WP_DrawRect(bot, 320, 20, 170, 120, 34, 255, 80, 80);
+                    WP_DrawCenteredText(bot, 320, 20, 170, 120, 34, "[A] JA", 255, 255, 255, 2);
+
+                    // [NEIN, ABBRUCH]
+                    WP_FillRect(bot, 320, 180, 170, 120, 34, 40, 40, 45);
+                    WP_DrawRect(bot, 320, 180, 170, 120, 34, 100, 100, 110);
+                    WP_DrawCenteredText(bot, 320, 180, 170, 120, 34, "[B] NEIN", 255, 255, 255, 2);
+                }
+                gfxFlushBuffers();
+                gfxSwapBuffers();
+                gspWaitForVBlank();
+            }
+
+            if (confirm_del) {
+                // Delete .wad file
+                unlink(wad->path);
+                // Delete companion png
+                char png_del[256];
+                snprintf(png_del, sizeof(png_del), "sdmc:/3ds/Trinity3DS/wads/%s.png", base_name);
+                unlink(png_del);
+                snprintf(png_del, sizeof(png_del), "sdmc:/3ds/Trinity3DS/wads/%s.PNG", base_name);
+                unlink(png_del);
+                unlink(meta_path);
+
+                delete_requested = true;
+                break;
+            }
+        }
+
+        // Render Frame
+        u8 *top = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+        if (top) {
+            WP_FillRect(top, 400, 0, 0, 400, 240, 20, 20, 22);
+            WP_FillRect(top, 400, 0, 0, 400, 32, 110, 30, 20);
+            WP_DrawText(top, 400, 16, 8, "WAD-VERWALTUNG", 255, 255, 255, 2);
+
+            WP_FillRect(top, 400, 16, 46, 368, 176, 28, 28, 32);
+            WP_DrawRect(top, 400, 16, 46, 368, 176, 180, 150, 40);
+
+            WP_DrawText(top, 400, 28, 58, wad->display_name, 255, 215, 0, 2);
+
+            char buf[128];
+            float mb = (float)wad->file_size / (1024.0f * 1024.0f);
+            snprintf(buf, sizeof(buf), "DATEI: %s (%.2f MB)", wad->filename, mb);
+            WP_DrawText(top, 400, 28, 86, buf, 180, 220, 255, 1);
+
+            WP_DrawText(top, 400, 28, 108, "STATUS / BESCHREIBUNG:", 255, 255, 255, 1);
+            WP_DrawText(top, 400, 28, 126, meta_desc, 200, 200, 200, 1);
+
+            WP_DrawText(top, 400, 28, 176, "* Installiert in /3ds/Trinity3DS/wads/", 100, 255, 120, 1);
+        }
+
+        u8 *bot = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+        if (bot) {
+            WP_FillRect(bot, 320, 0, 0, 320, 240, 16, 16, 18);
+            WP_FillRect(bot, 320, 0, 0, 320, 26, 45, 25, 20);
+            WP_DrawText(bot, 320, 12, 8, "AKTION AUSWAEHLEN:", 255, 215, 0, 1);
+
+            // Button 1: [X] WAD LOESCHEN (Rot)
+            WP_FillRect(bot, 320, 18, 180, 136, 34, 140, 25, 25);
+            WP_DrawRect(bot, 320, 18, 180, 136, 34, 255, 70, 70);
+            WP_DrawCenteredText(bot, 320, 18, 180, 136, 34, "[X] LOESCHEN", 255, 255, 255, 1);
+
+            // Button 2: [B] ZURUECK (Grau)
+            WP_FillRect(bot, 320, 166, 180, 136, 34, 35, 35, 42);
+            WP_DrawRect(bot, 320, 166, 180, 136, 34, 90, 90, 100);
+            WP_DrawCenteredText(bot, 320, 166, 180, 136, 34, "[B] ZURUECK", 255, 255, 255, 1);
+        }
+
+        gfxFlushBuffers();
+        gfxSwapBuffers();
+        gspWaitForVBlank();
+    }
+
+    return delete_requested;
 }
 
 // Find base IWAD for PWADs
@@ -982,17 +1147,34 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
                     }
                 }
             }
-            // Check Start Button (X: 6 to 200, Y: 202 to 238)
-            else if (touch.py >= 202 && touch.py <= 238 && touch.px >= 6 && touch.px <= 200) {
+            // Check Start Button (X: 6 to 136, Y: 202 to 238)
+            else if (touch.py >= 202 && touch.py <= 238 && touch.px >= 6 && touch.px <= 136) {
                 confirmed = true;
             }
-            // Check WAD Store Button (X: 206 to 314, Y: 202 to 238)
-            else if (touch.py >= 202 && touch.py <= 238 && touch.px >= 206 && touch.px <= 314) {
+            // Check WAD Options Button (X: 142 to 234, Y: 202 to 238)
+            else if (touch.py >= 202 && touch.py <= 238 && touch.px >= 142 && touch.px <= 234) {
+                kDown |= KEY_X;
+            }
+            // Check WAD Store Button (X: 240 to 314, Y: 202 to 238)
+            else if (touch.py >= 202 && touch.py <= 238 && touch.px >= 240 && touch.px <= 314) {
                 kDown |= KEY_Y;
             }
         }
 
-        // Open WAD Downloader / Repository
+        // Open WAD Options / Management Dialog [X]
+        if (kDown & KEY_X) {
+            if (s_wad_count > 0 && s_selected_idx < s_wad_count) {
+                if (WP_ManageWadModal(s_selected_idx)) {
+                    // WAD was deleted, rescan and keep index valid
+                    WP_RescanWads();
+                    if (s_selected_idx >= s_wad_count) s_selected_idx = s_wad_count - 1;
+                    if (s_selected_idx < 0) s_selected_idx = 0;
+                }
+            }
+            continue;
+        }
+
+        // Open WAD Downloader / Repository [Y]
         if (kDown & KEY_Y) {
             if (WAD_Downloader_Run()) {
                 // If any WAD was downloaded, rescan and update
