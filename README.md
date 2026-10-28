@@ -12,7 +12,7 @@ Scan either QR code using **3dsDL** or **FBI** (*Remote Install -> Scan QR Code*
 | **Installable CIA** (HOME Menu) | **Standalone 3DSX** (Homebrew Launcher) |
 | :---: | :---: |
 | ![Installable CIA QR Code](assets/qrcode_cia.png) | ![Standalone 3DSX QR Code](assets/qrcode_3dsx.png) |
-| [Download Trinity3DS.cia (v1.2.1)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.2.1/Trinity3DS.cia) | [Download Trinity3DS.3dsx (v1.2.1)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.2.1/Trinity3DS.3dsx) |
+| [Download Trinity3DS.cia (v1.2.2)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.2.2/Trinity3DS.cia) | [Download Trinity3DS.3dsx (v1.2.2)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.2.2/Trinity3DS.3dsx) |
 
 ---
 

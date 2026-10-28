@@ -689,6 +689,107 @@ void WP_RescanWads(void)
     }
 }
 
+// Fast startup sync: loads cache and rapidly verifies against SD card directory
+static bool WP_SyncCache(void)
+{
+    if (!WP_LoadCache()) return false;
+
+    const char *dir_path = "sdmc:/3ds/Trinity3DS/wads";
+    DIR *dir = opendir(dir_path);
+    if (!dir) {
+        dir_path = "/3ds/Trinity3DS/wads";
+        dir = opendir(dir_path);
+    }
+    if (!dir) return (s_wad_count > 0);
+
+    bool changed = false;
+
+    // 1. Remove deleted files from cache
+    for (int i = 0; i < s_wad_count; ) {
+        bool exists = (access(s_wads[i].path, F_OK) == 0);
+        if (!exists) {
+            if (strncmp(s_wads[i].path, "sdmc:", 5) == 0) {
+                exists = (access(s_wads[i].path + 5, F_OK) == 0);
+            } else {
+                char alt[256];
+                snprintf(alt, sizeof(alt), "sdmc:%s", s_wads[i].path);
+                exists = (access(alt, F_OK) == 0);
+            }
+        }
+
+        if (!exists) {
+            for (int j = i; j < s_wad_count - 1; j++) {
+                s_wads[j] = s_wads[j + 1];
+            }
+            s_wad_count--;
+            changed = true;
+        } else {
+            i++;
+        }
+    }
+
+    // 2. Scan directory for newly added .wad files
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (s_wad_count >= MAX_WADS) break;
+        if (entry->d_name[0] == '.') continue;
+
+        const char *ext = strrchr(entry->d_name, '.');
+        if (!ext || strcasecmp(ext, ".wad") != 0) continue;
+        if (!strcasecmp(entry->d_name, "prboom-plus.wad")) continue;
+
+        // Check if already in cache
+        bool found = false;
+        for (int i = 0; i < s_wad_count; i++) {
+            if (!strcasecmp(s_wads[i].filename, entry->d_name)) {
+                found = true;
+                break;
+            }
+        }
+        if (found) continue;
+
+        // New WAD found! Check file and header
+        char full_path[256];
+        snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
+
+        struct stat st;
+        if (stat(full_path, &st) != 0 || S_ISDIR(st.st_mode)) continue;
+
+        FILE *fp = fopen(full_path, "rb");
+        if (!fp) continue;
+        char magic[5] = {0};
+        size_t read_bytes = fread(magic, 1, 4, fp);
+        fclose(fp);
+
+        if (read_bytes < 4) continue;
+        bool is_iwad = (strncmp(magic, "IWAD", 4) == 0);
+        bool is_pwad = (strncmp(magic, "PWAD", 4) == 0);
+        if (!is_iwad && !is_pwad) continue;
+
+        wad_info_t *w = &s_wads[s_wad_count++];
+        strncpy(w->path, full_path, sizeof(w->path) - 1);
+        w->path[sizeof(w->path) - 1] = '\0';
+        strncpy(w->filename, entry->d_name, sizeof(w->filename) - 1);
+        w->filename[sizeof(w->filename) - 1] = '\0';
+        w->is_iwad = is_iwad;
+        w->file_size = st.st_size;
+        WP_FormatDisplayName(w);
+        changed = true;
+    }
+    closedir(dir);
+
+    if (changed) {
+        if (s_wad_count > 0) {
+            qsort(s_wads, s_wad_count, sizeof(wad_info_t), WP_CompareWads);
+            WP_SaveCache();
+        } else {
+            unlink(WAD_CACHE_FILE);
+        }
+    }
+
+    return (s_wad_count > 0);
+}
+
 static bool WP_LoadWadMetadata(const char *filename, char *out_author, size_t author_len, char *out_base, size_t base_len, char *out_desc, size_t desc_len)
 {
     if (!filename || !filename[0]) return false;
@@ -1234,12 +1335,12 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
 {
     s_wad_count = 0;
 
-    // Fast Path: Try loading pre-built cache first
+    // Fast Path: Try loading pre-built cache first and rapidly sync with SD card
     hidScanInput();
     bool force_rescan = (hidKeysHeld() & KEY_X); // Hold X on boot to force full re-scan
 
-    if (!force_rescan && WP_LoadCache()) {
-        // Cache loaded instantly!
+    if (!force_rescan && WP_SyncCache()) {
+        // Cache loaded and synced with SD card instantly!
     } else {
         // Show "Scanning WADs..." notification while scanning
         u8 *top_fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
