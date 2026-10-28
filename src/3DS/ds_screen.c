@@ -821,28 +821,47 @@ static void DS_DrawTacticalAutomap(u8 *fb)
         DS_DrawLine(fb, x0, y0, x1, y1, r, g, b, 2, max_map_y, thick);
     }
 
-    // 4. Draw active enemies & pickups ONLY when in visual range (Wolfenstein-style line of sight)
+    // 4. Draw active enemies & pickups
+    // Pickups remain visible permanently once discovered until collected!
+    #define MIF_3DS_DISCOVERED (1 << 16)
+
     if (thinkercap.next) {
         for (thinker_t *th = thinkercap.next; th != &thinkercap; th = th->next) {
             if (th->function == P_MobjThinker) {
                 mobj_t *mo = (mobj_t *)th;
                 if (!mo) continue;
 
-                if (!plr->powers[pw_allmap] && !P_CheckSight(plr->mo, mo)) {
-                    continue;
-                }
-
-                int mx = center_x + ((mo->x - px) >> shift);
-                int my = center_y - ((mo->y - py) >> shift);
-
-                if (mx >= 4 && mx < 264 && my >= 4 && my < max_map_y) {
-                    // 1. Active Alive Enemy: Bright 3x3 Red Blip
-                    if ((mo->flags & MF_COUNTKILL) && mo->health > 0) {
-                        DS_FillRect(fb, mx - 1, my - 1, 3, 3, 240, 30, 30);
+                // 1. Active Alive Enemy: visible only in line of sight (or with computer allmap)
+                if ((mo->flags & MF_COUNTKILL) && mo->health > 0) {
+                    if (plr->powers[pw_allmap] || P_CheckSight(plr->mo, mo)) {
+                        int mx = center_x + ((mo->x - px) >> shift);
+                        int my = center_y - ((mo->y - py) >> shift);
+                        if (mx >= 4 && mx < 264 && my >= 4 && my < max_map_y) {
+                            DS_FillRect(fb, mx - 1, my - 1, 3, 3, 240, 30, 30);
+                        }
                     }
-                    // 2. Pickups / Items: Bright 2x2 Yellow Blip
-                    else if (mo->flags & MF_SPECIAL) {
-                        DS_FillRect(fb, mx, my, 2, 2, 255, 220, 40);
+                }
+                // 2. Pickups / Items: once discovered, remain visible on map until collected!
+                else if (mo->flags & MF_SPECIAL) {
+                    int dx = (mo->x - px) >> FRACBITS;
+                    int dy = (mo->y - py) >> FRACBITS;
+                    bool in_sight = plr->powers[pw_allmap] || P_CheckSight(plr->mo, mo) || ((dx * dx + dy * dy) < (250 * 250));
+                    if (in_sight) {
+                        mo->intflags |= MIF_3DS_DISCOVERED;
+                    }
+
+                    if (mo->intflags & MIF_3DS_DISCOVERED) {
+                        int mx = center_x + ((mo->x - px) >> shift);
+                        int my = center_y - ((mo->y - py) >> shift);
+                        if (mx >= 4 && mx < 264 && my >= 4 && my < max_map_y) {
+                            if (in_sight) {
+                                // In active line of sight: Bright vibrant yellow
+                                DS_FillRect(fb, mx, my, 2, 2, 255, 230, 40);
+                            } else {
+                                // Discovered / Remembered item: Steady gold
+                                DS_FillRect(fb, mx, my, 2, 2, 220, 190, 40);
+                            }
+                        }
                     }
                 }
             }
