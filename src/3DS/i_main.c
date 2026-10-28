@@ -19,12 +19,71 @@
 #include "3DS/ds_screen.h"
 #include "3DS/wad_picker.h"
 
-// Override libctru's default 50/50 linear heap split.
-// Trinity3DS uses software rendering and only requires ~2 MB for display and audio buffers.
-// Capping the linear heap at 6 MB maximizes the standard application heap (malloc),
-// providing ~60 MB on Old 3DS and ~110 MB on New 3DS, which prevents out-of-memory
-// crashes (Z_Malloc failure) in large games like Hexen.
-u32 __ctru_linear_heap_size = 6 * 1024 * 1024;
+extern char* fake_heap_start;
+extern char* fake_heap_end;
+extern void mappableInit(u32 start, u32 end);
+
+u32 __ctru_heap = 0;
+u32 __ctru_heap_size = 0;
+u32 __ctru_linear_heap = 0;
+u32 __ctru_linear_heap_size = 0;
+
+void __system_allocateHeaps(void)
+{
+    u32 tmp = 0;
+
+    // Query available memory from kernel resource limit
+    Handle resLimit = 0;
+    if (R_FAILED(svcGetResourceLimit(&resLimit, 0xFFFF8001))) {
+        svcBreak(USERBREAK_PANIC);
+        return;
+    }
+
+    s64 maxCommit = 0, currentCommit = 0;
+    ResourceLimitType resType = RESLIMIT_COMMIT;
+    svcGetResourceLimitLimitValues(&maxCommit, resLimit, 1, &resType);
+    svcGetResourceLimitCurrentValues(&currentCommit, resLimit, 1, &resType);
+    svcCloseHandle(resLimit);
+
+    u32 total_free = (u32)(maxCommit - currentCommit);
+    total_free &= ~0xFFF; // 4KB page align
+
+    // Ensure at least 6 MB for linear heap (framebuffers, sound)
+    u32 min_linear = 6 * 1024 * 1024;
+    // 56 MB cap for app heap fits safely within 0x08000000 virtual address range (max 64 MB)
+    u32 max_app_heap = 56 * 1024 * 1024;
+
+    u32 app_heap = (total_free > min_linear) ? (total_free - min_linear) : (total_free / 2);
+    if (app_heap > max_app_heap)
+        app_heap = max_app_heap;
+
+    u32 linear_heap = total_free - app_heap;
+
+    __ctru_heap_size = app_heap;
+    __ctru_linear_heap_size = linear_heap;
+
+    // Allocate application heap (0x08000000)
+    __ctru_heap = 0x08000000;
+    Result res = svcControlMemory(&tmp, __ctru_heap, 0x0, __ctru_heap_size, MEMOP_ALLOC, MEMPERM_READ | MEMPERM_WRITE);
+    if (R_FAILED(res)) {
+        svcBreak(USERBREAK_PANIC);
+        return;
+    }
+
+    // Allocate linear heap
+    res = svcControlMemory(&__ctru_linear_heap, 0x0, 0x0, __ctru_linear_heap_size, MEMOP_ALLOC_LINEAR, MEMPERM_READ | MEMPERM_WRITE);
+    if (R_FAILED(res)) {
+        svcBreak(USERBREAK_PANIC);
+        return;
+    }
+
+    // Set up newlib sbrk heap
+    fake_heap_start = (char*)__ctru_heap;
+    fake_heap_end = fake_heap_start + __ctru_heap_size;
+
+    // Initialize mappable address range
+    mappableInit(0x10000000, 0x14000000);
+}
 #endif
 
 #include <errno.h>
