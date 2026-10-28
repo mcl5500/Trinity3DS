@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -e
 
-IP="192.168.178.59"
+IP="${1:-10.243.12.194}"
 HDR="X-Requested-With: 3dsDL"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "=== Connecting to 3DS at $IP ==="
-STATUS=$(curl -s --connect-timeout 3 -H "$HDR" "http://$IP/api/status" || true)
+STATUS=$(curl -s --connect-timeout 8 --max-time 15 -H "$HDR" "http://$IP/api/status" || true)
 if [ -z "$STATUS" ]; then
     echo "Error: 3DS not reachable at http://$IP. Make sure 3dsDL is running!"
     exit 1
