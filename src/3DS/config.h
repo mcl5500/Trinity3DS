@@ -5,12 +5,12 @@
 
 #define PROJECT_NAME    "dsda-doom"
 #define PROJECT_TARNAME "dsda-doom"
-#define WAD_DATA        "prboom-plus.wad"
+#define WAD_DATA        "dsda-doom.wad"
 #define PROJECT_VERSION "0.30.1"
 #define PROJECT_STRING  "dsda-doom 0.30.1 (Trinity3DS)"
 
 #define DOOMWADDIR "sdmc:/3ds/Trinity3DS/wads"
-#define DSDA_ABSOLUTE_PWAD_PATH "sdmc:/3ds/Trinity3DS/prboom-plus.wad"
+#define DSDA_ABSOLUTE_PWAD_PATH "sdmc:/3ds/Trinity3DS/dsda-doom.wad"
 
 /* Little endian ARM11 */
 #undef WORDS_BIGENDIAN

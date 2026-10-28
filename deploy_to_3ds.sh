@@ -49,15 +49,10 @@ if [ -f "$DIR/Trinity3DS.smdh" ]; then
     echo "    Upload complete!"
 fi
 
-if [ -f "$DIR/prboom-plus.wad" ]; then
-    echo "--> Uploading prboom-plus.wad to /3ds/Trinity3DS/prboom-plus.wad..."
+if [ -f "$DIR/dsda-doom.wad" ]; then
+    echo "--> Uploading dsda-doom.wad to /3ds/Trinity3DS/dsda-doom.wad..."
     curl -s -X PUT -H "$HDR" \
-      --data-binary @"$DIR/prboom-plus.wad" \
-      "http://$IP/api/file?path=%2F3ds%2FTrinity3DS%2Fprboom-plus.wad&replace=1" >/dev/null
-    echo "    Upload complete!"
-    echo "--> Uploading prboom-plus.wad to /3ds/Trinity3DS/dsda-doom.wad..."
-    curl -s -X PUT -H "$HDR" \
-      --data-binary @"$DIR/prboom-plus.wad" \
+      --data-binary @"$DIR/dsda-doom.wad" \
       "http://$IP/api/file?path=%2F3ds%2FTrinity3DS%2Fdsda-doom.wad&replace=1" >/dev/null
     echo "    Upload complete!"
 fi

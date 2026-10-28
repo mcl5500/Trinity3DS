@@ -3,13 +3,6 @@ project(dsda-doom-wad
     LANGUAGES C
 )
 
-if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
-    list(APPEND
-        CMAKE_MODULE_PATH
-        "${CMAKE_CURRENT_LIST_DIR}/../cmake"
-    )
-endif()
-
 # PrBoom-Plus WAD creation tool
 
 add_executable(dsda_rdatawad
@@ -34,17 +27,18 @@ set_target_properties(dsda_rdatawad
     OUTPUT_NAME rdatawad
 )
 
-include(DsdaTargetFeatures)
-dsda_target_set_warnings(dsda_rdatawad)
-dsda_target_silence_deprecation(dsda_rdatawad)
+# include(DsdaTargetFeatures)
+# dsda_target_set_warnings(dsda_rdatawad)
+# dsda_target_silence_deprecation(dsda_rdatawad)
 
-include(CheckBigEndian)
-check_big_endian(RD_IS_BIG_ENDIAN)
+set(RD_IS_BIG_ENDIAN 0)
 
 target_compile_definitions(dsda_rdatawad
     PRIVATE
     "RD_IS_BIG_ENDIAN=${RD_IS_BIG_ENDIAN}"
 )
+
+set(WAD_DATA_PATH "${CMAKE_BINARY_DIR}/dsda-doom.wad")
 
 # PrBoom-Plus internal WAD
 
