@@ -309,7 +309,39 @@ const char* I_GetTempDir(void)
   return "PROGDIR:";
 }
 
-#else /* not Windows, not Amiga */
+#elif defined(__3DS__)
+
+const char *I_ConfigDir(void)
+{
+  return "sdmc:/3ds/Trinity3DS";
+}
+
+const char *I_ExeDir(void)
+{
+  return "sdmc:/3ds/Trinity3DS";
+}
+
+const char *I_GetTempDir(void)
+{
+  return "sdmc:/3ds/Trinity3DS";
+}
+
+static const char *I_GetHomeDir(void)
+{
+  return "sdmc:/3ds/Trinity3DS";
+}
+
+static const char *I_GetXDGDataHome(void)
+{
+  return "sdmc:/3ds/Trinity3DS";
+}
+
+static const char *I_GetXDGDataDirs(void)
+{
+  return "sdmc:/3ds/Trinity3DS";
+}
+
+#else /* not Windows, not Amiga, not 3DS */
 
 static const char *I_GetHomeDir(void)
 {
@@ -483,13 +515,17 @@ char* I_FindFileInternal(const char* wfname, const char* ext, dboolean isStatic)
     const char *(*func)(void); // for functions that return the directory
   } search0[] = {
     {NULL, NULL, NULL, I_ExeDir}, // executable directory
-#if !defined(_WIN32) && !defined(AMIGA)
+#if !defined(_WIN32) && !defined(AMIGA) && !defined(__3DS__)
     {NULL, NULL, NULL, I_ConfigDir}, // config and autoload directory. on windows/amiga, this is the same as I_ExeDir
 #endif
     {NULL}, // current working directory
     {NULL, NULL, "DOOMWADDIR"}, // run-time $DOOMWADDIR
     {DOOMWADDIR}, // build-time configured DOOMWADDIR
     {DSDA_ABSOLUTE_PWAD_PATH}, // build-time configured absolute path to dsda-doom.wad
+#ifdef __3DS__
+    {"sdmc:/3ds/Trinity3DS"},
+    {"sdmc:/3ds/Trinity3DS/wads"},
+#endif
     {NULL, NULL, NULL, I_GetBasePath}, // search the base path provided by SDL
     {NULL, "../share/games/doom", NULL, I_GetBasePath}, // AppImage
     {NULL, "doom", "HOME"}, // ~/doom

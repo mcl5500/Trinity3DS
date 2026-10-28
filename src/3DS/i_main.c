@@ -192,6 +192,12 @@ int mouse_hide_timer = 0;
 int main(int argc, char **argv)
 {
 #ifdef __3DS__
+  static char *dummy_argv[] = {"sdmc:/3ds/Trinity3DS/Trinity3DS.3dsx", NULL};
+  if (argc == 0 || !argv || !argv[0]) {
+    argc = 1;
+    argv = dummy_argv;
+  }
+
   bool isN3DS = false;
   APT_CheckNew3DS(&isN3DS);
   if (isN3DS)
