@@ -30,8 +30,6 @@ u32 __ctru_linear_heap_size = 0;
 
 void __system_allocateHeaps(void)
 {
-    u32 tmp = 0;
-
     // Query available memory from kernel resource limit
     Handle resLimit = 0;
     if (R_FAILED(svcGetResourceLimit(&resLimit, 0xFFFF8001))) {
@@ -41,15 +39,15 @@ void __system_allocateHeaps(void)
 
     s64 maxCommit = 0, currentCommit = 0;
     ResourceLimitType resType = RESLIMIT_COMMIT;
-    svcGetResourceLimitLimitValues(&maxCommit, resLimit, 1, &resType);
-    svcGetResourceLimitCurrentValues(&currentCommit, resLimit, 1, &resType);
+    svcGetResourceLimitLimitValues(&maxCommit, resLimit, &resType, 1);
+    svcGetResourceLimitCurrentValues(&currentCommit, resLimit, &resType, 1);
     svcCloseHandle(resLimit);
 
     u32 total_free = (u32)(maxCommit - currentCommit);
     total_free &= ~0xFFF; // 4KB page align
 
-    // Ensure at least 6 MB for linear heap (framebuffers, sound)
-    u32 min_linear = 6 * 1024 * 1024;
+    // Ensure at least 8 MB for linear heap (framebuffers, sound, etc.)
+    u32 min_linear = 8 * 1024 * 1024;
     // 56 MB cap for app heap fits safely within 0x08000000 virtual address range (max 64 MB)
     u32 max_app_heap = 56 * 1024 * 1024;
 
@@ -63,8 +61,7 @@ void __system_allocateHeaps(void)
     __ctru_linear_heap_size = linear_heap;
 
     // Allocate application heap (0x08000000)
-    __ctru_heap = 0x08000000;
-    Result res = svcControlMemory(&tmp, __ctru_heap, 0x0, __ctru_heap_size, MEMOP_ALLOC, MEMPERM_READ | MEMPERM_WRITE);
+    Result res = svcControlMemory(&__ctru_heap, 0x08000000, 0x0, __ctru_heap_size, MEMOP_ALLOC, MEMPERM_READ | MEMPERM_WRITE);
     if (R_FAILED(res)) {
         svcBreak(USERBREAK_PANIC);
         return;
