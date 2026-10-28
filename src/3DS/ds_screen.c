@@ -527,6 +527,52 @@ static void DS_DrawAuthenticStatusBar(u8 *fb)
     else if (plr->cards[it_redcard]) DS_DrawWadPatch(fb, 239, ST_Y + 23, "STKEYS2");
 }
 
+// Draw a sleek 3D filled progress bar (Balken) with beveled border, recessed cavity, and fluid highlight
+static void DS_DrawGaugeBar(u8 *fb, int x, int y, int w, int h, int cur, int max,
+                            u8 r, u8 g, u8 b, u8 border_r, u8 border_g, u8 border_b)
+{
+    // 1. Dark recessed cavity
+    DS_FillRect(fb, x, y, w, h, 14, 16, 20);
+
+    // 2. Beveled outer border
+    DS_DrawRect(fb, x - 1, y - 1, w + 2, h + 2, border_r, border_g, border_b);
+
+    if (max <= 0) return;
+    int clamped = cur < 0 ? 0 : (cur > max ? max : cur);
+    int fill_w = (clamped * (w - 2)) / max;
+    if (fill_w <= 0) return;
+
+    int inner_x = x + 1;
+    int inner_y = y + 1;
+    int inner_h = h - 2;
+
+    u8 hi_r = (r > 200) ? 255 : (r + 55);
+    u8 hi_g = (g > 200) ? 255 : (g + 55);
+    u8 hi_b = (b > 200) ? 255 : (b + 55);
+
+    u8 sh_r = (r * 2) / 3;
+    u8 sh_g = (g * 2) / 3;
+    u8 sh_b = (b * 2) / 3;
+
+    // Top highlight row (1-2px)
+    DS_FillRect(fb, inner_x, inner_y, fill_w, 2, hi_r, hi_g, hi_b);
+
+    // Main vibrant body
+    if (inner_h > 4) {
+        DS_FillRect(fb, inner_x, inner_y + 2, fill_w, inner_h - 4, r, g, b);
+    }
+
+    // Bottom shadow row (2px)
+    if (inner_h > 2) {
+        DS_FillRect(fb, inner_x, inner_y + inner_h - 2, fill_w, 2, sh_r, sh_g, sh_b);
+    }
+
+    // Right-edge tip cap
+    if (fill_w < w - 2) {
+        DS_FillRect(fb, inner_x + fill_w - 1, inner_y, 1, inner_h, hi_r, hi_g, hi_b);
+    }
+}
+
 // Render the authentic Heretic Status Bar at the bottom (Y: 208 to 239)
 static void DS_DrawHereticStatusBar(u8 *fb)
 {
@@ -546,28 +592,20 @@ static void DS_DrawHereticStatusBar(u8 *fb)
         DS_DrawWadPatch(fb, 287, ST_Y + 9, "GOD2");
     }
 
-    // 3. Health Bar (Large, stylish chain & red life gem gauge): X: 30 to 134
-    int hp_bx = 30;
-    int hp_by = ST_Y + 9;
-    int hp_bw = 72;
-    int hp_bh = 14;
-    DS_FillRect(fb, hp_bx, hp_by, hp_bw, hp_bh, 18, 14, 10);
-    DS_DrawRect(fb, hp_bx - 1, hp_by - 1, hp_bw + 2, hp_bh + 2, 70, 52, 36);
-
-    for (int cx = hp_bx; cx < hp_bx + hp_bw - 8; cx += 16) {
-        DS_DrawWadPatch(fb, cx, ST_Y + 11, "CHAIN");
-    }
-
+    // 3. Health Bar (Lebensbalken): X: 30 to 134
     int hp = plr->health;
-    int clamped_hp = hp < 0 ? 0 : (hp > 100 ? 100 : hp);
-    int gem_x = hp_bx + (clamped_hp * (hp_bw - 16)) / 100;
-    DS_DrawWadPatch(fb, gem_x, ST_Y + 10, "LIFEGEM2");
-
-    char hp_str[16];
-    snprintf(hp_str, sizeof(hp_str), "%d", hp);
     u8 hr = hp < 25 ? 255 : 255;
     u8 hg = hp < 25 ? 40 : 215;
     u8 hb = hp < 25 ? 40 : 0;
+    u8 bar_r = hp < 25 ? 255 : 220;
+    u8 bar_g = hp < 25 ? 30 : 35;
+    u8 bar_b = hp < 25 ? 30 : 45;
+
+    DS_DrawGaugeBar(fb, 30, ST_Y + 9, 72, 14, hp, 100,
+                    bar_r, bar_g, bar_b, 75, 55, 40);
+
+    char hp_str[16];
+    snprintf(hp_str, sizeof(hp_str), "%d", hp);
     DS_DrawString(fb, 106, ST_Y + 7, hp_str, hr, hg, hb, 1);
     DS_DrawString(fb, 106, ST_Y + 18, "HP", 180, 150, 60, 1);
 
@@ -579,35 +617,22 @@ static void DS_DrawHereticStatusBar(u8 *fb)
         DS_DrawString(fb, 132, ST_Y + 18, "[WINGS]", 120, 220, 255, 1);
     }
 
-    // 5. Ammo Bar (Matches Health Bar completely): X: 160 to 264
+    // 5. Ammo Bar (Munitionsbalken - matches Health Bar completely): X: 160 to 264
     ammotype_t amtype = weaponinfo[plr->readyweapon].ammo;
     int cur_ammo = (amtype != am_noammo) ? plr->ammo[amtype] : 0;
     int max_am = (amtype != am_noammo) ? plr->maxammo[amtype] : 100;
     if (max_am <= 0) max_am = 100;
 
-    int am_bx = 160;
-    int am_by = ST_Y + 9;
-    int am_bw = 72;
-    int am_bh = 14;
-    DS_FillRect(fb, am_bx, am_by, am_bw, am_bh, 18, 14, 10);
-    DS_DrawRect(fb, am_bx - 1, am_by - 1, am_bw + 2, am_bh + 2, 70, 52, 36);
-
-    for (int cx = am_bx; cx < am_bx + am_bw - 8; cx += 16) {
-        DS_DrawWadPatch(fb, cx, ST_Y + 11, "CHAIN");
-    }
-
     if (amtype != am_noammo) {
-        int clamped_ammo = cur_ammo < 0 ? 0 : (cur_ammo > max_am ? max_am : cur_ammo);
-        int ammo_gem_x = am_bx + (clamped_ammo * (am_bw - 16)) / max_am;
-        DS_DrawWadPatch(fb, ammo_gem_x, ST_Y + 10, "LIFEGEM1");
-    }
-
-    char ammo_str[16];
-    if (amtype != am_noammo) {
+        DS_DrawGaugeBar(fb, 160, ST_Y + 9, 72, 14, cur_ammo, max_am,
+                        235, 175, 25, 75, 55, 40);
+        char ammo_str[16];
         snprintf(ammo_str, sizeof(ammo_str), "%d", cur_ammo);
         DS_DrawString(fb, 236, ST_Y + 7, ammo_str, 255, 215, 0, 1);
         DS_DrawString(fb, 236, ST_Y + 18, "AMMO", 180, 150, 60, 1);
     } else {
+        DS_DrawGaugeBar(fb, 160, ST_Y + 9, 72, 14, 0, 100,
+                        80, 80, 80, 50, 50, 50);
         DS_DrawString(fb, 236, ST_Y + 12, "--", 140, 130, 110, 1);
     }
 
@@ -636,20 +661,13 @@ static void DS_DrawHexenStatusBar(u8 *fb)
 
     DS_DrawString(fb, 8, ST_Y + 3, c_title, 255, 215, 0, 1);
 
-    int hp_bx = 8;
-    int hp_by = ST_Y + 15;
-    int hp_bw = 64;
-    int hp_bh = 12;
-    DS_FillRect(fb, hp_bx, hp_by, hp_bw, hp_bh, 16, 18, 24);
-    DS_DrawRect(fb, hp_bx - 1, hp_by - 1, hp_bw + 2, hp_bh + 2, 60, 65, 78);
-
-    for (int cx = hp_bx; cx < hp_bx + hp_bw - 8; cx += 16) {
-        DS_DrawWadPatch(fb, cx, ST_Y + 16, "CHAIN");
-    }
+    // Health Bar (Lebensbalken):
     int hp = plr->health;
-    int clamped_hp = hp < 0 ? 0 : (hp > 100 ? 100 : hp);
-    int gem_x = hp_bx + (clamped_hp * (hp_bw - 16)) / 100;
-    DS_DrawWadPatch(fb, gem_x, ST_Y + 14, "LIFEGEM2");
+    u8 bar_r = hp < 25 ? 255 : 220;
+    u8 bar_g = hp < 25 ? 30 : 35;
+    u8 bar_b = hp < 25 ? 30 : 45;
+    DS_DrawGaugeBar(fb, 8, ST_Y + 15, 64, 13, hp, 100,
+                    bar_r, bar_g, bar_b, 60, 65, 78);
 
     char hp_str[16];
     snprintf(hp_str, sizeof(hp_str), "%d", hp);
@@ -677,20 +695,13 @@ static void DS_DrawHexenStatusBar(u8 *fb)
     int m1 = plr->ammo[0];
     DS_DrawWadPatch(fb, 146, ST_Y + 5, m1 > 0 ? "MANABRT1" : "MANADIM1");
 
-    int b_bx = 162;
-    int b_by = ST_Y + 9;
-    int b_bw = 44;
-    int b_bh = 13;
-    DS_FillRect(fb, b_bx, b_by, b_bw, b_bh, 10, 16, 28);
     bool b_active = (ready == wp_second || ready == wp_fourth);
-    DS_DrawRect(fb, b_bx - 1, b_by - 1, b_bw + 2, b_bh + 2, b_active ? 255 : 40, b_active ? 255 : 90, b_active ? 255 : 180);
+    u8 b_border_r = b_active ? 255 : 40;
+    u8 b_border_g = b_active ? 255 : 90;
+    u8 b_border_b = b_active ? 255 : 180;
 
-    for (int cx = b_bx; cx < b_bx + b_bw - 8; cx += 16) {
-        DS_DrawWadPatch(fb, cx, ST_Y + 11, "CHAIN");
-    }
-    int clamped_m1 = m1 < 0 ? 0 : (m1 > 200 ? 200 : m1);
-    int m1_gem_x = b_bx + (clamped_m1 * (b_bw - 16)) / 200;
-    DS_DrawWadPatch(fb, m1_gem_x, ST_Y + 10, "LIFEGEM3");
+    DS_DrawGaugeBar(fb, 162, ST_Y + 9, 44, 13, m1, 200,
+                    35, 130, 245, b_border_r, b_border_g, b_border_b);
 
     char m1_str[16];
     snprintf(m1_str, sizeof(m1_str), "%d", m1);
@@ -700,20 +711,13 @@ static void DS_DrawHexenStatusBar(u8 *fb)
     int m2 = plr->ammo[1];
     DS_DrawWadPatch(fb, 232, ST_Y + 5, m2 > 0 ? "MANABRT2" : "MANADIM2");
 
-    int g_bx = 248;
-    int g_by = ST_Y + 9;
-    int g_bw = 44;
-    int g_bh = 13;
-    DS_FillRect(fb, g_bx, g_by, g_bw, g_bh, 10, 26, 16);
     bool g_active = (ready == wp_third || ready == wp_fourth);
-    DS_DrawRect(fb, g_bx - 1, g_by - 1, g_bw + 2, g_bh + 2, g_active ? 255 : 35, g_active ? 255 : 140, g_active ? 255 : 60);
+    u8 g_border_r = g_active ? 255 : 35;
+    u8 g_border_g = g_active ? 255 : 140;
+    u8 g_border_b = g_active ? 255 : 60;
 
-    for (int cx = g_bx; cx < g_bx + g_bw - 8; cx += 16) {
-        DS_DrawWadPatch(fb, cx, ST_Y + 11, "CHAIN");
-    }
-    int clamped_m2 = m2 < 0 ? 0 : (m2 > 200 ? 200 : m2);
-    int m2_gem_x = g_bx + (clamped_m2 * (g_bw - 16)) / 200;
-    DS_DrawWadPatch(fb, m2_gem_x, ST_Y + 10, "LIFEGEM0");
+    DS_DrawGaugeBar(fb, 248, ST_Y + 9, 44, 13, m2, 200,
+                    40, 200, 70, g_border_r, g_border_g, g_border_b);
 
     char m2_str[16];
     snprintf(m2_str, sizeof(m2_str), "%d", m2);
