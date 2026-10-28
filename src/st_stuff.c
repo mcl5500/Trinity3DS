@@ -904,6 +904,13 @@ void ST_Refresh(void)
 
 void ST_Drawer(dboolean refresh)
 {
+#ifdef __3DS__
+  // On 3DS, status bar is rendered exclusively on the bottom screen.
+  // We still do palette shifts (damage / item pickup flashes), but skip top-screen status bar.
+  st_firsttime = st_firsttime || refresh;
+  ST_doPaletteStuff();
+  return;
+#endif
   dboolean statusbaron = R_StatusBarVisible();
 
   V_BeginUIDraw();

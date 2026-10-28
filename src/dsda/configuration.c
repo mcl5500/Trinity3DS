@@ -1204,7 +1204,11 @@ dsda_config_t dsda_config[dsda_config_count] = {
   },
   [dsda_config_screenblocks] = {
     "screenblocks", dsda_config_screenblocks,
+#ifdef __3DS__
+    dsda_config_int, 10, 11, { 11 }, NULL, CONF_FEATURE | NOT_STRICT, R_SetViewSize
+#else
     dsda_config_int, 10, 11, { 10 }, NULL, CONF_FEATURE | NOT_STRICT, R_SetViewSize
+#endif
   },
   [dsda_config_sdl_video_window_pos] = {
     "sdl_video_window_pos", dsda_config_sdl_video_window_pos,

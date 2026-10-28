@@ -502,7 +502,11 @@ void R_SetViewSize(void)
 {
   BorderNeedRefresh = true;
   setsizeneeded = true;
+#ifdef __3DS__
+  setblocks = 11;
+#else
   setblocks = dsda_IntConfig(dsda_config_screenblocks);
+#endif
 }
 
 void R_MultMatrixVecd(const float matrix[16], const float in[4], float out[4])
