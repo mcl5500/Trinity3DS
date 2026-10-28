@@ -35,8 +35,8 @@
 #ifndef __TRINITY3DS_VERSION_H__
 #define __TRINITY3DS_VERSION_H__
 
-#define TRINITY3DS_VERSION "2.0.0"
-#define TRINITY3DS_VERSION_STR "v2.0.0-dev"
+#define TRINITY3DS_VERSION "1.5.0"
+#define TRINITY3DS_VERSION_STR "v1.5.0"
 
 
 #endif
