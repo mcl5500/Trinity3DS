@@ -72,7 +72,10 @@ void I_PreInitGraphics(void)
     gfxSetScreenFormat(GFX_TOP, GSP_BGR8_OES);
     gfxSetScreenFormat(GFX_BOTTOM, GSP_BGR8_OES);
 
+    I_InitJoystick();
+
     I_AtExit(I_ShutdownGraphics, true, "I_ShutdownGraphics", exit_priority_normal);
+    I_AtExit(I_ShutdownJoystick, true, "I_ShutdownJoystick", exit_priority_normal);
 }
 
 static void I_InitBuffersRes(void)

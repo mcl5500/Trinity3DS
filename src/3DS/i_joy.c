@@ -33,8 +33,12 @@ static bool irrst_initialized = false;
 void I_InitJoystick(void)
 {
   if (!irrst_initialized) {
-    if (R_SUCCEEDED(irrstInit())) {
+    Result res = irrstInit();
+    if (R_SUCCEEDED(res)) {
       irrst_initialized = true;
+      lprintf(LO_INFO, "Trinity3DS: IRRST (C-Stick) initialized successfully.\n");
+    } else {
+      lprintf(LO_WARN, "Trinity3DS: irrstInit failed (code 0x%08lX)\n", res);
     }
   }
 }
@@ -51,6 +55,10 @@ void I_ResetToLauncher(void);
 
 void I_PollJoystick(void)
 {
+  if (!irrst_initialized) {
+    I_InitJoystick();
+  }
+
   hidScanInput();
 
   ctr_keys_held = hidKeysHeld();
@@ -74,27 +82,41 @@ void I_PollJoystick(void)
   hidCircleRead(&cpos);
 
   // Circle Pad X (Strafe) - normalized to -10 .. +10
-  int axis_x = (cpos.dx * 192) / 3000;
-  if (abs(axis_x) < 2) axis_x = 0;
-  joyxmove = axis_x;
+  if (abs(cpos.dx) > 15) {
+    joyxmove = (cpos.dx * 192) / 3000;
+    if (joyxmove == 0) joyxmove = (cpos.dx > 0) ? 1 : -1;
+  } else {
+    joyxmove = 0;
+  }
 
   // Circle Pad Y (Walk forward/backward) - normalized to -10 .. +10
-  int axis_y = (cpos.dy * 192) / 3000;
-  if (abs(axis_y) < 2) axis_y = 0;
-  joyymove = axis_y;
+  if (abs(cpos.dy) > 15) {
+    joyymove = (cpos.dy * 192) / 3000;
+    if (joyymove == 0) joyymove = (cpos.dy > 0) ? 1 : -1;
+  } else {
+    joyymove = 0;
+  }
 
   // C-Stick (New 3DS / CPP): Read analog camera turning & freelook
   if (irrst_initialized) {
+    irrstScanInput();
+
     circlePosition cstickpos = {0, 0};
     irrstCstickRead(&cstickpos);
 
-    int c_axis_x = (cstickpos.dx * 192) / 3000;
-    if (abs(c_axis_x) < 2) c_axis_x = 0;
-    joyrxmove = c_axis_x;
+    if (abs(cstickpos.dx) > 12) {
+      joyrxmove = (cstickpos.dx * 192) / 3000;
+      if (joyrxmove == 0) joyrxmove = (cstickpos.dx > 0) ? 1 : -1;
+    } else {
+      joyrxmove = 0;
+    }
 
-    int c_axis_y = (cstickpos.dy * 192) / 3000;
-    if (abs(c_axis_y) < 2) c_axis_y = 0;
-    joyrymove = c_axis_y;
+    if (abs(cstickpos.dy) > 12) {
+      joyrymove = (cstickpos.dy * 192) / 3000;
+      if (joyrymove == 0) joyrymove = (cstickpos.dy > 0) ? 1 : -1;
+    } else {
+      joyrymove = 0;
+    }
   } else {
     joyrxmove = joyrymove = 0;
   }

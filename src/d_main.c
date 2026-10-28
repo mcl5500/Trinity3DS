@@ -588,7 +588,11 @@ static void D_DoomLoop(void)
   if (dsda_IntConfig(dsda_config_startup_delay_ms) > 0)
     I_uSleep(dsda_IntConfig(dsda_config_startup_delay_ms) * 1000);
 
+#ifdef __3DS__
+  while (aptMainLoop())
+#else
   for (;;)
+#endif
   {
     if (I_Interrupted())
       I_SafeExit(0);
@@ -648,6 +652,10 @@ static void D_DoomLoop(void)
       }
     }
   }
+
+#ifdef __3DS__
+  I_SafeExit(0);
+#endif
 }
 
 //
