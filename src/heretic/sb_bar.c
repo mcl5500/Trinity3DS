@@ -537,6 +537,8 @@ static int oldpieces = -1;
 
 void SB_Drawer(dboolean statusbaron, dboolean refresh)
 {
+    CPlayer = &players[consoleplayer];
+
     if (refresh || fadeBG() || V_IsOpenGLMode()) SB_state = -1;
 
     if (!statusbaron)
@@ -549,7 +551,6 @@ void SB_Drawer(dboolean statusbaron, dboolean refresh)
         return;
     }
 
-    CPlayer = &players[consoleplayer];
     if (SB_state == -1)
     {
         if (heretic)

@@ -759,6 +759,10 @@ int st_palette = 0;
 static void ST_doPaletteStuff(void)
 {
   int         palette;
+
+  if (!plyr)
+    return;
+
   int cnt = dsda_PainPalette() ? plyr->damagecount : 0;
 
   if (dsda_PowerPalette() && plyr->powers[pw_strength])
@@ -907,8 +911,14 @@ void ST_Drawer(dboolean refresh)
 #ifdef __3DS__
   // On 3DS, status bar is rendered exclusively on the bottom screen.
   // We still do palette shifts (damage / item pickup flashes), but skip top-screen status bar.
+  if (raven)
+  {
+    SB_Drawer(false, refresh);
+    return;
+  }
   st_firsttime = st_firsttime || refresh;
-  ST_doPaletteStuff();
+  if (plyr)
+    ST_doPaletteStuff();
   return;
 #endif
   dboolean statusbaron = R_StatusBarVisible();
