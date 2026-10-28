@@ -2982,7 +2982,7 @@ mobj_t* P_SpawnPlayerMissile(mobj_t* source, mobjtype_t type)
   P_SetTarget(&th->target, source);
   th->angle = aim.angle;
 
-  if (dsda_FreeAim())
+  if (dsda_FreeAim() && !linetarget)
   {
     fixed_t horizontal_speed;
 
