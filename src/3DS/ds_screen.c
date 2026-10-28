@@ -546,38 +546,75 @@ static void DS_DrawHereticStatusBar(u8 *fb)
         DS_DrawWadPatch(fb, 287, ST_Y + 9, "GOD2");
     }
 
-    // 3. Health: Gold Chain & Red Life Gem
-    DS_DrawWadPatch(fb, 28, ST_Y + 10, "CHAIN");
+    // 3. Health Bar (Large, stylish chain & red life gem gauge): X: 30 to 134
+    int hp_bx = 30;
+    int hp_by = ST_Y + 9;
+    int hp_bw = 72;
+    int hp_bh = 14;
+    DS_FillRect(fb, hp_bx, hp_by, hp_bw, hp_bh, 18, 14, 10);
+    DS_DrawRect(fb, hp_bx - 1, hp_by - 1, hp_bw + 2, hp_bh + 2, 70, 52, 36);
+
+    for (int cx = hp_bx; cx < hp_bx + hp_bw - 8; cx += 16) {
+        DS_DrawWadPatch(fb, cx, ST_Y + 11, "CHAIN");
+    }
+
     int hp = plr->health;
     int clamped_hp = hp < 0 ? 0 : (hp > 100 ? 100 : hp);
-    int gem_x = 28 + (clamped_hp * 60) / 100;
-    DS_DrawWadPatch(fb, gem_x, ST_Y + 9, "LIFEGEM2");
+    int gem_x = hp_bx + (clamped_hp * (hp_bw - 16)) / 100;
+    DS_DrawWadPatch(fb, gem_x, ST_Y + 10, "LIFEGEM2");
 
-    // 4. Health Number
     char hp_str[16];
     snprintf(hp_str, sizeof(hp_str), "%d", hp);
-    DS_DrawString(fb, 98, ST_Y + 12, hp_str, 255, 215, 0, 1);
+    u8 hr = hp < 25 ? 255 : 255;
+    u8 hg = hp < 25 ? 40 : 215;
+    u8 hb = hp < 25 ? 40 : 0;
+    DS_DrawString(fb, 106, ST_Y + 7, hp_str, hr, hg, hb, 1);
+    DS_DrawString(fb, 106, ST_Y + 18, "HP", 180, 150, 60, 1);
 
-    // 5. Active buffs (Tome of Power, Wings of Wrath)
+    // 4. Center Buffs (X: 134 to 156)
     if (plr->powers[pw_weaponlevel2]) {
-        DS_DrawString(fb, 126, ST_Y + 6, "[TOME OF POWER]", 255, 215, 40, 1);
+        DS_DrawString(fb, 132, ST_Y + 6, "[TOME]", 255, 215, 40, 1);
     }
     if (plr->powers[pw_flight]) {
-        DS_DrawString(fb, 142, ST_Y + 18, "[WINGS]", 120, 220, 255, 1);
+        DS_DrawString(fb, 132, ST_Y + 18, "[WINGS]", 120, 220, 255, 1);
     }
 
-    // 6. Ammo for ready weapon
+    // 5. Ammo Bar (Matches Health Bar completely): X: 160 to 264
     ammotype_t amtype = weaponinfo[plr->readyweapon].ammo;
-    if (amtype != am_noammo) {
-        char ammo_str[16];
-        snprintf(ammo_str, sizeof(ammo_str), "AMMO:%d", plr->ammo[amtype]);
-        DS_DrawString(fb, 215, ST_Y + 12, ammo_str, 255, 215, 0, 1);
+    int cur_ammo = (amtype != am_noammo) ? plr->ammo[amtype] : 0;
+    int max_am = (amtype != am_noammo) ? plr->maxammo[amtype] : 100;
+    if (max_am <= 0) max_am = 100;
+
+    int am_bx = 160;
+    int am_by = ST_Y + 9;
+    int am_bw = 72;
+    int am_bh = 14;
+    DS_FillRect(fb, am_bx, am_by, am_bw, am_bh, 18, 14, 10);
+    DS_DrawRect(fb, am_bx - 1, am_by - 1, am_bw + 2, am_bh + 2, 70, 52, 36);
+
+    for (int cx = am_bx; cx < am_bx + am_bw - 8; cx += 16) {
+        DS_DrawWadPatch(fb, cx, ST_Y + 11, "CHAIN");
     }
 
-    // 7. Keys: Yellow (KEY1), Green (KEY2), Blue (KEY3)
-    if (plr->cards[it_yellowcard]) DS_DrawWadPatch(fb, 268, ST_Y + 3, "KEY1");
-    if (plr->cards[it_redcard])    DS_DrawWadPatch(fb, 268, ST_Y + 12, "KEY2");
-    if (plr->cards[it_bluecard])   DS_DrawWadPatch(fb, 268, ST_Y + 21, "KEY3");
+    if (amtype != am_noammo) {
+        int clamped_ammo = cur_ammo < 0 ? 0 : (cur_ammo > max_am ? max_am : cur_ammo);
+        int ammo_gem_x = am_bx + (clamped_ammo * (am_bw - 16)) / max_am;
+        DS_DrawWadPatch(fb, ammo_gem_x, ST_Y + 10, "LIFEGEM1");
+    }
+
+    char ammo_str[16];
+    if (amtype != am_noammo) {
+        snprintf(ammo_str, sizeof(ammo_str), "%d", cur_ammo);
+        DS_DrawString(fb, 236, ST_Y + 7, ammo_str, 255, 215, 0, 1);
+        DS_DrawString(fb, 236, ST_Y + 18, "AMMO", 180, 150, 60, 1);
+    } else {
+        DS_DrawString(fb, 236, ST_Y + 12, "--", 140, 130, 110, 1);
+    }
+
+    // 6. Keys: Yellow (KEY1), Green (KEY2), Blue (KEY3)
+    if (plr->cards[it_yellowcard]) DS_DrawWadPatch(fb, 272, ST_Y + 3, "KEY1");
+    if (plr->cards[it_redcard])    DS_DrawWadPatch(fb, 272, ST_Y + 12, "KEY2");
+    if (plr->cards[it_bluecard])   DS_DrawWadPatch(fb, 272, ST_Y + 21, "KEY3");
 }
 
 // Render the authentic Hexen Status Bar at the bottom (Y: 208 to 239)
@@ -591,46 +628,96 @@ static void DS_DrawHexenStatusBar(u8 *fb)
     // 1. Base stone bar
     DS_DrawWadPatch(fb, 0, ST_Y, "H2BAR");
 
-    // 2. Class title & health
+    // 2. Class title & health (X: 8 to 108)
     int pclass = PlayerClass[consoleplayer];
     const char *c_title = "FIGHTER";
     if (pclass == 2) c_title = "CLERIC";
     else if (pclass == 3) c_title = "MAGE";
 
-    DS_DrawString(fb, 8, ST_Y + 4, c_title, 255, 215, 0, 1);
+    DS_DrawString(fb, 8, ST_Y + 3, c_title, 255, 215, 0, 1);
+
+    int hp_bx = 8;
+    int hp_by = ST_Y + 15;
+    int hp_bw = 64;
+    int hp_bh = 12;
+    DS_FillRect(fb, hp_bx, hp_by, hp_bw, hp_bh, 16, 18, 24);
+    DS_DrawRect(fb, hp_bx - 1, hp_by - 1, hp_bw + 2, hp_bh + 2, 60, 65, 78);
+
+    for (int cx = hp_bx; cx < hp_bx + hp_bw - 8; cx += 16) {
+        DS_DrawWadPatch(fb, cx, ST_Y + 16, "CHAIN");
+    }
+    int hp = plr->health;
+    int clamped_hp = hp < 0 ? 0 : (hp > 100 ? 100 : hp);
+    int gem_x = hp_bx + (clamped_hp * (hp_bw - 16)) / 100;
+    DS_DrawWadPatch(fb, gem_x, ST_Y + 14, "LIFEGEM2");
 
     char hp_str[16];
-    snprintf(hp_str, sizeof(hp_str), "HP:%d", plr->health);
-    u8 hr = plr->health < 25 ? 255 : 240;
-    u8 hg = plr->health < 25 ? 60 : 220;
-    u8 hb = plr->health < 25 ? 60 : 180;
-    DS_DrawString(fb, 8, ST_Y + 16, hp_str, hr, hg, hb, 1);
+    snprintf(hp_str, sizeof(hp_str), "%d", hp);
+    u8 hr = hp < 25 ? 255 : 240;
+    u8 hg = hp < 25 ? 60 : 220;
+    u8 hb = hp < 25 ? 60 : 180;
+    DS_DrawString(fb, 76, ST_Y + 16, hp_str, hr, hg, hb, 1);
 
-    // 3. Blue Mana (Vial + Count)
-    DS_DrawWadPatch(fb, 65, ST_Y + 6, plr->ammo[0] > 0 ? "MANABRT1" : "MANADIM1");
-    char m1_str[16];
-    snprintf(m1_str, sizeof(m1_str), "%d", plr->ammo[0]);
-    DS_DrawString(fb, 82, ST_Y + 12, m1_str, 100, 180, 255, 1);
-
-    // 4. Green Mana (Vial + Count)
-    DS_DrawWadPatch(fb, 115, ST_Y + 6, plr->ammo[1] > 0 ? "MANABRT2" : "MANADIM2");
-    char m2_str[16];
-    snprintf(m2_str, sizeof(m2_str), "%d", plr->ammo[1]);
-    DS_DrawString(fb, 132, ST_Y + 12, m2_str, 80, 240, 100, 1);
-
-    // 5. Total Armor Points (0..100)
+    // 3. Armor & active powerups (X: 110 to 142)
     int tot_armor = (plr->armorpoints[ARMOR_ARMOR]) / 5;
     char arm_str[16];
-    snprintf(arm_str, sizeof(arm_str), "ARMOR:%d", tot_armor);
-    DS_DrawString(fb, 172, ST_Y + 12, arm_str, 200, 210, 225, 1);
+    snprintf(arm_str, sizeof(arm_str), "ARM:%d", tot_armor);
+    DS_DrawString(fb, 110, ST_Y + 4, arm_str, 200, 210, 225, 1);
 
-    // 6. Active powerups (Flight, Speed)
     if (plr->powers[pw_flight]) {
-        DS_DrawString(fb, 240, ST_Y + 4, "[FLY]", 120, 220, 255, 1);
+        DS_DrawString(fb, 110, ST_Y + 16, "[FLY]", 120, 220, 255, 1);
+    } else if (plr->powers[pw_speed]) {
+        DS_DrawString(fb, 110, ST_Y + 16, "[BOOTS]", 255, 200, 50, 1);
     }
-    if (plr->powers[pw_speed]) {
-        DS_DrawString(fb, 240, ST_Y + 16, "[BOOTS]", 255, 200, 50, 1);
+
+    // 4. Dual Interactive Mana Bars (X: 146 to 316)
+    weapontype_t ready = plr->readyweapon;
+
+    // --- Blue Mana Bar (X: 146 to 228) ---
+    int m1 = plr->ammo[0];
+    DS_DrawWadPatch(fb, 146, ST_Y + 5, m1 > 0 ? "MANABRT1" : "MANADIM1");
+
+    int b_bx = 162;
+    int b_by = ST_Y + 9;
+    int b_bw = 44;
+    int b_bh = 13;
+    DS_FillRect(fb, b_bx, b_by, b_bw, b_bh, 10, 16, 28);
+    bool b_active = (ready == wp_second || ready == wp_fourth);
+    DS_DrawRect(fb, b_bx - 1, b_by - 1, b_bw + 2, b_bh + 2, b_active ? 255 : 40, b_active ? 255 : 90, b_active ? 255 : 180);
+
+    for (int cx = b_bx; cx < b_bx + b_bw - 8; cx += 16) {
+        DS_DrawWadPatch(fb, cx, ST_Y + 11, "CHAIN");
     }
+    int clamped_m1 = m1 < 0 ? 0 : (m1 > 200 ? 200 : m1);
+    int m1_gem_x = b_bx + (clamped_m1 * (b_bw - 16)) / 200;
+    DS_DrawWadPatch(fb, m1_gem_x, ST_Y + 10, "LIFEGEM3");
+
+    char m1_str[16];
+    snprintf(m1_str, sizeof(m1_str), "%d", m1);
+    DS_DrawString(fb, 210, ST_Y + 11, m1_str, 100, 200, 255, 1);
+
+    // --- Green Mana Bar (X: 232 to 314) ---
+    int m2 = plr->ammo[1];
+    DS_DrawWadPatch(fb, 232, ST_Y + 5, m2 > 0 ? "MANABRT2" : "MANADIM2");
+
+    int g_bx = 248;
+    int g_by = ST_Y + 9;
+    int g_bw = 44;
+    int g_bh = 13;
+    DS_FillRect(fb, g_bx, g_by, g_bw, g_bh, 10, 26, 16);
+    bool g_active = (ready == wp_third || ready == wp_fourth);
+    DS_DrawRect(fb, g_bx - 1, g_by - 1, g_bw + 2, g_bh + 2, g_active ? 255 : 35, g_active ? 255 : 140, g_active ? 255 : 60);
+
+    for (int cx = g_bx; cx < g_bx + g_bw - 8; cx += 16) {
+        DS_DrawWadPatch(fb, cx, ST_Y + 11, "CHAIN");
+    }
+    int clamped_m2 = m2 < 0 ? 0 : (m2 > 200 ? 200 : m2);
+    int m2_gem_x = g_bx + (clamped_m2 * (g_bw - 16)) / 200;
+    DS_DrawWadPatch(fb, m2_gem_x, ST_Y + 10, "LIFEGEM0");
+
+    char m2_str[16];
+    snprintf(m2_str, sizeof(m2_str), "%d", m2);
+    DS_DrawString(fb, 296, ST_Y + 11, m2_str, 90, 255, 120, 1);
 }
 
 // Render the Wolfenstein-style Tactical Live-Automap (Y: 0 to 207, X: 0 to 267)
@@ -1396,11 +1483,98 @@ void DS_HandleTouch(int touch_x, int touch_y)
                 ds_map_zoom = 1;
             }
         }
-        // 5. Status bar touch (Y: 208..239)
+        // 5. Status bar touch (Y: 208..239) - Interactive for health, mana, and ammo!
         else {
-            // Tap Ammo, Health, or Face -> Quick Melee / Fist toggle
-            if (touch_x >= 0 && touch_x <= 180) {
-                DS_SelectWeaponSlot(1);
+            if (hexen) {
+                if (touch_x < 130) {
+                    // Health bar tapped: try healing with Quartz Flask or Mystic Urn if injured
+                    bool healed = false;
+                    if (plr->health < 100) {
+                        for (int i = 0; i < plr->inventorySlotNum; i++) {
+                            if ((plr->inventory[i].type == hexen_arti_health || plr->inventory[i].type == hexen_arti_superhealth) && plr->inventory[i].count > 0) {
+                                ds_touch_artifact = plr->inventory[i].type;
+                                healed = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!healed) {
+                        DS_SelectWeaponSlot(1); // Fist/Punch
+                    }
+                } else if (touch_x >= 144 && touch_x < 232) {
+                    // Blue Mana tapped: select Weapon 2 (or W4 if already on W2)
+                    if (plr->readyweapon != wp_second && plr->weaponowned[wp_second]) {
+                        plr->pendingweapon = wp_second;
+                        ds_touch_weapon = wp_second;
+                    } else if (plr->weaponowned[wp_fourth] && plr->ammo[1] > 0) {
+                        plr->pendingweapon = wp_fourth;
+                        ds_touch_weapon = wp_fourth;
+                    }
+                } else if (touch_x >= 232) {
+                    // Green Mana tapped: select Weapon 3 (or W4 if already on W3)
+                    if (plr->readyweapon != wp_third && plr->weaponowned[wp_third]) {
+                        plr->pendingweapon = wp_third;
+                        ds_touch_weapon = wp_third;
+                    } else if (plr->weaponowned[wp_fourth] && plr->ammo[0] > 0) {
+                        plr->pendingweapon = wp_fourth;
+                        ds_touch_weapon = wp_fourth;
+                    }
+                }
+            } else if (heretic) {
+                if (touch_x < 144) {
+                    // Health bar tapped: try healing with Quartz Flask or Mystic Urn if injured
+                    bool healed = false;
+                    if (plr->health < 100) {
+                        for (int i = 0; i < plr->inventorySlotNum; i++) {
+                            if ((plr->inventory[i].type == arti_health || plr->inventory[i].type == arti_superhealth) && plr->inventory[i].count > 0) {
+                                ds_touch_artifact = plr->inventory[i].type;
+                                healed = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!healed) {
+                        DS_SelectWeaponSlot(1); // Staff / Gauntlets toggle
+                    }
+                } else if (touch_x >= 144 && touch_x <= 284) {
+                    // Ammo bar tapped: cycle through weapons that use ammo
+                    int cur = plr->readyweapon;
+                    for (int step = 1; step <= 6; step++) {
+                        int wp = (cur + step) % 7;
+                        if (wp == wp_staff) continue;
+                        if (plr->weaponowned[wp]) {
+                            ammotype_t am = weaponinfo[wp].ammo;
+                            if (am != am_noammo && plr->ammo[am] > 0) {
+                                plr->pendingweapon = (weapontype_t)wp;
+                                ds_touch_weapon = (weapontype_t)wp;
+                                break;
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Doom:
+                if (touch_x <= 54) {
+                    // Ammo tapped: cycle through weapons with ammo
+                    static const weapontype_t wp_order[6] = {
+                        wp_shotgun, wp_supershotgun, wp_chaingun, wp_missile, wp_plasma, wp_bfg
+                    };
+                    int cur = plr->readyweapon;
+                    for (int step = 0; step < 6; step++) {
+                        weapontype_t wp = wp_order[step];
+                        if (wp != cur && plr->weaponowned[wp]) {
+                            ammotype_t am = weaponinfo[wp].ammo;
+                            if (am != am_noammo && plr->ammo[am] > 0) {
+                                plr->pendingweapon = wp;
+                                ds_touch_weapon = wp;
+                                break;
+                            }
+                        }
+                    }
+                } else if (touch_x <= 180) {
+                    // Tap Health or Face -> Quick Melee / Fist / Chainsaw toggle
+                    DS_SelectWeaponSlot(1);
+                }
             }
         }
     }
