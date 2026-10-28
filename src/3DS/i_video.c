@@ -17,6 +17,13 @@
 #include "i_main.h"
 #include "lprintf.h"
 #include "w_wad.h"
+#include "r_draw.h"
+#include "r_things.h"
+#include "r_plane.h"
+#include "r_main.h"
+#include "f_wipe.h"
+#include "st_stuff.h"
+#include "am_map.h"
 #include "3DS/ds_screen.h"
 #include "3DS/i_joy.h"
 #include "3DS/gl_wrapper.h"
@@ -68,6 +75,15 @@ void I_PreInitGraphics(void)
     I_AtExit(I_ShutdownGraphics, true, "I_ShutdownGraphics", exit_priority_normal);
 }
 
+static void I_InitBuffersRes(void)
+{
+    R_InitMeltRes();
+    R_InitSpritesRes();
+    R_InitBuffersRes();
+    R_InitPlanesRes();
+    R_InitVisplanesRes();
+}
+
 void I_InitScreenResolution(void)
 {
     SCREENWIDTH = 400;
@@ -80,17 +96,38 @@ void I_InitScreenResolution(void)
         screens[i].width = 400;
         screens[i].height = 240;
         screens[i].pitch = 400;
+        screens[i].not_on_heap = false;
     }
-}
 
-void I_InitGraphics(void)
-{
-    I_SetPalette(0);
+    I_InitBuffersRes();
+
+    if (!screens[0].data) {
+        V_AllocScreens();
+    }
 }
 
 void I_UpdateVideoMode(void)
 {
     I_InitScreenResolution();
+
+    R_InitBuffer(SCREENWIDTH, SCREENHEIGHT);
+
+    R_ExecuteSetViewSize();
+
+    I_SetPalette(0);
+
+    ST_SetResolution();
+    AM_SetResolution();
+}
+
+void I_InitGraphics(void)
+{
+    static int firsttime = 1;
+
+    if (firsttime) {
+        firsttime = 0;
+        I_UpdateVideoMode();
+    }
 }
 
 void I_ShutdownGraphics(void)
