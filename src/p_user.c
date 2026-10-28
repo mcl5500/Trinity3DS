@@ -337,6 +337,8 @@ void P_HandleExCmdLook(player_t* player)
 {
   int look;
 
+  if (!player || !player->mo) return;
+
   look = player->cmd.ex.look;
   if (look)
   {

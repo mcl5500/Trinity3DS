@@ -608,7 +608,10 @@ void G_BuildTiccmd(ticcmd_t* cmd)
 
   // 3DS C-Stick / CPP Look (Analog turn & freelook)
   cmd->angleturn -= joyrxmove * 200;
-  mlooky -= joyrymove * 200;
+  if (dsda_IntConfig(dsda_config_invert_analog_look))
+    mlooky += joyrymove * 200;
+  else
+    mlooky -= joyrymove * 200;
 
   // 3DS D-Pad (Classic digital movement)
   if (ctr_keys_held & KEY_DUP)
@@ -4225,7 +4228,10 @@ void P_WalkTicker()
 
   // 3DS C-Stick / CPP Look (Analog turn & freelook)
   angturn -= joyrxmove * 200;
-  mlooky -= joyrymove * 200;
+  if (dsda_IntConfig(dsda_config_invert_analog_look))
+    mlooky += joyrymove * 200;
+  else
+    mlooky -= joyrymove * 200;
 
   // 3DS D-Pad (Classic digital movement)
   if (ctr_keys_held & KEY_DUP)

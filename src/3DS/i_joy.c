@@ -111,7 +111,7 @@ void I_PollJoystick(void)
       joyrxmove = 0;
     }
 
-    if (abs(cstickpos.dy) > 12) {
+    if (abs(cstickpos.dy) > 8) {
       joyrymove = (cstickpos.dy * 192) / 3000;
       if (joyrymove == 0) joyrymove = (cstickpos.dy > 0) ? 1 : -1;
     } else {

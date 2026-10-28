@@ -65,11 +65,16 @@ dboolean dsda_AllowJumping(void) {
 }
 
 dboolean dsda_FreeAim(void) {
+#ifdef __3DS__
+  // On 3DS, C-Stick vertical aiming is always active during gameplay
+  return true;
+#else
   if (!allow_incompatibility && !dsda_AllowCasualExCmdFeatures())
     return false;
 
   return (dsda_MapAllowsFreeaim() != PM_Disallow && dsda_IntConfig(dsda_config_freelook)) ||
           dsda_MapAllowsFreeaim() == PM_Require;
+#endif
 }
 
 void dsda_ReadExCmd(ticcmd_t* cmd, const byte** p) {
