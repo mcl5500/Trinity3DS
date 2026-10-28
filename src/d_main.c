@@ -552,6 +552,13 @@ void D_Display (fixed_t frac)
       screens[0].data = s_right_eye_buffer;
       drawvars.topleft = s_right_eye_buffer;
 
+      DSDA_ADD_CONTEXT(sf_status_bar);
+      ST_Drawer(redrawborderstuff || BorderNeedRefresh);
+      DSDA_REMOVE_CONTEXT(sf_status_bar);
+
+      if (V_IsSoftwareMode())
+        R_DrawViewBorder();
+
       DSDA_ADD_CONTEXT(sf_hud);
       HU_Drawer();
       DSDA_REMOVE_CONTEXT(sf_hud);

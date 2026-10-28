@@ -40,6 +40,7 @@
 #include "r_things.h"
 #include "r_fps.h"
 #include "v_video.h"
+#include "i_video.h"
 #include "p_pspr.h"
 #include "lprintf.h"
 #include "e6y.h"//e6y
@@ -1121,13 +1122,21 @@ static void R_DrawPSprite (pspdef_t *psp)
     tx = psp_sx-160*FRACUNIT;
 
     tx -= patch->leftoffset<<FRACBITS;
+#ifdef __3DS__
+    x1 = (centerxfrac + s_weapon_stereo_offset + FixedMul (tx,pspritexscale))>>FRACBITS;
+#else
     x1 = (centerxfrac + FixedMul (tx,pspritexscale))>>FRACBITS;
+#endif
 
     // [AR] opengl weapon alignment
     gx1 = x1;
 
     tx += patch->width<<FRACBITS;
+#ifdef __3DS__
+    x2 = ((centerxfrac + s_weapon_stereo_offset + FixedMul (tx, pspritexscale) ) >>FRACBITS) - 1;
+#else
     x2 = ((centerxfrac + FixedMul (tx, pspritexscale) ) >>FRACBITS) - 1;
+#endif
 
     width = patch->width;
     topoffset = patch->topoffset<<FRACBITS;

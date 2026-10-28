@@ -51,6 +51,7 @@ dboolean window_focused = true;
 
 u8 *s_right_eye_buffer = NULL;
 bool s_stereo_rendered_this_frame = false;
+fixed_t s_weapon_stereo_offset = 0;
 
 static u8 s_current_palette[768];
 static int s_active_palette_idx = -1;
@@ -190,17 +191,29 @@ void I_StartTic(void)
     }
 }
 
-static void I_BlitTopEye(u8 *dst, const u8 *src)
+static void I_BlitTopEye(u8 *dst, const u8 *src, int x_shift)
 {
     if (!dst || !src) return;
+
+    // Precalculate shifted source X coordinates to eliminate branches from the inner loop
+    int src_x_lut[400];
+    for (int x = 0; x < 400; x++) {
+        int sx = x - x_shift;
+        if (sx < 0) sx = 0;
+        else if (sx >= 400) sx = 399;
+        src_x_lut[x] = sx;
+    }
+
     // 3DS top screen framebuffer is rotated 90 degrees counter-clockwise
     // Framebuffer: 240 columns of 400 pixels each, format BGR8 (3 bytes/pixel)
     for (int y = 0; y < 240; y++) {
+        const u8 *src_row = &src[y * 400];
+        int dst_col_offset = (239 - y) * 3;
         for (int x = 0; x < 400; x++) {
-            u8 pal_idx = src[y * 400 + x];
+            u8 pal_idx = src_row[src_x_lut[x]];
             const u8 *rgb = &s_current_palette[pal_idx * 3];
 
-            int dst_idx = (x * 240 + (239 - y)) * 3;
+            int dst_idx = x * (240 * 3) + dst_col_offset;
             dst[dst_idx + 0] = rgb[2]; // Blue
             dst[dst_idx + 1] = rgb[1]; // Green
             dst[dst_idx + 2] = rgb[0]; // Red
@@ -217,42 +230,52 @@ void I_3D_RenderPlayerView(player_t *player, float slider)
     fixed_t orig_viewy = viewy;
     angle_t orig_viewangle = viewangle;
 
-    // Inter-pupillary distance (eye separation) in Doom map units:
-    // Player radius is 16. A comfortable baseline is ~2.6 units at full slider (1.0).
-    fixed_t eye_sep = (fixed_t)(FRACUNIT * (2.6f * slider));
+    // Eye separation (interpupillary offset) in Doom map units.
+    // 1 map unit ≈ 1 inch (~2.5 cm).
+    // Total baseline between both eyes is 2 * eye_offset = 2.0 map units at full slider (1.0).
+    // 1.0 map unit per eye gives very comfortable, realistic stereoscopic depth without strain.
+    fixed_t eye_offset = (fixed_t)(FRACUNIT * (1.0f * slider));
 
-    // Convergence (toe-in) angle:
-    // Focus plane at crosshair distance (~200 units) to bring weapon forward and depth back
-    angle_t toe_in = (angle_t)((slider * 0.8f) * (ANG90 / 90.0f));
-
-    // Lateral vector perpendicular to view direction (pointing right in Doom coordinates)
+    // Perpendicular vector pointing Right in Doom's counter-clockwise coordinate system:
+    // viewangle = 0 (East, +X) -> Right is South (-Y): dx = 0, dy = -FRACUNIT
+    // viewangle = 90 (North, +Y) -> Right is East (+X): dx = +FRACUNIT, dy = 0
+    // Vector pointing Right: (sin(viewangle), -cos(viewangle))
     angle_t ang = orig_viewangle >> ANGLETOFINESHIFT;
-    fixed_t dx = FixedMul(eye_sep, finesine[ang]);
-    fixed_t dy = FixedMul(eye_sep, finecosine[ang]);
+    fixed_t dx = FixedMul(eye_offset, finesine[ang]);
+    fixed_t dy = FixedMul(eye_offset, finecosine[ang]);
 
     // === PASS 1: LEFT EYE ===
+    // Left eye is shifted LEFT (-dx, +dy).
+    // Parallel cameras: viewangle is identical to player angle (NO ROTATION/TOE-IN!)
     viewx = orig_viewx - dx;
     viewy = orig_viewy + dy;
-    viewangle = orig_viewangle + toe_in;
+    viewangle = orig_viewangle;
+
+    // Offset weapon sprite so it appears comfortably in front of the screen in player's hands
+    s_weapon_stereo_offset = (fixed_t)(FRACUNIT * (2.5f * slider));
 
     DSDA_ADD_CONTEXT(sf_player_view);
     R_RenderPlayerView(player);
     DSDA_REMOVE_CONTEXT(sf_player_view);
 
     // === PASS 2: RIGHT EYE ===
+    // Right eye is shifted RIGHT (+dx, -dy).
     u8 *orig_screen = screens[0].data;
     screens[0].data = s_right_eye_buffer;
     drawvars.topleft = s_right_eye_buffer;
 
     viewx = orig_viewx + dx;
     viewy = orig_viewy - dy;
-    viewangle = orig_viewangle - toe_in;
+    viewangle = orig_viewangle;
+
+    s_weapon_stereo_offset = -(fixed_t)(FRACUNIT * (2.5f * slider));
 
     DSDA_ADD_CONTEXT(sf_player_view);
     R_RenderPlayerView(player);
     DSDA_REMOVE_CONTEXT(sf_player_view);
 
-    // Restore original screen buffer & camera
+    // Reset weapon stereo offset & restore original camera/screen
+    s_weapon_stereo_offset = 0;
     screens[0].data = orig_screen;
     drawvars.topleft = orig_screen;
     viewx = orig_viewx;
@@ -274,14 +297,16 @@ void I_FinishUpdate(void)
     float slider = osGet3DSliderState();
 
     if (slider > 0.01f && s_stereo_rendered_this_frame && s_right_eye_buffer) {
-        // True stereoscopic 3D: Left eye gets screens[0], Right eye gets s_right_eye_buffer
-        I_BlitTopEye(dst_l, screens[0].data);
-        I_BlitTopEye(dst_r, s_right_eye_buffer);
+        // Asymmetric screen shift (HIT) places the convergence plane at ~100 map units,
+        // so the room/monsters sit inside the 3DS screen "window" with infinity at -4px depth.
+        int shift = (int)(2.0f * slider);
+        I_BlitTopEye(dst_l, screens[0].data, -shift);
+        I_BlitTopEye(dst_r, s_right_eye_buffer, +shift);
     } else {
-        // 2D mode (or menus / intermission): both eyes get screens[0]
-        I_BlitTopEye(dst_l, screens[0].data);
+        // 2D mode (or menus / intermission): both eyes get screens[0] with zero shift
+        I_BlitTopEye(dst_l, screens[0].data, 0);
         if (dst_r) {
-            I_BlitTopEye(dst_r, screens[0].data);
+            I_BlitTopEye(dst_r, screens[0].data, 0);
         }
     }
 
