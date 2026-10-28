@@ -18,6 +18,13 @@
 #include <3ds.h>
 #include "3DS/ds_screen.h"
 #include "3DS/wad_picker.h"
+
+// Override libctru's default 50/50 linear heap split.
+// Trinity3DS uses software rendering and only requires ~2 MB for display and audio buffers.
+// Capping the linear heap at 6 MB maximizes the standard application heap (malloc),
+// providing ~60 MB on Old 3DS and ~110 MB on New 3DS, which prevents out-of-memory
+// crashes (Z_Malloc failure) in large games like Hexen.
+u32 __ctru_linear_heap_size = 6 * 1024 * 1024;
 #endif
 
 #include <errno.h>
@@ -202,6 +209,11 @@ int main(int argc, char **argv)
   APT_CheckNew3DS(&isN3DS);
   if (isN3DS)
     osSetSpeedupEnable(true);
+
+  lprintf(LO_INFO, "3DS Memory: Linear Heap = %lu MB, App Heap = %lu MB, Free Region = %lu MB\n",
+          (unsigned long)(__ctru_linear_heap_size / (1024 * 1024)),
+          (unsigned long)(envGetHeapSize() / (1024 * 1024)),
+          (unsigned long)(osGetMemRegionFree(MEMREGION_APPLICATION) / (1024 * 1024)));
 #endif
 
   dsda_ParseCommandLineArgs(argc, argv);
