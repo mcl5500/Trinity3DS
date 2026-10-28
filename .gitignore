@@ -72,3 +72,8 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# Crash dumps and temp build dirs
+*.dmp
+dsda_data/build/
+
