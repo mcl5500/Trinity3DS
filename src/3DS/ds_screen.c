@@ -581,6 +581,9 @@ static void DS_DrawHereticStatusBar(u8 *fb)
 
     const int ST_Y = 208;
 
+    // Solid dark wood base to ensure zero bleed-through from menus
+    DS_FillRect(fb, 0, ST_Y, 320, 32, 24, 18, 14);
+
     // 1. Base wood/stone bar
     DS_DrawWadPatch(fb, 0, ST_Y, "BARBACK");
 
@@ -650,78 +653,100 @@ static void DS_DrawHexenStatusBar(u8 *fb)
 
     const int ST_Y = 208;
 
-    // 1. Base stone bar
-    DS_DrawWadPatch(fb, 0, ST_Y, "H2BAR");
+    // 1. Solid dark gothic stone base across all 320x32 pixels (eliminates all menu bleed-through)
+    DS_FillRect(fb, 0, ST_Y, 320, 32, 20, 22, 28);
+    DS_FillRect(fb, 0, ST_Y, 320, 1, 55, 60, 72);
+    DS_FillRect(fb, 0, ST_Y + 31, 320, 1, 12, 13, 16);
 
-    // 2. Class title & health (X: 8 to 108)
+    // 2. Health & Class Panel (X: 4 to 124)
+    DS_FillRect(fb, 4, ST_Y + 2, 120, 28, 28, 30, 38);
+    DS_DrawRect(fb, 4, ST_Y + 2, 120, 28, 55, 60, 72);
+
     int pclass = PlayerClass[consoleplayer];
     const char *c_title = "FIGHTER";
-    if (pclass == 2) c_title = "CLERIC";
-    else if (pclass == 3) c_title = "MAGE";
+    u8 title_r = 255, title_g = 205, title_b = 50;
+    if (pclass == 2) {
+        c_title = "CLERIC";
+        title_r = 130; title_g = 215; title_b = 255;
+    } else if (pclass == 3) {
+        c_title = "MAGE";
+        title_r = 220; title_g = 160; title_b = 255;
+    }
 
-    DS_DrawString(fb, 8, ST_Y + 3, c_title, 255, 215, 0, 1);
+    DS_DrawString(fb, 8, ST_Y + 5, c_title, title_r, title_g, title_b, 1);
+    DS_DrawString(fb, 84, ST_Y + 5, "HP", 170, 175, 190, 1);
 
-    // Health Bar (Lebensbalken):
+    // 3D Lebensbalken (X: 8, Y: ST_Y + 16, width: 72, height: 11)
     int hp = plr->health;
     u8 bar_r = hp < 25 ? 255 : 220;
     u8 bar_g = hp < 25 ? 30 : 35;
     u8 bar_b = hp < 25 ? 30 : 45;
-    DS_DrawGaugeBar(fb, 8, ST_Y + 15, 64, 13, hp, 100,
-                    bar_r, bar_g, bar_b, 60, 65, 78);
+    DS_DrawGaugeBar(fb, 8, ST_Y + 16, 72, 11, hp, 100,
+                    bar_r, bar_g, bar_b, 70, 75, 90);
 
+    // Bold crisp HP number (X: 84, Y: ST_Y + 15)
     char hp_str[16];
     snprintf(hp_str, sizeof(hp_str), "%d", hp);
-    u8 hr = hp < 25 ? 255 : 240;
-    u8 hg = hp < 25 ? 60 : 220;
-    u8 hb = hp < 25 ? 60 : 180;
-    DS_DrawString(fb, 76, ST_Y + 16, hp_str, hr, hg, hb, 1);
+    u8 hr = hp < 25 ? 255 : 255;
+    u8 hg = hp < 25 ? 40 : 255;
+    u8 hb = hp < 25 ? 40 : 255;
+    DS_DrawString(fb, 84, ST_Y + 15, hp_str, hr, hg, hb, 1);
 
-    // 3. Armor & active powerups (X: 110 to 142)
+    // 3. Armor & Active Powerups Panel (X: 128 to 175)
+    DS_FillRect(fb, 128, ST_Y + 2, 48, 28, 28, 30, 38);
+    DS_DrawRect(fb, 128, ST_Y + 2, 48, 28, 55, 60, 72);
+
     int tot_armor = (plr->armorpoints[ARMOR_ARMOR]) / 5;
     char arm_str[16];
     snprintf(arm_str, sizeof(arm_str), "ARM:%d", tot_armor);
-    DS_DrawString(fb, 110, ST_Y + 4, arm_str, 200, 210, 225, 1);
+    DS_DrawString(fb, 131, ST_Y + 5, arm_str, 200, 215, 235, 1);
 
     if (plr->powers[pw_flight]) {
-        DS_DrawString(fb, 110, ST_Y + 16, "[FLY]", 120, 220, 255, 1);
+        DS_DrawString(fb, 131, ST_Y + 17, "[FLY]", 100, 220, 255, 1);
     } else if (plr->powers[pw_speed]) {
-        DS_DrawString(fb, 110, ST_Y + 16, "[BOOTS]", 255, 200, 50, 1);
+        DS_DrawString(fb, 131, ST_Y + 17, "[BOOT]", 255, 200, 50, 1);
+    } else {
+        DS_DrawString(fb, 131, ST_Y + 17, "HEXEN", 90, 95, 110, 1);
     }
 
-    // 4. Dual Interactive Mana Bars (X: 146 to 316)
+    // 4. Dual Interactive Mana Panels (X: 178 to 316)
     weapontype_t ready = plr->readyweapon;
 
-    // --- Blue Mana Bar (X: 146 to 228) ---
+    // --- Blue Mana Panel (X: 178 to 244) ---
     int m1 = plr->ammo[0];
-    DS_DrawWadPatch(fb, 146, ST_Y + 5, m1 > 0 ? "MANABRT1" : "MANADIM1");
-
     bool b_active = (ready == wp_second || ready == wp_fourth);
-    u8 b_border_r = b_active ? 255 : 40;
-    u8 b_border_g = b_active ? 255 : 90;
-    u8 b_border_b = b_active ? 255 : 180;
+    u8 b_border_r = b_active ? 255 : 45;
+    u8 b_border_g = b_active ? 255 : 85;
+    u8 b_border_b = b_active ? 255 : 160;
 
-    DS_DrawGaugeBar(fb, 162, ST_Y + 9, 44, 13, m1, 200,
-                    35, 130, 245, b_border_r, b_border_g, b_border_b);
+    DS_FillRect(fb, 178, ST_Y + 2, 66, 28, b_active ? 20 : 26, b_active ? 28 : 28, b_active ? 42 : 36);
+    DS_DrawRect(fb, 178, ST_Y + 2, 66, 28, b_border_r, b_border_g, b_border_b);
 
+    DS_DrawWadPatch(fb, 180, ST_Y + 5, m1 > 0 ? "MANABRT1" : "MANADIM1");
     char m1_str[16];
     snprintf(m1_str, sizeof(m1_str), "%d", m1);
-    DS_DrawString(fb, 210, ST_Y + 11, m1_str, 100, 200, 255, 1);
+    DS_DrawString(fb, 198, ST_Y + 5, m1_str, 100, 220, 255, 1);
 
-    // --- Green Mana Bar (X: 232 to 314) ---
+    DS_DrawGaugeBar(fb, 182, ST_Y + 17, 58, 10, m1, 200,
+                    35, 130, 245, b_border_r, b_border_g, b_border_b);
+
+    // --- Green Mana Panel (X: 248 to 316) ---
     int m2 = plr->ammo[1];
-    DS_DrawWadPatch(fb, 232, ST_Y + 5, m2 > 0 ? "MANABRT2" : "MANADIM2");
-
     bool g_active = (ready == wp_third || ready == wp_fourth);
     u8 g_border_r = g_active ? 255 : 35;
-    u8 g_border_g = g_active ? 255 : 140;
+    u8 g_border_g = g_active ? 255 : 135;
     u8 g_border_b = g_active ? 255 : 60;
 
-    DS_DrawGaugeBar(fb, 248, ST_Y + 9, 44, 13, m2, 200,
-                    40, 200, 70, g_border_r, g_border_g, g_border_b);
+    DS_FillRect(fb, 248, ST_Y + 2, 68, 28, g_active ? 18 : 26, g_active ? 34 : 28, g_active ? 22 : 36);
+    DS_DrawRect(fb, 248, ST_Y + 2, 68, 28, g_border_r, g_border_g, g_border_b);
 
+    DS_DrawWadPatch(fb, 250, ST_Y + 5, m2 > 0 ? "MANABRT2" : "MANADIM2");
     char m2_str[16];
     snprintf(m2_str, sizeof(m2_str), "%d", m2);
-    DS_DrawString(fb, 296, ST_Y + 11, m2_str, 90, 255, 120, 1);
+    DS_DrawString(fb, 268, ST_Y + 5, m2_str, 100, 255, 120, 1);
+
+    DS_DrawGaugeBar(fb, 252, ST_Y + 17, 60, 10, m2, 200,
+                    40, 200, 70, g_border_r, g_border_g, g_border_b);
 }
 
 // Render the Wolfenstein-style Tactical Live-Automap (Y: 0 to 207, X: 0 to 267)
@@ -1333,6 +1358,7 @@ static void DS_DrawDashboard(u8 *fb)
     DS_FillRect(fb, 0, 0, 320, 36, 28, 32, 42);
     DS_DrawString(fb, 45, 10, "TRINITY3DS", 240, 60, 50, 2);
     DS_DrawString(fb, 120, 26, TRINITY3DS_VERSION_STR, 100, 180, 255, 1);
+    DS_DrawString(fb, 255, 26, "mcl5500", 120, 130, 150, 1);
 
     // Info card
     DS_FillRect(fb, 16, 48, 288, 55, 22, 26, 36);
@@ -1348,7 +1374,6 @@ static void DS_DrawDashboard(u8 *fb)
     DS_DrawString(fb, 26, 162, "A / R / ZR : Attack / Fire", 220, 220, 220, 1);
     DS_DrawString(fb, 26, 176, "B          : Use / Open Doors", 220, 220, 220, 1);
     DS_DrawString(fb, 26, 190, "Touchscreen: Tap Automap to Zoom", 80, 180, 255, 1);
-    DS_DrawString(fb, 26, 204, "mcl5500", 120, 130, 150, 1);
 }
 
 void DS_Init(void)
@@ -1509,7 +1534,7 @@ void DS_HandleTouch(int touch_x, int touch_y)
         // 5. Status bar touch (Y: 208..239) - Interactive for health, mana, and ammo!
         else {
             if (hexen) {
-                if (touch_x < 130) {
+                if (touch_x < 126) {
                     // Health bar tapped: try healing with Quartz Flask or Mystic Urn if injured
                     bool healed = false;
                     if (plr->health < 100) {
@@ -1524,7 +1549,7 @@ void DS_HandleTouch(int touch_x, int touch_y)
                     if (!healed) {
                         DS_SelectWeaponSlot(1); // Fist/Punch
                     }
-                } else if (touch_x >= 144 && touch_x < 232) {
+                } else if (touch_x >= 176 && touch_x < 246) {
                     // Blue Mana tapped: select Weapon 2 (or W4 if already on W2)
                     if (plr->readyweapon != wp_second && plr->weaponowned[wp_second]) {
                         plr->pendingweapon = wp_second;
@@ -1533,7 +1558,7 @@ void DS_HandleTouch(int touch_x, int touch_y)
                         plr->pendingweapon = wp_fourth;
                         ds_touch_weapon = wp_fourth;
                     }
-                } else if (touch_x >= 232) {
+                } else if (touch_x >= 246) {
                     // Green Mana tapped: select Weapon 3 (or W4 if already on W3)
                     if (plr->readyweapon != wp_third && plr->weaponowned[wp_third]) {
                         plr->pendingweapon = wp_third;
