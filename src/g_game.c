@@ -118,6 +118,11 @@
 #include "dsda/split_tracker.h"
 #include "dsda/utility.h"
 
+#ifdef __3DS__
+#include <3ds.h>
+#include "3DS/i_joy.h"
+#endif
+
 // Allows use of HELP2 screen for PWADs under DOOM 1
 int pwad_help2_check;
 
@@ -487,6 +492,10 @@ void G_ResetMotion(void)
 {
   mousex = mousey = 0;
   left_analog_x = left_analog_y = 0;
+#ifdef __3DS__
+  joyxmove = joyymove = 0;
+  joyrxmove = joyrymove = 0;
+#endif
 }
 
 static void G_ConvertAnalogMotion(int speed, int *forward, int *side)
@@ -537,6 +546,10 @@ void G_BuildTiccmd(ticcmd_t* cmd)
   strafe = dsda_InputActive(dsda_input_strafe);
   //e6y: the "RUN" key inverts the autorun state
   speed = (dsda_InputActive(dsda_input_speed) ? !dsda_AutoRun() : dsda_AutoRun()); // phares
+#ifdef __3DS__
+  if (ctr_keys_held & (KEY_L | KEY_ZL))
+    speed = !speed;
+#endif
 
   forward = side = 0;
 
@@ -587,6 +600,26 @@ void G_BuildTiccmd(ticcmd_t* cmd)
     side += sidemove[speed];
   if (dsda_InputActive(dsda_input_strafeleft))
     side -= sidemove[speed];
+
+#ifdef __3DS__
+  // 3DS Circle Pad Movement (Analog strafe & walk)
+  side += (joyxmove * sidemove[speed]) / 10;
+  forward += (joyymove * forwardmove[speed]) / 10;
+
+  // 3DS C-Stick / CPP Look (Analog turn & freelook)
+  cmd->angleturn -= joyrxmove * 200;
+  mlooky -= joyrymove * 200;
+
+  // 3DS D-Pad (Classic digital movement)
+  if (ctr_keys_held & KEY_DUP)
+    forward += forwardmove[speed];
+  if (ctr_keys_held & KEY_DDOWN)
+    forward -= forwardmove[speed];
+  if (ctr_keys_held & KEY_DLEFT)
+    cmd->angleturn += angleturn[tspeed];
+  if (ctr_keys_held & KEY_DRIGHT)
+    cmd->angleturn -= angleturn[tspeed];
+#endif
 
   if (raven)
   {
@@ -666,6 +699,12 @@ void G_BuildTiccmd(ticcmd_t* cmd)
       {
         cmd->arti |= AFLAG_JUMP;
       }
+#ifdef __3DS__
+      if (ctr_keys_held & KEY_Y)
+      {
+        cmd->arti |= AFLAG_JUMP;
+      }
+#endif
 
       if (mn_SuicideConsole)
       {
@@ -845,6 +884,20 @@ void G_BuildTiccmd(ticcmd_t* cmd)
     dclicks = 0;
   }
 
+#ifdef __3DS__
+  // 3DS Fire: A, R, ZR
+  if (ctr_keys_held & (KEY_A | KEY_R | KEY_ZR))
+    cmd->buttons |= BT_ATTACK;
+
+  // 3DS Use: B (or Y when not Hexen)
+  if (ctr_keys_held & (KEY_B | (hexen ? 0 : KEY_Y)))
+    cmd->buttons |= BT_USE;
+
+  // 3DS Next Weapon: X
+  if (ctr_keys_down & KEY_X)
+    next_weapon = 1;
+#endif
+
   {
     extern dboolean boom_weapon_state_injection;
     static dboolean done_autoswitch = false;
@@ -892,6 +945,15 @@ void G_BuildTiccmd(ticcmd_t* cmd)
     }
     else
     {                                 // phares 02/26/98: Added gamemode checks
+#ifdef __3DS__
+      extern int ds_touch_weapon;
+      if (ds_touch_weapon != wp_nochange)
+      {
+        newweapon = ds_touch_weapon;
+        ds_touch_weapon = wp_nochange;
+      }
+      else
+#endif
       if (next_weapon && players[consoleplayer].morphTics == 0)
       {
         newweapon = G_NextWeapon(next_weapon);
@@ -4155,6 +4217,26 @@ void P_WalkTicker()
     side += sidemove[speed];
   if (dsda_InputActive(dsda_input_strafeleft))
     side -= sidemove[speed];
+
+#ifdef __3DS__
+  // 3DS Circle Pad Movement (Analog strafe & walk)
+  side += (joyxmove * sidemove[speed]) / 10;
+  forward += (joyymove * forwardmove[speed]) / 10;
+
+  // 3DS C-Stick / CPP Look (Analog turn & freelook)
+  angturn -= joyrxmove * 200;
+  mlooky -= joyrymove * 200;
+
+  // 3DS D-Pad (Classic digital movement)
+  if (ctr_keys_held & KEY_DUP)
+    forward += forwardmove[speed];
+  if (ctr_keys_held & KEY_DDOWN)
+    forward -= forwardmove[speed];
+  if (ctr_keys_held & KEY_DLEFT)
+    angturn += angleturn[tspeed];
+  if (ctr_keys_held & KEY_DRIGHT)
+    angturn -= angleturn[tspeed];
+#endif
 
   if (dsda_IntConfig(dsda_config_vertmouse))
     forward += mousey;

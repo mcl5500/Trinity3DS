@@ -1,45 +1,17 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
- *
- *  PrBoom: a Doom port merged with LxDoom and LSDLDoom
- *  based on BOOM, a modified and improved DOOM engine
- *  Copyright (C) 1999 by
- *  id Software, Chi Hoang, Lee Killough, Jim Flynn, Rand Phares, Ty Halderman
- *  Copyright (C) 1999-2000 by
- *  Jess Haas, Nicolas Kalkhof, Colin Phipps, Florian Schulze
- *  Copyright 2005, 2006 by
- *  Florian Schulze, Colin Phipps, Neil Stevens, Andrey Budko
- *
- *  This program is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU General Public License
- *  as published by the Free Software Foundation; either version 2
- *  of the License, or (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
- *  02111-1307, USA.
- *
- * DESCRIPTION:
- *   Joystick handling for Linux
+ *  Trinity3DS: Native 3DS Input Subsystem
  *
  *-----------------------------------------------------------------------------
  */
 
-#ifndef lint
-#endif /* lint */
-
 #include <stdlib.h>
+#include <string.h>
 
 #include "doomdef.h"
+#include "doomstat.h"
 #include "doomtype.h"
-#include "m_argv.h"
 #include "d_event.h"
 #include "d_main.h"
 #include "i_joy.h"
@@ -49,20 +21,17 @@
 
 #include <3ds.h>
 
-extern int joybfire;
-extern int joybuse;
-extern int joybspeed;
-extern int joybnextweapon;
+int joyxmove = 0;
+int joyymove = 0;
+int joyrxmove = 0;
+int joyrymove = 0;
+u32 ctr_keys_held = 0;
+u32 ctr_keys_down = 0;
 
 static bool irrst_initialized = false;
 
 void I_InitJoystick(void)
 {
-  joybfire = 0;
-  joybuse = 1;
-  joybnextweapon = 2;
-  joybspeed = 3;
-
   if (!irrst_initialized) {
     if (R_SUCCEEDED(irrstInit())) {
       irrst_initialized = true;
@@ -82,21 +51,15 @@ void I_ResetToLauncher(void);
 
 void I_PollJoystick(void)
 {
-  event_t ev;
-  memset(&ev, 0, sizeof(ev));
-
-  ev.type = ev_joystick;
-  ev.data1.i = 0;
-  ev.data2.i = 0;
-
   hidScanInput();
 
-  unsigned int kHeld = hidKeysHeld();
+  ctr_keys_held = hidKeysHeld();
+  ctr_keys_down = hidKeysDown();
 
   // Soft-reset hotkey: Hold L + R + START + SELECT for ~1.5s (90 ticks) -> Soft-reset to WAD manager
   const unsigned int reset_combo = KEY_L | KEY_R | KEY_START | KEY_SELECT;
   static int reset_counter = 0;
-  if ((kHeld & reset_combo) == reset_combo) {
+  if ((ctr_keys_held & reset_combo) == reset_combo) {
     reset_counter++;
     if (reset_counter >= 90) {
       I_ResetToLauncher();
@@ -106,63 +69,105 @@ void I_PollJoystick(void)
     reset_counter = 0;
   }
 
-  // A, R, ZR: Fire (Button 0)
-  if (kHeld & (KEY_A | KEY_R | KEY_ZR))
-    ev.data1.i |= (1 << 0);
-  // B, Y: Use / Open Doors & Switches (Button 1)
-  if (kHeld & (KEY_B | KEY_Y))
-    ev.data1.i |= (1 << 1);
-  // X: Next Weapon (Button 2)
-  if (kHeld & KEY_X)
-    ev.data1.i |= (1 << 2);
-  // L, ZL: Sprint / Speed (Button 3)
-  if (kHeld & (KEY_L | KEY_ZL))
-    ev.data1.i |= (1 << 3);
-  if (kHeld & KEY_START)
-    ev.data1.i |= (1 << 6);
-  if (kHeld & KEY_SELECT)
-    ev.data1.i |= (1 << 7);
-  if (kHeld & KEY_DUP)
-    ev.data1.i |= (1 << 8);
-  if (kHeld & KEY_DDOWN)
-    ev.data1.i |= (1 << 9);
-  if (kHeld & KEY_DLEFT)
-    ev.data1.i |= (1 << 10);
-  if (kHeld & KEY_DRIGHT)
-    ev.data1.i |= (1 << 11);
-
-  D_PostEvent(&ev);
-
-  // Circle Pad (Analog Movement)
+  // Circle Pad: Read analog stick
   circlePosition cpos;
   hidCircleRead(&cpos);
-  if (abs(cpos.dx) > 15 || abs(cpos.dy) > 15) {
-    event_t move_ev;
-    memset(&move_ev, 0, sizeof(move_ev));
-    move_ev.type = ev_move_analog;
-    move_ev.data1.f = (float)cpos.dx / 156.0f;
-    move_ev.data2.f = (float)cpos.dy / 156.0f;
-    D_PostEvent(&move_ev);
-  } else {
-    event_t move_ev;
-    memset(&move_ev, 0, sizeof(move_ev));
-    move_ev.type = ev_move_analog;
-    move_ev.data1.f = 0.0f;
-    move_ev.data2.f = 0.0f;
-    D_PostEvent(&move_ev);
-  }
 
-  // C-Stick (Camera Turning / Free Look)
+  // Circle Pad X (Strafe) - normalized to -10 .. +10
+  int axis_x = (cpos.dx * 192) / 3000;
+  if (abs(axis_x) < 2) axis_x = 0;
+  joyxmove = axis_x;
+
+  // Circle Pad Y (Walk forward/backward) - normalized to -10 .. +10
+  int axis_y = (cpos.dy * 192) / 3000;
+  if (abs(axis_y) < 2) axis_y = 0;
+  joyymove = axis_y;
+
+  // C-Stick (New 3DS / CPP): Read analog camera turning & freelook
   if (irrst_initialized) {
     circlePosition cstickpos = {0, 0};
     irrstCstickRead(&cstickpos);
-    if (abs(cstickpos.dx) > 15 || abs(cstickpos.dy) > 15) {
-      event_t look_ev;
-      memset(&look_ev, 0, sizeof(look_ev));
-      look_ev.type = ev_look_analog;
-      look_ev.data1.f = (float)cstickpos.dx / 156.0f;
-      look_ev.data2.f = (float)cstickpos.dy / 156.0f;
-      D_PostEvent(&look_ev);
+
+    int c_axis_x = (cstickpos.dx * 192) / 3000;
+    if (abs(c_axis_x) < 2) c_axis_x = 0;
+    joyrxmove = c_axis_x;
+
+    int c_axis_y = (cstickpos.dy * 192) / 3000;
+    if (abs(c_axis_y) < 2) c_axis_y = 0;
+    joyrymove = c_axis_y;
+  } else {
+    joyrxmove = joyrymove = 0;
+  }
+
+  // START: Toggle Menu / Pause (KEYD_ESCAPE)
+  if (ctr_keys_down & KEY_START) {
+    event_t ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = ev_keydown;
+    ev.data1.i = KEYD_ESCAPE;
+    D_PostEvent(&ev);
+    ev.type = ev_keyup;
+    D_PostEvent(&ev);
+  }
+
+  // SELECT: Toggle Automap (KEYD_TAB)
+  if (ctr_keys_down & KEY_SELECT) {
+    event_t ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = ev_keydown;
+    ev.data1.i = KEYD_TAB;
+    D_PostEvent(&ev);
+    ev.type = ev_keyup;
+    D_PostEvent(&ev);
+  }
+
+  // Menu navigation when menu is open or on title/intermission screens
+  extern dboolean menuactive;
+  if (menuactive || gamestate != GS_LEVEL) {
+    static u64 nav_wait = 0;
+    u64 now = osGetTime();
+
+    if (now > nav_wait) {
+      int nav_key = 0;
+      if ((ctr_keys_held & KEY_DUP) || joyymove > 4) {
+        nav_key = KEYD_UPARROW;
+      } else if ((ctr_keys_held & KEY_DDOWN) || joyymove < -4) {
+        nav_key = KEYD_DOWNARROW;
+      } else if ((ctr_keys_held & KEY_DLEFT) || joyxmove < -4) {
+        nav_key = KEYD_LEFTARROW;
+      } else if ((ctr_keys_held & KEY_DRIGHT) || joyxmove > 4) {
+        nav_key = KEYD_RIGHTARROW;
+      }
+
+      if (nav_key) {
+        event_t ev;
+        memset(&ev, 0, sizeof(ev));
+        ev.type = ev_keydown;
+        ev.data1.i = nav_key;
+        D_PostEvent(&ev);
+        ev.type = ev_keyup;
+        D_PostEvent(&ev);
+        nav_wait = now + 160;
+      }
+    }
+
+    if (ctr_keys_down & KEY_A) {
+      event_t ev;
+      memset(&ev, 0, sizeof(ev));
+      ev.type = ev_keydown;
+      ev.data1.i = KEYD_ENTER;
+      D_PostEvent(&ev);
+      ev.type = ev_keyup;
+      D_PostEvent(&ev);
+    }
+    if (ctr_keys_down & KEY_B) {
+      event_t ev;
+      memset(&ev, 0, sizeof(ev));
+      ev.type = ev_keydown;
+      ev.data1.i = KEYD_BACKSPACE;
+      D_PostEvent(&ev);
+      ev.type = ev_keyup;
+      D_PostEvent(&ev);
     }
   }
 }
