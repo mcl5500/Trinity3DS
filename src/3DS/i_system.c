@@ -663,6 +663,14 @@ char* I_FindFileInternal(const char* wfname, const char* ext, dboolean isStatic)
 char* I_RequireFile(const char* wfname, const char* ext) {
   char* result = I_FindFileInternal(wfname, ext, false);
 
+#ifdef __3DS__
+  if (!result && (!strcasecmp(wfname, "dsda-doom.wad") || !strcasecmp(wfname, "prboom-plus.wad"))) {
+    result = I_FindFileInternal("prboom-plus.wad", ext, false);
+    if (!result)
+      result = I_FindFileInternal("dsda-doom.wad", ext, false);
+  }
+#endif
+
   if (!result)
     I_Error("Unable to find required file \"%s\"", wfname);
 
@@ -671,7 +679,17 @@ char* I_RequireFile(const char* wfname, const char* ext) {
 
 char* I_FindFile(const char* wfname, const char* ext)
 {
-  return I_FindFileInternal(wfname, ext, false);
+  char* result = I_FindFileInternal(wfname, ext, false);
+
+#ifdef __3DS__
+  if (!result && (!strcasecmp(wfname, "dsda-doom.wad") || !strcasecmp(wfname, "prboom-plus.wad"))) {
+    result = I_FindFileInternal("prboom-plus.wad", ext, false);
+    if (!result)
+      result = I_FindFileInternal("dsda-doom.wad", ext, false);
+  }
+#endif
+
+  return result;
 }
 
 const char* I_FindFile2(const char* wfname, const char* ext)

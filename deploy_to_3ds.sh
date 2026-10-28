@@ -55,6 +55,11 @@ if [ -f "$DIR/prboom-plus.wad" ]; then
       --data-binary @"$DIR/prboom-plus.wad" \
       "http://$IP/api/file?path=%2F3ds%2FTrinity3DS%2Fprboom-plus.wad&replace=1" >/dev/null
     echo "    Upload complete!"
+    echo "--> Uploading prboom-plus.wad to /3ds/Trinity3DS/dsda-doom.wad..."
+    curl -s -X PUT -H "$HDR" \
+      --data-binary @"$DIR/prboom-plus.wad" \
+      "http://$IP/api/file?path=%2F3ds%2FTrinity3DS%2Fdsda-doom.wad&replace=1" >/dev/null
+    echo "    Upload complete!"
 fi
 
 if [ -f "$DIR/launcher.ogg" ]; then

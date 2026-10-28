@@ -5,7 +5,7 @@
 
 #define PROJECT_NAME    "dsda-doom"
 #define PROJECT_TARNAME "dsda-doom"
-#define WAD_DATA        "dsda-doom.wad"
+#define WAD_DATA        "prboom-plus.wad"
 #define PROJECT_VERSION "0.30.1"
 #define PROJECT_STRING  "dsda-doom 0.30.1 (Trinity3DS)"
 
