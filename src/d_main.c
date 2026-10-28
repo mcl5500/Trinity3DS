@@ -501,9 +501,23 @@ void D_Display (fixed_t frac)
 
     R_InterpolateView(&players[displayplayer], frac);
 
+#ifdef __3DS__
+    float stereo_slider = osGet3DSliderState();
+    if (stereo_slider > 0.01f && viewactive && !automap_full && (menuactive == mnact_inactive))
+    {
+      I_3D_RenderPlayerView(&players[displayplayer], stereo_slider);
+    }
+    else
+    {
+      DSDA_ADD_CONTEXT(sf_player_view);
+      R_RenderPlayerView(&players[displayplayer]);
+      DSDA_REMOVE_CONTEXT(sf_player_view);
+    }
+#else
     DSDA_ADD_CONTEXT(sf_player_view);
     R_RenderPlayerView(&players[displayplayer]);
     DSDA_REMOVE_CONTEXT(sf_player_view);
+#endif
 
     dsda_UpdateRenderStats();
 
@@ -530,6 +544,22 @@ void D_Display (fixed_t frac)
     DSDA_ADD_CONTEXT(sf_hud);
     HU_Drawer();
     DSDA_REMOVE_CONTEXT(sf_hud);
+
+#ifdef __3DS__
+    if (s_stereo_rendered_this_frame && s_right_eye_buffer)
+    {
+      u8 *orig_screen = screens[0].data;
+      screens[0].data = s_right_eye_buffer;
+      drawvars.topleft = s_right_eye_buffer;
+
+      DSDA_ADD_CONTEXT(sf_hud);
+      HU_Drawer();
+      DSDA_REMOVE_CONTEXT(sf_hud);
+
+      screens[0].data = orig_screen;
+      drawvars.topleft = orig_screen;
+    }
+#endif
   }
 
   isborderstate      = isborder;

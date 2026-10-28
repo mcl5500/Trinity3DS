@@ -21,12 +21,15 @@
 #include "r_things.h"
 #include "r_plane.h"
 #include "r_main.h"
+#include "r_state.h"
+#include "m_fixed.h"
 #include "f_wipe.h"
 #include "st_stuff.h"
 #include "am_map.h"
 #include "3DS/ds_screen.h"
 #include "3DS/i_joy.h"
 #include "3DS/gl_wrapper.h"
+#include "dsda/signal_context.h"
 
 #include <3ds.h>
 #include <stdio.h>
@@ -45,6 +48,9 @@ int exclusive_fullscreen = 0;
 int renderW = 400;
 int renderH = 240;
 dboolean window_focused = true;
+
+u8 *s_right_eye_buffer = NULL;
+bool s_stereo_rendered_this_frame = false;
 
 static u8 s_current_palette[768];
 static int s_active_palette_idx = -1;
@@ -67,6 +73,7 @@ void I_SetPalette(int pal)
 void I_PreInitGraphics(void)
 {
     gfxInitDefault();
+    gfxSet3D(true);
     gfxSetDoubleBuffering(GFX_TOP, true);
     gfxSetDoubleBuffering(GFX_BOTTOM, true);
     gfxSetScreenFormat(GFX_TOP, GSP_BGR8_OES);
@@ -107,6 +114,9 @@ void I_InitScreenResolution(void)
     if (!screens[0].data) {
         V_AllocScreens();
     }
+    if (!s_right_eye_buffer) {
+        s_right_eye_buffer = malloc(400 * 240);
+    }
 }
 
 void I_UpdateVideoMode(void)
@@ -135,6 +145,10 @@ void I_InitGraphics(void)
 
 void I_ShutdownGraphics(void)
 {
+    if (s_right_eye_buffer) {
+        free(s_right_eye_buffer);
+        s_right_eye_buffer = NULL;
+    }
     gfxExit();
 }
 
@@ -176,30 +190,102 @@ void I_StartTic(void)
     }
 }
 
+static void I_BlitTopEye(u8 *dst, const u8 *src)
+{
+    if (!dst || !src) return;
+    // 3DS top screen framebuffer is rotated 90 degrees counter-clockwise
+    // Framebuffer: 240 columns of 400 pixels each, format BGR8 (3 bytes/pixel)
+    for (int y = 0; y < 240; y++) {
+        for (int x = 0; x < 400; x++) {
+            u8 pal_idx = src[y * 400 + x];
+            const u8 *rgb = &s_current_palette[pal_idx * 3];
+
+            int dst_idx = (x * 240 + (239 - y)) * 3;
+            dst[dst_idx + 0] = rgb[2]; // Blue
+            dst[dst_idx + 1] = rgb[1]; // Green
+            dst[dst_idx + 2] = rgb[0]; // Red
+        }
+    }
+}
+
+void I_3D_RenderPlayerView(player_t *player, float slider)
+{
+    if (!s_right_eye_buffer)
+        return;
+
+    fixed_t orig_viewx = viewx;
+    fixed_t orig_viewy = viewy;
+    angle_t orig_viewangle = viewangle;
+
+    // Inter-pupillary distance (eye separation) in Doom map units:
+    // Player radius is 16. A comfortable baseline is ~2.6 units at full slider (1.0).
+    fixed_t eye_sep = (fixed_t)(FRACUNIT * (2.6f * slider));
+
+    // Convergence (toe-in) angle:
+    // Focus plane at crosshair distance (~200 units) to bring weapon forward and depth back
+    angle_t toe_in = (angle_t)((slider * 0.8f) * (ANG90 / 90.0f));
+
+    // Lateral vector perpendicular to view direction (pointing right in Doom coordinates)
+    angle_t ang = orig_viewangle >> ANGLETOFINESHIFT;
+    fixed_t dx = FixedMul(eye_sep, finesine[ang]);
+    fixed_t dy = FixedMul(eye_sep, finecosine[ang]);
+
+    // === PASS 1: LEFT EYE ===
+    viewx = orig_viewx - dx;
+    viewy = orig_viewy + dy;
+    viewangle = orig_viewangle + toe_in;
+
+    DSDA_ADD_CONTEXT(sf_player_view);
+    R_RenderPlayerView(player);
+    DSDA_REMOVE_CONTEXT(sf_player_view);
+
+    // === PASS 2: RIGHT EYE ===
+    u8 *orig_screen = screens[0].data;
+    screens[0].data = s_right_eye_buffer;
+    drawvars.topleft = s_right_eye_buffer;
+
+    viewx = orig_viewx + dx;
+    viewy = orig_viewy - dy;
+    viewangle = orig_viewangle - toe_in;
+
+    DSDA_ADD_CONTEXT(sf_player_view);
+    R_RenderPlayerView(player);
+    DSDA_REMOVE_CONTEXT(sf_player_view);
+
+    // Restore original screen buffer & camera
+    screens[0].data = orig_screen;
+    drawvars.topleft = orig_screen;
+    viewx = orig_viewx;
+    viewy = orig_viewy;
+    viewangle = orig_viewangle;
+
+    s_stereo_rendered_this_frame = true;
+}
+
 void I_FinishUpdate(void)
 {
     // 1. Draw bottom tactical dashboard
     DS_UpdateBottomScreen();
 
     // 2. Render top screen (400x240) in Software mode
-    u8 *dst = (u8 *)gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
-    const u8 *src = screens[0].data;
+    u8 *dst_l = (u8 *)gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+    u8 *dst_r = (u8 *)gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, NULL, NULL);
 
-    if (dst && src) {
-        // 3DS top screen framebuffer is rotated 90 degrees counter-clockwise
-        // Framebuffer: 240 columns of 400 pixels each, format BGR8 (3 bytes/pixel)
-        for (int y = 0; y < 240; y++) {
-            for (int x = 0; x < 400; x++) {
-                u8 pal_idx = src[y * 400 + x];
-                const u8 *rgb = &s_current_palette[pal_idx * 3];
+    float slider = osGet3DSliderState();
 
-                int dst_idx = (x * 240 + (239 - y)) * 3;
-                dst[dst_idx + 0] = rgb[2]; // Blue
-                dst[dst_idx + 1] = rgb[1]; // Green
-                dst[dst_idx + 2] = rgb[0]; // Red
-            }
+    if (slider > 0.01f && s_stereo_rendered_this_frame && s_right_eye_buffer) {
+        // True stereoscopic 3D: Left eye gets screens[0], Right eye gets s_right_eye_buffer
+        I_BlitTopEye(dst_l, screens[0].data);
+        I_BlitTopEye(dst_r, s_right_eye_buffer);
+    } else {
+        // 2D mode (or menus / intermission): both eyes get screens[0]
+        I_BlitTopEye(dst_l, screens[0].data);
+        if (dst_r) {
+            I_BlitTopEye(dst_r, screens[0].data);
         }
     }
+
+    s_stereo_rendered_this_frame = false;
 
     // 3. Flush buffers, swap and wait for VBlank
     gfxFlushBuffers();

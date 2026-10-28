@@ -39,9 +39,14 @@
 #endif
 
 #ifdef __3DS__
+#include <3ds.h>
 #include "3DS/gl_wrapper.h"
 typedef struct SDL_Window SDL_Window;
 typedef struct SDL_Renderer SDL_Renderer;
+
+void I_3D_RenderPlayerView(player_t *player, float slider);
+extern bool s_stereo_rendered_this_frame;
+extern u8 *s_right_eye_buffer;
 #else
 #include <SDL_opengl.h>
 #endif
