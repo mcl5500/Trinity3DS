@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -34,10 +34,7 @@
 #define __P_TICK__
 
 #include "d_think.h"
-
-#ifdef __GNUG__
-#pragma interface
-#endif
+#include "p_mobj.h"
 
 /* Called by C_Ticker, can call G_PlayerExited.
  * Carries out all thinking of monsters and players. */
@@ -71,5 +68,7 @@ extern thinker_t thinkerclasscap[];
 
 /* cph 2002/01/13 - iterator for thinker lists */
 thinker_t* P_NextThinker(thinker_t*,th_class);
+
+void P_CleanThinkers(void);
 
 #endif

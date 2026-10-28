@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -34,22 +34,26 @@
 #ifndef __I_SYSTEM__
 #define __I_SYSTEM__
 
-#include "m_fixed.h"
-
-#ifdef __GNUG__
-#pragma interface
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN 1
+#endif
+#include <windows.h>
 #endif
 
+#include "m_fixed.h"
+
+#ifdef _MSC_VER
+#define    F_OK    0    /* Check for file existence */
+#define    W_OK    2    /* Check for write permission */
+#define    R_OK    4    /* Check for read permission */
+#endif
+
+extern int interpolation_method;
 extern int ms_to_next_tick;
 dboolean I_StartDisplay(void);
 void I_EndDisplay(void);
-int I_GetTime_MS(void);
-int I_GetTime_RealTime(void);     /* killough */
-#ifndef PRBOOM_SERVER
 fixed_t I_GetTimeFrac (void);
-#endif
-
-extern int (*I_TickElapsedTime)(void);
 
 unsigned long I_GetRandomTimeSeed(void); /* cphipps */
 
@@ -65,17 +69,30 @@ const char* I_GetVersionString(char* buf, size_t sz);
  */
 const char* I_SigString(char* buf, size_t sz, int signum);
 
+#ifdef _WIN32
+void I_SwitchToWindow(HWND hwnd);
+#endif
+
 // e6y
 const char* I_GetTempDir(void);
 
-const char *I_DoomExeDir(void); // killough 2/16/98: path to executable's dir
+const char *I_ExeDir(void); // killough 2/16/98: path to executable's dir
+const char *I_ConfigDir(void); // path to config and autoload dir
 
 dboolean HasTrailingSlash(const char* dn);
+char* I_RequireFile(const char* wfname, const char* ext);
 char* I_FindFile(const char* wfname, const char* ext);
-char* I_FindFileEx(const char* wfname, const char* ext);
 const char* I_FindFile2(const char* wfname, const char* ext);
+char* I_RequireAnyFile(const char* wfname, const char** ext);
 
-dboolean I_FileToBuffer(const char *filename, byte **data, int *size);
+char* I_RequireWad(const char* wfname);
+char* I_FindWad(const char* wfname);
+
+char* I_RequireDeh(const char* wfname);
+char* I_FindDeh(const char* wfname);
+
+char* I_RequireZip(const char* wfname);
+char* I_FindZip(const char* wfname);
 
 /* cph 2001/11/18 - wrapper for read(2) which deals with partial reads */
 void I_Read(int fd, void* buf, size_t sz);
@@ -87,10 +104,17 @@ int I_Filelength(int handle);
 // If run_if_error is true, the function is called if the exit
 // is due to an error (I_Error)
 
-typedef void (*atexit_func_t)(void);
-void I_AtExit(atexit_func_t func, dboolean run_if_error);
+typedef enum
+{
+  exit_priority_first,
+  exit_priority_normal,
+  exit_priority_quit,
+  exit_priority_last,
+  exit_priority_max,
+} exit_priority_t;
 
-dboolean I_SoftwareKeyboard(const char *hint, const char *initial, char *out, int max_len);
-dboolean I_SoftwareKeyboardNumeric(const char *hint, const char *initial, char *out, int max_len);
+typedef void (*atexit_func_t)(void);
+void I_AtExit(atexit_func_t func, dboolean run_if_error,
+              const char* name, exit_priority_t priority);
 
 #endif

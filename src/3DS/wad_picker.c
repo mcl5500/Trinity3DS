@@ -1,7 +1,8 @@
+#include "doomtype.h"
 #include "wad_picker.h"
 #include "wad_downloader.h"
 #include "i_main.h"
-#include "version.h"
+#include "trinity_version.h"
 
 void I_SetupTimidity(void);
 #include <3ds.h>
@@ -541,6 +542,16 @@ static void WP_FormatDisplayName(wad_info_t *wad)
         strcpy(wad->display_name, "Plutonia 2");
     } else if (!strcasecmp(fn, "tntr.wad")) {
         strcpy(wad->display_name, "TNT: Revilution");
+    } else if (!strcasecmp(fn, "heretic.wad")) {
+        strcpy(wad->display_name, "Heretic: Shadow of the Serpent");
+    } else if (!strcasecmp(fn, "heretic1.wad")) {
+        strcpy(wad->display_name, "Heretic: Shareware Episode 1");
+    } else if (!strcasecmp(fn, "hexen.wad")) {
+        strcpy(wad->display_name, "Hexen: Beyond Heretic");
+    } else if (!strcasecmp(fn, "hexendd.wad") || !strcasecmp(fn, "deathkings.wad")) {
+        strcpy(wad->display_name, "Hexen: Deathkings Citadel");
+    } else if (!strcasecmp(fn, "blasphem.wad") || !strcasecmp(fn, "blasphemer.wad")) {
+        strcpy(wad->display_name, "Blasphemer (Heretic Libre)");
     } else {
         // Strip .wad extension and clean underscores
         char buf[64];
@@ -581,8 +592,8 @@ static void WP_ScanDirectory(const char *dir_path, int depth)
         } else if (S_ISREG(st.st_mode)) {
             const char *ext = strrchr(entry->d_name, '.');
             if (ext && !strcasecmp(ext, ".wad")) {
-                // Ignore prboom-plus.wad system wad
-                if (!strcasecmp(entry->d_name, "prboom-plus.wad")) continue;
+                // Ignore prboom-plus.wad and dsda-doom.wad system wads
+                if (!strcasecmp(entry->d_name, "prboom-plus.wad") || !strcasecmp(entry->d_name, "dsda-doom.wad")) continue;
 
                 // Check for duplicates by filename (case-insensitive)
                 bool dup = false;
@@ -736,7 +747,7 @@ static bool WP_SyncCache(void)
 
         const char *ext = strrchr(entry->d_name, '.');
         if (!ext || strcasecmp(ext, ".wad") != 0) continue;
-        if (!strcasecmp(entry->d_name, "prboom-plus.wad")) continue;
+        if (!strcasecmp(entry->d_name, "prboom-plus.wad") || !strcasecmp(entry->d_name, "dsda-doom.wad")) continue;
 
         // Check if already in cache
         bool found = false;

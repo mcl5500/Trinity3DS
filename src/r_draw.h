@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -36,10 +36,6 @@
 
 #include "r_defs.h"
 
-#ifdef __GNUG__
-#pragma interface
-#endif
-
 enum column_pipeline_e {
   RDC_PIPELINE_STANDARD,
   RDC_PIPELINE_TRANSLUCENT,
@@ -52,17 +48,7 @@ enum column_pipeline_e {
 enum draw_filter_type_e {
   RDRAW_FILTER_NONE,
   RDRAW_FILTER_POINT,
-  RDRAW_FILTER_LINEAR,
-  RDRAW_FILTER_ROUNDED,
   RDRAW_FILTER_MAXFILTERS
-};
-
-// Used to specify what kind of column edge rendering to use on masked 
-// columns. SQUARE = standard, SLOPED = slope the column edge up or down
-// based on neighboring columns
-enum sloped_edge_type_e {
-  RDRAW_MASKEDCOLUMNEDGE_SQUARE,
-  RDRAW_MASKEDCOLUMNEDGE_SLOPED
 };
 
 typedef enum
@@ -80,27 +66,28 @@ typedef struct draw_column_vars_s
   int                 yl;
   int                 yh;
   int                 dy;
-  fixed_t             z; // the current column z coord
   fixed_t             iscale;
   fixed_t             texturemid;
   int                 texheight;    // killough
-  fixed_t             texu; // the current column u coord
   const byte          *source; // first pixel in a column
   const byte          *prevsource; // first pixel in previous column
   const byte          *nextsource; // first pixel in next column
   const lighttable_t  *colormap;
-  const lighttable_t  *nextcolormap;
   const byte          *translation;
   int                 edgeslope; // OR'ed RDRAW_EDGESLOPE_*
   // 1 if R_DrawColumn* is currently drawing a masked column, otherwise 0
   int                 drawingmasked;
-  enum sloped_edge_type_e edgetype;
   unsigned int        flags; //e6y: for detect patches ind colfunc()
+
+  // [AR] mark weapon sprite
+  dboolean            isplayersprite;
+  int                 pspritepostheight;
+
+  // heretic
+  int baseclip;
 } draw_column_vars_t;
 
 void R_SetDefaultDrawColumnVars(draw_column_vars_t *dcvars);
-
-void R_VideoErase(int x, int y, int count);
 
 typedef struct {
   int                 y;
@@ -113,45 +100,30 @@ typedef struct {
   fixed_t             ystep;
   const byte          *source; // start of a 64*64 tile image
   const lighttable_t  *colormap;
-  const lighttable_t  *nextcolormap;
+
+  fixed_t xoffs;
+  fixed_t yoffs;
+  fixed_t xscale;
+  fixed_t yscale;
+  fixed_t sine;
+  fixed_t cosine;
+  fixed_t planeheight;
+  const lighttable_t **planezlight;
 } draw_span_vars_t;
 
 typedef struct {
-  byte           *byte_topleft;
-  unsigned short *short_topleft;
-  unsigned int   *int_topleft;
-  int   byte_pitch;
-  int   short_pitch;
-  int   int_pitch;
-
-  enum draw_filter_type_e filterwall;
-  enum draw_filter_type_e filterfloor;
-  enum draw_filter_type_e filtersprite;
-  enum draw_filter_type_e filterz;
-  enum draw_filter_type_e filterpatch;
-
-  enum sloped_edge_type_e sprite_edges;
-  enum sloped_edge_type_e patch_edges;
-
-  // Used to specify an early-out magnification threshold for filtering.
-  // If a texture is being minified (dcvars.iscale > rdraw_magThresh), then it
-  // drops back to point filtering.
-  fixed_t mag_threshold;
+  byte           *topleft;
+  int   pitch;
 } draw_vars_t;
 
 extern draw_vars_t drawvars;
 
-extern byte playernumtotrans[MAXPLAYERS]; // CPhipps - what translation table for what player
+extern byte playernumtotrans[MAX_MAXPLAYERS]; // CPhipps - what translation table for what player
 extern byte       *translationtables;
 
-R_DrawColumn_f R_GetDrawColumnFunc(enum column_pipeline_e type,
-                                   enum draw_filter_type_e filter,
-                                   enum draw_filter_type_e filterz);
+R_DrawColumn_f R_GetDrawColumnFunc(enum column_pipeline_e type, enum draw_filter_type_e filterz);
 
 // Span blitting for rows, floor/ceiling. No Spectre effect needed.
-typedef void (*R_DrawSpan_f)(draw_span_vars_t *dsvars);
-R_DrawSpan_f R_GetDrawSpanFunc(enum draw_filter_type_e filter,
-                               enum draw_filter_type_e filterz);
 void R_DrawSpan(draw_span_vars_t *dsvars);
 
 void R_InitBuffer(int width, int height);
@@ -171,5 +143,16 @@ void R_DrawViewBorder(void);
 // which gets rid of the unnecessary reset of various variables during
 // column drawing.
 void R_ResetColumnBuffer(void);
+
+void R_SetFuzzPos(int fuzzpos);
+int R_GetFuzzPos();
+
+// height is the height of the last column, in pixels
+void R_ResetFuzzCol(int height);
+
+// Calls R_ResetFuzzCol if x is aligned to the fuzz cell grid
+void R_CheckFuzzCol(int x, int height);
+
+extern int fuzz_cutoff;
 
 #endif

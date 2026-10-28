@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -39,11 +39,6 @@
 #include "d_player.h"
 #include "r_data.h"
 
-#ifdef __GNUG__
-#pragma interface
-#endif
-
-
 //
 // Refresh internal data structures,
 //  for rendering.
@@ -51,8 +46,6 @@
 
 // needed for texture pegging
 extern fixed_t *textureheight;
-
-extern int scaledviewwidth;
 
 extern int firstflat, numflats;
 
@@ -68,7 +61,6 @@ extern int numspritelumps;
 //
 // Lookup tables for map data.
 //
-extern int              numsprites;
 extern spritedef_t      *sprites;
 
 extern int              numvertexes;
@@ -121,5 +113,8 @@ extern int              rw_angle1;
 
 extern visplane_t       *floorplane;
 extern visplane_t       *ceilingplane;
+
+// [FG] linear horizontal sky scrolling
+extern angle_t          *linearskyangle;
 
 #endif

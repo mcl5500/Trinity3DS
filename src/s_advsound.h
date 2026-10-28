@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -37,15 +37,11 @@
 #include "p_mobj.h"
 #include "sounds.h"
 
-#ifdef __GNUG__
-#pragma interface
-#endif
-
 //
 //MUSINFO lump
 //
 
-#define MAX_MUS_ENTRIES 64
+#define MAX_MUS_ENTRIES 65
 
 typedef struct musinfo_s
 {

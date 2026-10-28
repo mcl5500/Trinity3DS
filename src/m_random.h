@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -35,6 +35,7 @@
 #ifndef __M_RANDOM__
 #define __M_RANDOM__
 
+#include "m_fixed.h"
 #include "doomtype.h"
 
 // killough 1/19/98: rewritten to use to use a better random number generator
@@ -123,6 +124,9 @@ typedef enum {
   pr_dropoff,                 // #60
   pr_randomjump,              // #61
   pr_defect,                  // #62  // Start new entries -- add new entries below
+  pr_heretic,                 // #63
+  pr_mbf21,                   // #64
+  pr_hexen,                   // #65
 
   // End of new entries
   NUMPRCLASS               // MUST be last item in list
@@ -139,16 +143,22 @@ extern rng_t rng;                      // The rng's state
 extern unsigned int rngseed;           // The starting seed (not part of state)
 
 // As M_Random, but used by the play simulation.
-int P_Random(pr_class_t DA(const char *, int));
-
-#ifdef INSTRUMENTED
-#define P_Random(a) (P_Random) (a, __FILE__,__LINE__)
-#endif
+int P_Random(pr_class_t);
 
 // Returns a number from 0 to 255,
 #define M_Random() P_Random(pr_misc)
 
 // Fix randoms for demos.
 void M_ClearRandom(void);
+
+// [XA] Common random formulas used by codepointers
+int P_RandomHitscanAngle(pr_class_t pr_class, fixed_t spread);
+int P_RandomHitscanSlope(pr_class_t pr_class, fixed_t spread);
+
+// heretic
+
+#define HITDICE(a) ((1+(P_Random(pr_heretic)&7))*a)
+
+int P_SubRandom (void);
 
 #endif

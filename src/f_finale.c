@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -35,27 +35,41 @@
 #include "doomstat.h"
 #include "d_event.h"
 #include "g_game.h"
+#include "lprintf.h"
+#include "umapinfo.h"
 #include "v_video.h"
 #include "w_wad.h"
 #include "s_sound.h"
 #include "sounds.h"
 #include "d_deh.h"  // Ty 03/22/98 - externalizations
+
+#include "heretic/f_finale.h"
+#include "hexen/f_finale.h"
+
+#include "dsda/font.h"
+#include "dsda/mapinfo.h"
+#include "dsda/palette.h"
+
 #include "f_finale.h" // CPhipps - hmm...
 
+// defines for the end mission display text                     // phares
 
-// The implementation for UMAPINFO is kept separate to avoid demo sync issues
-void FMI_Ticker (void);
-void FMI_Drawer (void);
-void FMI_StartFinale (void);
-extern int using_FMI;
-
+#define TEXTSPEED    3     // original value                    // phares
+#define TEXTWAIT     250   // original value                    // phares
+#define NEWTEXTSPEED 0.01f // new value                         // phares
+#define NEWTEXTWAIT  1000  // new value                         // phares
 
 // Stage of animation:
 //  0 = text, 1 = art screen, 2 = character cast
-int finalestage; // cph -
-int finalecount; // made static
-const char*   finaletext; // cph -
-const char*   finaleflat; // made static const
+
+finalestage_t finalestage;
+int finalecount;
+const char*   finaletext;
+const char*   finaleflat;
+const char*   finalepatch;
+const char*   endpic;
+const char*   endpalette;
+MapinfoFinale finaletype;
 
 // defines for the end mission display text                     // phares
 
@@ -64,7 +78,6 @@ const char*   finaleflat; // made static const
 // Ty 03/22/98 - ... the new s_WHATEVER extern variables are used
 // in the code below instead.
 
-void    F_StartCast (void);
 void    F_CastTicker (void);
 dboolean F_CastResponder (event_t *ev);
 void    F_CastDrawer (void);
@@ -78,28 +91,37 @@ int midstage;                 // whether we're in "mid-stage"
 //
 void F_StartFinale (void)
 {
-  dboolean mus_changed = false;
+  int mnum;
+  int muslump;
+
+  finaletext = NULL;
+  finaleflat = NULL;
+  finalepatch = NULL;
+  endpic = NULL;
+  endpalette = NULL;
+  finaletype = EG_None;
+
+  if (heretic) return Heretic_F_StartFinale();
+  if (hexen) return Hexen_F_StartFinale();
 
   gameaction = ga_nothing;
   gamestate = GS_FINALE;
-  automapmode &= ~am_active;
+  automap_full = false;
 
   // killough 3/28/98: clear accelerative text flags
   acceleratestage = midstage = 0;
 
-  finaletext = NULL;
-  finaleflat = NULL;
+  dsda_InterMusic(&mnum, &muslump);
 
-	if (gamemapinfo && gamemapinfo->intermusic[0])
-	{
-		int l = W_CheckNumForName(gamemapinfo->intermusic);
-		if (l >= 0)
-		{
-			S_ChangeMusInfoMusic(l, true);
-			mus_changed = true;
-		}
-	}
-  
+  if (muslump >= 0)
+  {
+    S_ChangeMusInfoMusic(muslump, true);
+  }
+  else
+  {
+    S_ChangeMusic(mnum, true);
+  }
+
   // Okay - IWAD dependend stuff.
   // This has been changed severly, and
   //  some stuff might have changed in the process.
@@ -110,8 +132,6 @@ void F_StartFinale (void)
     case registered:
     case retail:
     {
-      if (!mus_changed) S_ChangeMusic(mus_victor, true);
-
       switch (gameepisode)
       {
         case 1:
@@ -140,8 +160,6 @@ void F_StartFinale (void)
     // DOOM II and missions packs with E1, M34
     case commercial:
     {
-      if (!mus_changed) S_ChangeMusic(mus_read_m, true);
-
       // Ty 08/27/98 - added the gamemission logic
       switch (gamemap)
       {
@@ -190,29 +208,84 @@ void F_StartFinale (void)
 
     // Indeterminate.
     default:  // Ty 03/30/98 - not externalized
-         if (!mus_changed) S_ChangeMusic(mus_read_m, true);
          finaleflat = "F_SKY1"; // Not used anywhere else.
          finaletext = s_C1TEXT;  // FIXME - other text, music?
          break;
   }
 
-	using_FMI = false;
+  if (dsda_FinaleShortcut()) {
+    switch (gamemode) {
+      case shareware:
+      case registered:
+      case retail:
+        switch (gameepisode) {
+          case 1:
+              finaleflat = bgflatE1;
+              finaletext = s_E1TEXT;
+              break;
+          case 2:
+              finaleflat = bgflatE2;
+              finaletext = s_E2TEXT;
+              break;
+          case 3:
+              finaleflat = bgflatE3;
+              finaletext = s_E3TEXT;
+              break;
+          case 4:
+          default:
+              finaleflat = bgflatE4;
+              finaletext = s_E4TEXT;
+              break;
+        }
+        break;
+      case commercial:
+        if (gamemission == pack_nerve) {
+          finaleflat = bgflat06;
+          finaletext = s_C6TEXT;
+        }
+        else {
+          finaleflat = bgflat30;
+          finaletext = (gamemission == pack_tnt)  ? s_T4TEXT :
+                       (gamemission == pack_plut) ? s_P4TEXT : s_C4TEXT;
+        }
+        break;
+      case indetermined:
+        break;
+    }
+  }
 
-	if (gamemapinfo)
-	{
-		FMI_StartFinale();
-	}
+  dsda_StartFinale();
 
-  finalestage = 0;
+  finalestage = FINALE_STAGE_TEXT;
   finalecount = 0;
 }
 
 
 
+static dboolean F_BlockingInput(void)
+{
+  return finalestage == FINALE_STAGE_ART && endpalette && endpalette[0];
+}
+
 dboolean F_Responder (event_t *event)
 {
-  if (finalestage == 2)
+  if (heretic) return Heretic_F_Responder(event);
+  if (hexen) return Hexen_F_Responder(event);
+
+  if (finalestage == FINALE_STAGE_CAST)
     return F_CastResponder (event);
+  else if (finalestage == FINALE_STAGE_ART)
+  {
+    // If the palette is changed, kick to title instead of opening the menu
+    if (F_BlockingInput() && event->type == ev_keydown)
+    {
+      finalestage = FINALE_STAGE_TITLE;
+      S_StartOptionalSound(g_sfx_mnucls, g_sfx_swtchx, false);
+      V_SetPlayPal(playpal_default);
+      V_DrawRawScreen("TITLEPIC");
+      return true;
+    }
+  }
 
   return false;
 }
@@ -240,31 +313,40 @@ float Get_TextSpeed(void)
 // killough 5/10/98: add back v1.9 demo compatibility
 //
 
+dboolean F_ShowCast(void)
+{
+  return gamemap == 30 ||
+         (gamemission == pack_nerve && allow_incompatibility && gamemap == 8) ||
+         dsda_FinaleShortcut();
+}
+
 void F_Ticker(void)
 {
   int i;
 
-	if (using_FMI)
-	{
-		FMI_Ticker();
-		return;
-	}
-	
+  if (heretic) return Heretic_F_Ticker();
+  if (hexen) return Hexen_F_Ticker();
+
+  if (dsda_FTicker())
+  {
+    return;
+  }
+
   if (!demo_compatibility)
     WI_checkForAccelerate();  // killough 3/28/98: check for acceleration
   else
     if (gamemode == commercial && finalecount > 50) // check for skipping
-      for (i=0; i<MAXPLAYERS; i++)
+      for (i = 0; i < g_maxplayers; i++)
         if (players[i].cmd.buttons)
           goto next_level;      // go on to the next level
 
   // advance animation
   finalecount++;
 
-  if (finalestage == 2)
+  if (finalestage == FINALE_STAGE_CAST)
     F_CastTicker();
 
-  if (!finalestage)
+  if (finalestage == FINALE_STAGE_TEXT)
     {
       float speed = demo_compatibility ? TEXTSPEED : Get_TextSpeed();
       /* killough 2/28/98: changed to allow acceleration */
@@ -273,18 +355,17 @@ void F_Ticker(void)
           (midstage && acceleratestage)) {
         if (gamemode != commercial)       // Doom 1 / Ultimate Doom episode end
           {                               // with enough time, it's automatic
-            finalecount = 0;
-            finalestage = 1;
-            wipegamestate = -1;         // force a wipe
             if (gameepisode == 3)
-              S_StartMusic(mus_bunny);
+              F_StartScroll(NULL, NULL, NULL, true);
+            else
+              F_StartPostFinale();
           }
         else   // you must press a button to continue in Doom 2
           if (!demo_compatibility && midstage)
             {
             next_level:
-              if (gamemap == 30 || (gamemission == pack_nerve && singleplayer && gamemap == 8))
-                F_StartCast();              // cast of Doom 2 characters
+              if (F_ShowCast())
+                F_StartCast(NULL, NULL, true); // cast of Doom 2 characters
               else
                 gameaction = ga_worlddone;  // next level, e.g. MAP07
             }
@@ -305,20 +386,17 @@ void F_Ticker(void)
 // CPhipps - reformatted
 
 #include "hu_stuff.h"
-extern patchnum_t hu_font[HU_FONTSIZE];
-
 
 void F_TextWrite (void)
 {
-  // [FG] if interbackdrop does not specify a valid flat, draw it as a patch instead
-  if (gamemapinfo && W_CheckNumForName(finaleflat) != -1 &&
-      (W_CheckNumForName)(finaleflat, ns_flats) == -1)
+  if (finalepatch)
   {
-    V_FillBorder(-1, 0);
-    V_DrawNamePatch(0, 0, 0, finaleflat, CR_DEFAULT, VPT_STRETCH);
+    V_ClearBorder();
+    V_DrawNamePatchFS(0, 0, 0, finalepatch, CR_DEFAULT, VPT_STRETCH);
   }
   else
     V_DrawBackground(finaleflat, 0);
+
   { // draw some of the text onto the screen
     int         cx = 10;
     int         cy = 10;
@@ -333,24 +411,26 @@ void F_TextWrite (void)
       int       c = *ch++;
 
       if (!c)
-  break;
+        break;
+
       if (c == '\n') {
-  cx = 10;
-  cy += 11;
-  continue;
+        cx = 10;
+        cy += 11;
+        continue;
       }
 
       c = toupper(c) - HU_FONTSTART;
       if (c < 0 || c> HU_FONTSIZE) {
-  cx += 4;
-  continue;
+        cx += 4;
+        continue;
       }
 
-      w = hu_font[c].width;
+      w = hud_font.font[c].width;
       if (cx+w > SCREENWIDTH)
-  break;
+        break;
+
       // CPhipps - patch drawing updated
-      V_DrawNumPatch(cx, cy, 0, hu_font[c].lumpnum, CR_DEFAULT, VPT_STRETCH);
+      V_DrawNumPatch(cx, cy, 0, hud_font.font[c].lumpnum, CR_DEFAULT, VPT_STRETCH);
       cx+=w;
     }
   }
@@ -367,7 +447,7 @@ typedef struct
   mobjtype_t   type;
 } castinfo_t;
 
-static const castinfo_t castorder[] = { // CPhipps - static const, initialised here
+static const castinfo_t castorder_d2[] = {
   { &s_CC_ZOMBIE,  MT_POSSESSED },
   { &s_CC_SHOTGUN, MT_SHOTGUY },
   { &s_CC_HEAVY,   MT_CHAINGUY },
@@ -385,36 +465,73 @@ static const castinfo_t castorder[] = { // CPhipps - static const, initialised h
   { &s_CC_SPIDER,  MT_SPIDER },
   { &s_CC_CYBER,   MT_CYBORG },
   { &s_CC_HERO,    MT_PLAYER },
-  { NULL,         0}
-  };
+  { NULL,          0 }
+};
 
-int             castnum;
-int             casttics;
-state_t*        caststate;
-dboolean         castdeath;
-int             castframes;
-int             castonmelee;
-dboolean         castattacking;
+static const castinfo_t castorder_d1[] = {
+  { &s_CC_ZOMBIE,  MT_POSSESSED },
+  { &s_CC_SHOTGUN, MT_SHOTGUY },
+  { &s_CC_IMP,     MT_TROOP },
+  { &s_CC_DEMON,   MT_SERGEANT },
+  { &s_CC_LOST,    MT_SKULL },
+  { &s_CC_CACO,    MT_HEAD },
+  { &s_CC_BARON,   MT_BRUISER },
+  { &s_CC_SPIDER,  MT_SPIDER },
+  { &s_CC_CYBER,   MT_CYBORG },
+  { &s_CC_HERO,    MT_PLAYER },
+  { NULL,          0 }
+};
 
+static const castinfo_t *castorder = castorder_d2;
+
+static int castnum;
+static int casttics;
+static state_t* caststate;
+static dboolean castdeath;
+static int castframes;
+static int castonmelee;
+static dboolean castattacking;
+static const char *castbackground;
 
 //
 // F_StartCast
 //
 
-void F_StartCast (void)
+static void F_StartCastMusic(const char* music, dboolean loop_music)
 {
+  if (music)
+  {
+    if (!S_ChangeMusicByName(music, loop_music))
+      lprintf(LO_WARN, "Finale cast music not found: %s\n", music);
+  }
+  else if (gamemode == commercial)
+  {
+    S_ChangeMusic(mus_evil, loop_music);
+  }
+  else
+  {
+    lprintf(LO_WARN, "Finale cast music unspecified\n");
+    S_StopMusic();
+  }
+}
+
+void F_StartCast (const char* background, const char* music, dboolean loop_music)
+{
+  castorder = (gamemode == commercial ? castorder_d2 : castorder_d1);
+  castbackground = (background ? background : bgcastcall);
+
   wipegamestate = -1;         // force a screen wipe
   castnum = 0;
   caststate = &states[mobjinfo[castorder[castnum].type].seestate];
   casttics = caststate->tics;
   castdeath = false;
-  finalestage = 2;
+  finalestage = FINALE_STAGE_CAST;
   castframes = 0;
   castonmelee = 0;
   castattacking = false;
-  S_ChangeMusic(mus_evil, true);
-}
 
+  F_StartCastMusic(music, loop_music);
+}
 
 //
 // F_CastTicker
@@ -435,7 +552,7 @@ void F_CastTicker (void)
     if (castorder[castnum].name == NULL)
       castnum = 0;
     if (mobjinfo[castorder[castnum].type].seesound)
-      S_StartSound (NULL, mobjinfo[castorder[castnum].type].seesound);
+      S_StartVoidSound(mobjinfo[castorder[castnum].type].seesound);
     caststate = &states[mobjinfo[castorder[castnum].type].seestate];
     castframes = 0;
   }
@@ -481,7 +598,7 @@ void F_CastTicker (void)
     }
 
     if (sfx)
-      S_StartSound (NULL, sfx);
+      S_StartVoidSound(sfx);
   }
 
   if (castframes == 12)
@@ -541,7 +658,7 @@ dboolean F_CastResponder (event_t* ev)
   castframes = 0;
   castattacking = false;
   if (mobjinfo[castorder[castnum].type].deathsound)
-    S_StartSound (NULL, mobjinfo[castorder[castnum].type].deathsound);
+    S_StartVoidSound(mobjinfo[castorder[castnum].type].deathsound);
 
   return true;
 }
@@ -571,7 +688,7 @@ static void F_CastPrint (const char* text) // CPhipps - static, const char*
       continue;
     }
 
-    w = hu_font[c].width;
+    w = hud_font.font[c].width;
     width += w;
   }
 
@@ -590,9 +707,9 @@ static void F_CastPrint (const char* text) // CPhipps - static, const char*
       continue;
     }
 
-    w = hu_font[c].width;
+    w = hud_font.font[c].width;
     // CPhipps - patch drawing updated
-    V_DrawNumPatch(cx, 180, 0, hu_font[c].lumpnum, CR_DEFAULT, VPT_STRETCH);
+    V_DrawNumPatch(cx, 180, 0, hud_font.font[c].lumpnum, CR_DEFAULT, VPT_STRETCH);
     cx+=w;
   }
 }
@@ -610,10 +727,10 @@ void F_CastDrawer (void)
   dboolean             flip;
 
   // e6y: wide-res
-  V_FillBorder(-1, 0);
+  V_ClearBorder();
   // erase the entire screen to a background
   // CPhipps - patch drawing updated
-  V_DrawNamePatch(0,0,0, bgcastcall, CR_DEFAULT, VPT_STRETCH); // Ty 03/30/98 bg texture extern
+  V_DrawNamePatchFS(0,0,0, castbackground, CR_DEFAULT, VPT_STRETCH); // Ty 03/30/98 bg texture extern
 
   F_CastPrint (*(castorder[castnum].name));
 
@@ -631,8 +748,46 @@ void F_CastDrawer (void)
 //
 // F_BunnyScroll
 //
-static const char pfub2[] = { "PFUB2" };
-static const char pfub1[] = { "PFUB1" };
+static const char* pfub1 = "PFUB1";
+static const char* pfub2 = "PFUB2";
+
+static const char* scrollpic1;
+static const char* scrollpic2;
+
+static void F_StartScrollMusic(const char* music, dboolean loop_music)
+{
+  if (music) {
+    if (!S_ChangeMusicByName(music, loop_music))
+      lprintf(LO_WARN, "Finale scroll music not found: %s\n", music);
+  }
+  else if (W_LumpNameExists("D_BUNNY"))
+    S_ChangeMusic(mus_bunny, loop_music);
+  else {
+    lprintf(LO_WARN, "Finale scroll music unspecified\n");
+    S_StopMusic();
+  }
+}
+
+static dboolean end_patches_exist;
+
+void F_StartScroll (const char* right, const char* left, const char* music, dboolean loop_music)
+{
+  wipegamestate = -1; // force a wipe
+  scrollpic1 = right ? right : pfub1;
+  scrollpic2 = left ? left : pfub2;
+  finalecount = 0;
+  finalestage = FINALE_STAGE_ART;
+
+  end_patches_exist = W_CheckNumForName("END0") != LUMP_NOT_FOUND &&
+                      W_CheckNumForName("END1") != LUMP_NOT_FOUND &&
+                      W_CheckNumForName("END2") != LUMP_NOT_FOUND &&
+                      W_CheckNumForName("END3") != LUMP_NOT_FOUND &&
+                      W_CheckNumForName("END4") != LUMP_NOT_FOUND &&
+                      W_CheckNumForName("END5") != LUMP_NOT_FOUND &&
+                      W_CheckNumForName("END6") != LUMP_NOT_FOUND;
+
+  F_StartScrollMusic(music, loop_music);
+}
 
 void F_BunnyScroll (void)
 {
@@ -644,8 +799,8 @@ void F_BunnyScroll (void)
   if (finalecount == 0)
   {
     const rpatch_t *p1, *p2;
-    p1 = R_CachePatchName(pfub1);
-    p2 = R_CachePatchName(pfub2);
+    p1 = R_PatchByName(scrollpic1);
+    p2 = R_PatchByName(scrollpic2);
 
     p2width = p2->width;
     if (p1->width == 320)
@@ -658,26 +813,26 @@ void F_BunnyScroll (void)
       // Widescreen mod PFUBs.
       p1offset = 0;
     }
-
-    W_UnlockLumpName(pfub2);
-    W_UnlockLumpName(pfub1);
   }
 
   {
     int scrolled = 320 - (finalecount-230)/2;
     if (scrolled <= 0) {
-      V_DrawNamePatch(0, 0, 0, pfub2, CR_DEFAULT, VPT_STRETCH);
+      V_DrawNamePatchFS(0, 0, 0, scrollpic2, CR_DEFAULT, VPT_STRETCH);
     } else if (scrolled >= 320) {
-      V_DrawNamePatch(p1offset, 0, 0, pfub1, CR_DEFAULT, VPT_STRETCH);
+      V_DrawNamePatchFS(p1offset, 0, 0, scrollpic1, CR_DEFAULT, VPT_STRETCH);
       if (p1offset > 0)
-        V_DrawNamePatch(-320, 0, 0, pfub2, CR_DEFAULT, VPT_STRETCH);
+        V_DrawNamePatchFS(-320, 0, 0, scrollpic2, CR_DEFAULT, VPT_STRETCH);
     } else {
-      V_DrawNamePatch(p1offset+320-scrolled, 0, 0, pfub1, CR_DEFAULT, VPT_STRETCH);
-      V_DrawNamePatch(-scrolled, 0, 0, pfub2, CR_DEFAULT, VPT_STRETCH);
+      V_DrawNamePatchFS(p1offset + 320 - scrolled, 0, 0, scrollpic1, CR_DEFAULT, VPT_STRETCH);
+      V_DrawNamePatchFS(-scrolled, 0, 0, scrollpic2, CR_DEFAULT, VPT_STRETCH);
     }
     if (p2width == 320)
-      V_FillBorder(-1, 0);
+      V_ClearBorder();
   }
+
+  if (!end_patches_exist)
+    return;
 
   if (finalecount < 1130)
     return;
@@ -694,57 +849,69 @@ void F_BunnyScroll (void)
     stage = 6;
   if (stage > laststage)
   {
-    S_StartSound (NULL, sfx_pistol);
+    S_StartVoidSound(sfx_pistol);
     laststage = stage;
   }
 
-  sprintf (name,"END%i",stage);
+  snprintf(name, sizeof name, "END%i", stage);
   // CPhipps - patch drawing updated
   V_DrawNamePatch((320-13*8)/2, (200-8*8)/2, 0, name, CR_DEFAULT, VPT_STRETCH);
 }
 
+void F_StartPostFinale (void)
+{
+  finalecount = 0;
+  finalestage = FINALE_STAGE_ART;
+  wipegamestate = -1; // force a wipe
+}
 
 //
 // F_Drawer
 //
 void F_Drawer (void)
 {
-	if (using_FMI)
-	{
-		FMI_Drawer();
-		return;
-	}
-	
-  if (finalestage == 2)
+  if (heretic) return Heretic_F_Drawer();
+  if (hexen) return Hexen_F_Drawer();
+
+  if (dsda_FDrawer())
   {
-    F_CastDrawer ();
     return;
   }
 
-  if (!finalestage)
-    F_TextWrite ();
-  else
+  if (finalestage == FINALE_STAGE_TEXT)
+    F_TextWrite();
+  else if (finalestage == FINALE_STAGE_ART)
   {
-    // e6y: wide-res
-    V_FillBorder(-1, 0);
+    const char* finalelump = NULL;
+
+    // Allows use of HELP2 screen for PWADs under DOOM 1
+    dboolean showhelp2 = (gamemode == retail && pwad_help2_check) || gamemode <= registered;
+
     switch (gameepisode)
     {
       // CPhipps - patch drawing updated
       case 1:
-           if ( gamemode == retail || gamemode == commercial )
-             V_DrawNamePatch(0, 0, 0, "CREDIT", CR_DEFAULT, VPT_STRETCH);
-           else
-             V_DrawNamePatch(0, 0, 0, "HELP2", CR_DEFAULT, VPT_STRETCH);
-           break;
+        finalelump = showhelp2 ? "HELP2" : "CREDIT";
+        break;
       case 2:
-           V_DrawNamePatch(0, 0, 0, "VICTORY2", CR_DEFAULT, VPT_STRETCH);
-           break;
+        finalelump = "VICTORY2";
+        break;
       case 3:
-           F_BunnyScroll ();
-           break;
+        F_BunnyScroll ();
+        break;
       case 4:
-           V_DrawNamePatch(0, 0, 0, "ENDPIC", CR_DEFAULT, VPT_STRETCH);
-           break;
+        finalelump = "ENDPIC";
+        break;
+    }
+
+    if (finalelump)
+    {
+      V_ClearBorder(); // e6y: wide-res
+      V_DrawNamePatchFS(0, 0, 0, finalelump, CR_DEFAULT, VPT_STRETCH);
     }
   }
+  else if (finalestage == FINALE_STAGE_CAST)
+    F_CastDrawer();
+  else if (finalestage == FINALE_STAGE_TITLE)
+    V_DrawRawScreen("TITLEPIC"); // Palette change has ended, just show the title
 }

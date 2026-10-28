@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -59,27 +59,22 @@ musinfo_t musinfo;
 //
 void S_ParseMusInfo(const char *mapid)
 {
-
-  if (W_CheckNumForName("MUSINFO") != -1)
+  if (gamemode != shareware && W_LumpNameExists("MUSINFO"))
   {
     int num, lumpnum;
     int inMap = false;
     int load_muslump = -1;
-    /* musinfo item zero is initialized
-     * before we reach the parser and it must be
-     * saved and restored */
-    int itemzero = musinfo.items[0];
 
     /* don't restart music that is already playing */
     if (mus_playing &&
-        mus_playing->lumpnum == S_music[NUMMUSIC].lumpnum) {
-        load_muslump = S_music[NUMMUSIC].lumpnum;
+        mus_playing->lumpnum == S_music[mus_musinfo].lumpnum) {
+        load_muslump = S_music[mus_musinfo].lumpnum;
     }
 
     memset(&musinfo, 0, sizeof(musinfo));
-    musinfo.items[0] = itemzero;
+    musinfo.items[0] = -1;
     musinfo.current_item = load_muslump;
-    S_music[NUMMUSIC].lumpnum = load_muslump;
+    S_music[mus_musinfo].lumpnum = load_muslump;
 
     SC_OpenLump("MUSINFO");
 
@@ -100,13 +95,13 @@ void S_ParseMusInfo(const char *mapid)
         }
 
         // Check number in range
-        if (M_StrToInt(sc_String, &num) && num > 0 && num < MAX_MUS_ENTRIES)
+        if (M_StrToInt(sc_String, &num) && num >= 0 && num < MAX_MUS_ENTRIES)
         {
           if (SC_GetString())
           {
             lumpnum = W_CheckNumForName(sc_String);
 
-            if (lumpnum >= 0)
+            if (lumpnum != LUMP_NOT_FOUND)
             {
               musinfo.items[num] = lumpnum;
             }
@@ -118,12 +113,20 @@ void S_ParseMusInfo(const char *mapid)
         }
         else
         {
-          lprintf(LO_ERROR, "S_ParseMusInfo: Number not in range 1 to %d", MAX_MUS_ENTRIES - 1);
+          lprintf(LO_ERROR, "S_ParseMusInfo: Number not in range 0 to %d", MAX_MUS_ENTRIES - 1);
         }
       }
     }
 
     SC_Close();
+  }
+  else // No MUSINFO lump -> clear MUSINFO music state (without restarting music)
+  {
+    memset(musinfo.items, 0, sizeof(musinfo.items));
+    musinfo.items[0] = -1;
+    musinfo.mapthing = NULL;
+    musinfo.lastmapthing = NULL;
+    musinfo.tics = 0;
   }
 }
 
@@ -159,9 +162,15 @@ void T_MAPMusic(void)
       {
         int lumpnum = musinfo.items[arraypt];
 
-        if (lumpnum >= 0 && lumpnum < numlumps)
+        if (lumpnum > 0 && lumpnum < numlumps)
         {
           S_ChangeMusInfoMusic(lumpnum, true);
+        }
+        else // missing musinfo entry -> silence
+        {
+          lprintf(LO_WARN, "T_MAPMusic: MUSINFO entry %d not defined\n", arraypt);
+          S_StopMusic();
+          musinfo.current_item = -1;
         }
       }
 

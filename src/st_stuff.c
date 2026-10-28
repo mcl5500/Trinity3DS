@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -39,15 +39,24 @@
 #include "i_video.h"
 #include "w_wad.h"
 #include "st_stuff.h"
+#include "hu_stuff.h"
 #include "st_lib.h"
 #include "r_main.h"
 #include "am_map.h"
 #include "m_cheat.h"
+#include "m_menu.h"
 #include "s_sound.h"
 #include "sounds.h"
 #include "dstrings.h"
+#include "p_pspr.h"
 #include "r_draw.h"
 #include "e6y.h"//e6y
+
+#include "dsda/settings.h"
+#include "dsda/stretch.h"
+#include "dsda/text_color.h"
+
+#include "heretic/sb_bar.h"
 
 //
 // STATUS BAR DATA
@@ -55,7 +64,6 @@
 
 int ST_SCALED_HEIGHT;
 int ST_SCALED_WIDTH;
-int ST_SCALED_Y;
 int ST_SCALED_OFFSETX;
 
 // Palette indices.
@@ -262,26 +270,8 @@ static int veryfirsttime = 1;
 // used for timing
 static unsigned int st_clock;
 
-// used for making messages go away
-static int st_msgcounter=0;
-
-// used when in chat
-static st_chatstateenum_t st_chatstate;
-
-// whether in automap or first-person
-static st_stateenum_t st_gamestate;
-
 // whether left-side main status bar is active
 static dboolean st_statusbaron;
-
-// whether status bar chat is active
-static dboolean st_chat;
-
-// value of st_chat before message popped up
-static dboolean st_oldchat;
-
-// whether chat window has the cursor on
-static dboolean st_cursoron;
 
 // !deathmatch
 static dboolean st_notdeathmatch;
@@ -303,7 +293,7 @@ static patchnum_t shortnum[10];
 
 // 3 key-cards, 3 skulls, 3 card/skull combos
 // jff 2/24/98 extend number of patches by three skull/card combos
-static patchnum_t keys[NUMCARDS+3];
+static patchnum_t keys[DOOM_NUMCARDS+3];
 
 // face status patches
 static patchnum_t faces[ST_NUMFACES];
@@ -312,10 +302,9 @@ static patchnum_t faces[ST_NUMFACES];
 static patchnum_t faceback; // CPhipps - single background, translated for different players
 
 //e6y: status bar background
-static patchnum_t stbarbg = {0};
+patchnum_t stbarbg;
 patchnum_t grnrock;
-patchnum_t brdr_t, brdr_b, brdr_l, brdr_r;
-patchnum_t brdr_tl, brdr_tr, brdr_bl, brdr_br;
+patchnum_t brdr_b;
 
 // main bar right
 static patchnum_t armsbg;
@@ -326,31 +315,11 @@ static patchnum_t arms[6][2];
 // ready-weapon widget
 static st_number_t w_ready;
 
-//jff 2/16/98 status color change levels
-int ammo_red;      // ammo percent less than which status is red
-int ammo_yellow;   // ammo percent less is yellow more green
-int health_red;    // health amount less than which status is red
-int health_yellow; // health amount less than which status is yellow
-int health_green;  // health amount above is blue, below is green
-int armor_red;     // armor amount less than which status is red
-int armor_yellow;  // armor amount less than which status is yellow
-int armor_green;   // armor amount above is blue, below is green
-
-ammo_colour_behaviour_t ammo_colour_behaviour;
-const char *ammo_colour_behaviour_list[ammo_colour_behaviour_max] = {
-  "no",
-  "full ammo only",
-  "yes"
-};
-
  // in deathmatch only, summary of frags stats
 static st_number_t w_frags;
 
 // health widget
 static st_percent_t w_health;
-
-// arms background
-static st_binicon_t  w_armsbg;
 
 // weapon ownership widgets
 static st_multicon_t w_arms[6];
@@ -393,11 +362,38 @@ static int      st_randomnumber;
 
 extern char     *mapnames[];
 
+static int cr_health_bad;
+static int cr_health_warning;
+static int cr_health_ok;
+static int cr_health_super;
+static int cr_armor_zero;
+static int cr_armor_one;
+static int cr_armor_two;
+static int cr_ammo_bad;
+static int cr_ammo_warning;
+static int cr_ammo_ok;
+static int cr_ammo_full;
+
 //
 // STATUS BAR CODE
 //
 
 static void ST_Stop(void);
+
+void ST_LoadTextColors(void)
+{
+  cr_health_bad = dsda_TextCR(dsda_tc_stbar_health_bad);
+  cr_health_warning = dsda_TextCR(dsda_tc_stbar_health_warning);
+  cr_health_ok = dsda_TextCR(dsda_tc_stbar_health_ok);
+  cr_health_super = dsda_TextCR(dsda_tc_stbar_health_super);
+  cr_armor_zero = dsda_TextCR(dsda_tc_stbar_armor_zero);
+  cr_armor_one = dsda_TextCR(dsda_tc_stbar_armor_one);
+  cr_armor_two = dsda_TextCR(dsda_tc_stbar_armor_two);
+  cr_ammo_bad = dsda_TextCR(dsda_tc_stbar_ammo_bad);
+  cr_ammo_warning = dsda_TextCR(dsda_tc_stbar_ammo_warning);
+  cr_ammo_ok = dsda_TextCR(dsda_tc_stbar_ammo_ok);
+  cr_ammo_full = dsda_TextCR(dsda_tc_stbar_ammo_full);
+}
 
 // [FG] support widescreen status bar backgrounds
 
@@ -408,15 +404,15 @@ void ST_SetScaledWidth(void)
   if (width == 0)
       width = ST_WIDTH;
 
-  switch (render_stretch_hud)
+  switch (stretch_hud(render_stretch_hud))
   {
-    case patch_stretch_16x10:
+    case patch_stretch_not_adjusted:
       ST_SCALED_WIDTH  = width * patches_scalex;
       break;
-    case patch_stretch_4x3:
+    case patch_stretch_doom_format:
       ST_SCALED_WIDTH  = width * WIDE_SCREENWIDTH / 320;
       break;
-    case patch_stretch_full:
+    case patch_stretch_fit_to_width:
       ST_SCALED_WIDTH  = width * SCREENWIDTH / 320;
       break;
   }
@@ -433,16 +429,12 @@ static void ST_refreshBackground(void)
 {
   int y = ST_Y;
   enum patch_translation_e flags = VPT_ALIGN_LEFT_TOP;
-  
+
   if (st_statusbaron)
     {
       flags = VPT_ALIGN_BOTTOM;
 
-      // Applies palette to backfill
-      if (V_GetMode() == VID_MODE15 || V_GetMode() == VID_MODE16 || V_GetMode() == VID_MODE32)
-        R_FillBackScreen();
-
-      V_DrawNumPatch(ST_X, y, BG, stbarbg.lumpnum, CR_DEFAULT, flags);
+      V_DrawNumPatchFS(ST_X, y, BG, stbarbg.lumpnum, CR_DEFAULT, flags);
       if (!deathmatch)
       {
         V_DrawNumPatch(ST_ARMSBGX, y, BG, armsbg.lumpnum, CR_DEFAULT, flags);
@@ -464,25 +456,7 @@ static void ST_refreshBackground(void)
 //  intercept cheats.
 dboolean ST_Responder(event_t *ev)
 {
-  // Filter automap on/off.
-  if (ev->type == ev_keyup && (ev->data1 & 0xffff0000) == AM_MSGHEADER)
-    {
-      switch(ev->data1)
-        {
-        case AM_MSGENTERED:
-          st_gamestate = AutomapState;
-          st_firsttime = true;
-          break;
-
-        case AM_MSGEXITED:
-          st_gamestate = FirstPersonState;
-          break;
-        }
-    }
-  else  // if a user keypress...
-    if (ev->type == ev_keydown)       // Try cheat responder in m_cheat.c
-      return M_FindCheats(ev->data1); // killough 4/17/98, 5/2/98
-  return false;
+  return M_CheatResponder(ev);
 }
 
 static int ST_calcPainOffset(void)
@@ -506,6 +480,9 @@ static int ST_calcPainOffset(void)
 //  dead > evil grin > turned head > straight ahead
 //
 
+// [crispy] fix status bar face hysteresis
+static int faceindex;
+
 static void ST_updateFaceWidget(void)
 {
   int         i;
@@ -515,13 +492,19 @@ static void ST_updateFaceWidget(void)
   static int  priority = 0;
   dboolean     doevilgrin;
 
+  // [crispy] fix status bar face hysteresis
+  int		painoffset;
+
+  painoffset = ST_calcPainOffset();
+
   if (priority < 10)
     {
       // dead
       if (!plyr->health)
         {
           priority = 9;
-          st_faceindex = ST_DEADFACE;
+          painoffset = 0;
+          faceindex = ST_DEADFACE;
           st_facecount = 1;
         }
     }
@@ -546,7 +529,7 @@ static void ST_updateFaceWidget(void)
               // evil grin if just picked up weapon
               priority = 8;
               st_facecount = ST_EVILGRINCOUNT;
-              st_faceindex = ST_calcPainOffset() + ST_EVILGRINOFFSET;
+              faceindex = ST_EVILGRINOFFSET;
             }
         }
 
@@ -563,7 +546,7 @@ static void ST_updateFaceWidget(void)
            // was due to inversion of this test:
            // if(plyr->health - st_oldhealth > ST_MUCHPAIN)
            // e6y: compatibility optioned
-           if((default_comp[comp_ouchface]?
+           if((comp[comp_ouchface]?
               (plyr->health - st_oldhealth):
               (st_oldhealth - plyr->health)) > ST_MUCHPAIN)
             {
@@ -571,11 +554,11 @@ static void ST_updateFaceWidget(void)
               // There are TWO bugs in the ouch face code.
               // Not only was the condition reversed, but the priority system is
               // broken in a way that makes the face not work with monster damage.
-              if(!default_comp[comp_ouchface])
+              if(!comp[comp_ouchface])
                 priority = 8;
 
               st_facecount = ST_TURNCOUNT;
-              st_faceindex = ST_calcPainOffset() + ST_OUCHOFFSET;
+              faceindex = ST_OUCHOFFSET;
             }
           else
             {
@@ -599,22 +582,21 @@ static void ST_updateFaceWidget(void)
 
 
               st_facecount = ST_TURNCOUNT;
-              st_faceindex = ST_calcPainOffset();
 
               if (diffang < ANG45)
                 {
                   // head-on
-                  st_faceindex += ST_RAMPAGEOFFSET;
+                  faceindex = ST_RAMPAGEOFFSET;
                 }
               else if (i)
                 {
                   // turn face right
-                  st_faceindex += ST_TURNOFFSET;
+                  faceindex = ST_TURNOFFSET;
                 }
               else
                 {
                   // turn face left
-                  st_faceindex += ST_TURNOFFSET+1;
+                  faceindex = ST_TURNOFFSET+1;
                 }
             }
         }
@@ -629,19 +611,19 @@ static void ST_updateFaceWidget(void)
            // was due to inversion of this test:
            // if(plyr->health - st_oldhealth > ST_MUCHPAIN)
            // e6y: compatibility optioned
-           if((default_comp[comp_ouchface]?
+           if((comp[comp_ouchface]?
               (plyr->health - st_oldhealth):
               (st_oldhealth - plyr->health)) > ST_MUCHPAIN)
             {
               priority = 7;
               st_facecount = ST_TURNCOUNT;
-              st_faceindex = ST_calcPainOffset() + ST_OUCHOFFSET;
+              faceindex = ST_OUCHOFFSET;
             }
           else
             {
               priority = 6;
               st_facecount = ST_TURNCOUNT;
-              st_faceindex = ST_calcPainOffset() + ST_RAMPAGEOFFSET;
+              faceindex = ST_RAMPAGEOFFSET;
             }
 
         }
@@ -658,7 +640,7 @@ static void ST_updateFaceWidget(void)
           else if (!--lastattackdown)
             {
               priority = 5;
-              st_faceindex = ST_calcPainOffset() + ST_RAMPAGEOFFSET;
+              faceindex = ST_RAMPAGEOFFSET;
               st_facecount = 1;
               lastattackdown = 1;
             }
@@ -676,7 +658,8 @@ static void ST_updateFaceWidget(void)
         {
           priority = 4;
 
-          st_faceindex = ST_GODFACE;
+          painoffset = 0;
+          faceindex = ST_GODFACE;
           st_facecount = 1;
 
         }
@@ -686,13 +669,15 @@ static void ST_updateFaceWidget(void)
   // look left or look right if the facecount has timed out
   if (!st_facecount)
     {
-      st_faceindex = ST_calcPainOffset() + (st_randomnumber % 3);
+      faceindex = st_randomnumber % 3;
       st_facecount = ST_STRAIGHTFACECOUNT;
       priority = 0;
     }
 
   st_facecount--;
 
+  // [crispy] fix status bar face hysteresis
+  st_faceindex = painoffset + faceindex;
 }
 
 int sts_traditional_keys; // killough 2/28/98: traditional status bar keys
@@ -750,22 +735,19 @@ static void ST_updateWidgets(void)
   st_fragson = deathmatch && st_statusbaron;
   st_fragscount = 0;
 
-  for (i=0 ; i<MAXPLAYERS ; i++)
+  for (i = 0; i < g_maxplayers; i++)
     {
       if (i != displayplayer)            // killough 3/7/98
         st_fragscount += plyr->frags[i];
       else
         st_fragscount -= plyr->frags[i];
     }
-
-  // get rid of chat window if up because of message
-  if (!--st_msgcounter)
-    st_chat = st_oldchat;
-
 }
 
 void ST_Ticker(void)
 {
+  if (raven) return SB_Ticker();
+
   st_clock++;
   st_randomnumber = M_Random();
   ST_updateWidgets();
@@ -777,9 +759,9 @@ int st_palette = 0;
 static void ST_doPaletteStuff(void)
 {
   int         palette;
-  int cnt = palette_ondamage ? plyr->damagecount : 0;
+  int cnt = dsda_PainPalette() ? plyr->damagecount : 0;
 
-  if (palette_onpowers && plyr->powers[pw_strength])
+  if (dsda_PowerPalette() && plyr->powers[pw_strength])
     {
       // slowly fade the berzerk out
       int bzc = 12 - (plyr->powers[pw_strength]>>6);
@@ -789,18 +771,29 @@ static void ST_doPaletteStuff(void)
 
   if (cnt)
     {
-      palette = (cnt+7)>>3;
-      if (palette >= NUMREDPALS)
-        palette = NUMREDPALS-1;
+      // In Chex Quest, the player never sees red.  Instead, the
+      // radiation suit palette is used to tint the screen green,
+      // as though the player is being covered in goo by an
+      // attacking flemoid.
+      if (gamemission == tc_chex)
+      {
+        palette = RADIATIONPAL;
+      }
+      else
+      {
+        palette = (cnt+7)>>3;
+        if (palette >= NUMREDPALS)
+          palette = NUMREDPALS-1;
 
-      /* cph 2006/08/06 - if in the menu, reduce the red tint - navigating to
-       * load a game can be tricky if the screen is all red */
-      if (menuactive) palette >>=1;
+        /* cph 2006/08/06 - if in the menu, reduce the red tint - navigating to
+         * load a game can be tricky if the screen is all red */
+        if (menuactive) palette >>=1;
 
-      palette += STARTREDPALS;
+        palette += STARTREDPALS;
+      }
     }
   else
-    if (palette_onbonus && plyr->bonuscount)
+    if (dsda_BonusPalette() && plyr->bonuscount)
       {
         palette = (plyr->bonuscount+7)>>3;
         if (palette >= NUMBONUSPALS)
@@ -808,42 +801,46 @@ static void ST_doPaletteStuff(void)
         palette += STARTBONUSPALS;
       }
     else
-      if (palette_onpowers && (plyr->powers[pw_ironfeet] > 4*32 || plyr->powers[pw_ironfeet] & 8))
+      if (dsda_PowerPalette() && (plyr->powers[pw_ironfeet] > 4*32 || plyr->powers[pw_ironfeet] & 8))
         palette = RADIATIONPAL;
       else
         palette = 0;
 
-  // In Chex Quest, the player never sees red.  Instead, the
-  // radiation suit palette is used to tint the screen green,
-  // as though the player is being covered in goo by an
-  // attacking flemoid.
-
-  if (palette_onpowers && gamemission == chex
-    && palette >= STARTREDPALS && palette < STARTREDPALS + NUMREDPALS)
-  {
-    palette = RADIATIONPAL;
-  }
-
   if (palette != st_palette) {
     V_SetPalette(st_palette = palette); // CPhipps - use new palette function
-
-    // have to redraw the entire status bar when the palette changes
-    // in truecolor modes - POPE
-    if (V_GetMode() == VID_MODE15 || V_GetMode() == VID_MODE16 || V_GetMode() == VID_MODE32)
-      st_firsttime = true;
   }
 }
 
 void M_ChangeApplyPalette(void)
 {
-  if (gamestate == GS_LEVEL)
-    ST_doPaletteStuff();
+  st_palette = -1;
+
+  if (in_game && gamestate == GS_LEVEL)
+  {
+    if (raven)
+      SB_PaletteFlash(true);
+    else
+      ST_doPaletteStuff();
+  }
+  else
+    V_SetPalette(0);
+}
+
+int ST_HealthColor(int health)
+{
+  if (health < hud_health_red)
+    return cr_health_bad;
+  else if (health < hud_health_yellow)
+    return cr_health_warning;
+  else if (health <= hud_health_green)
+    return cr_health_ok;
+  else
+    return cr_health_super;
 }
 
 static void ST_drawWidgets(dboolean refresh)
 {
   int i;
-  int ammopct = 0;
 
   // used by w_arms[] widgets
   st_armson = st_statusbaron && !deathmatch;
@@ -852,64 +849,35 @@ static void ST_drawWidgets(dboolean refresh)
   st_fragson = deathmatch && st_statusbaron;
 
   //jff 2/16/98 make color of ammo depend on amount
-  if ((*w_ready.num == plyr->maxammo[weaponinfo[w_ready.data].ammo]) ||
-    (ammo_colour_behaviour == ammo_colour_behaviour_no && plyr->backpack &&
-    *w_ready.num*2 >= plyr->maxammo[weaponinfo[w_ready.data].ammo]))
-    STlib_updateNum(&w_ready, CR_BLUE2, refresh);
+  if (*w_ready.num == plyr->maxammo[weaponinfo[w_ready.data].ammo])
+    STlib_updateNum(&w_ready, cr_ammo_full, refresh);
   else {
-    if (plyr->maxammo[weaponinfo[w_ready.data].ammo])
-      ammopct = (*w_ready.num*100)/plyr->maxammo[weaponinfo[w_ready.data].ammo];
-    if (plyr->backpack && ammo_colour_behaviour != ammo_colour_behaviour_yes)
-      ammopct *= 2;
-    if (ammopct < ammo_red)
-      STlib_updateNum(&w_ready, CR_RED, refresh);
+    int ammopct = P_AmmoPercent(plyr, w_ready.data);
+
+    if (ammopct < hud_ammo_red)
+      STlib_updateNum(&w_ready, cr_ammo_bad, refresh);
+    else if (ammopct < hud_ammo_yellow)
+      STlib_updateNum(&w_ready, cr_ammo_warning, refresh);
     else
-      if (ammopct < ammo_yellow)
-        STlib_updateNum(&w_ready, CR_GOLD, refresh);
-      else
-        STlib_updateNum(&w_ready, CR_GREEN, refresh);
+      STlib_updateNum(&w_ready, cr_ammo_ok, refresh);
   }
-  for (i=0;i<4;i++)
-    {
-      STlib_updateNum(&w_ammo[i], CR_DEFAULT, refresh);   //jff 2/16/98 no xlation
-      STlib_updateNum(&w_maxammo[i], CR_DEFAULT, refresh);
-    }
+
+  for (i = 0; i < 4; i++)
+  {
+    STlib_updateNum(&w_ammo[i], CR_DEFAULT, refresh);   //jff 2/16/98 no xlation
+    STlib_updateNum(&w_maxammo[i], CR_DEFAULT, refresh);
+  }
 
   //jff 2/16/98 make color of health depend on amount
-  if (*w_health.n.num<health_red)
-    STlib_updatePercent(&w_health, CR_RED, refresh);
-  else if (*w_health.n.num<health_yellow)
-    STlib_updatePercent(&w_health, CR_GOLD, refresh);
-  else if (*w_health.n.num<=health_green)
-    STlib_updatePercent(&w_health, CR_GREEN, refresh);
-  else
-    STlib_updatePercent(&w_health, CR_BLUE2, refresh); //killough 2/28/98
+  STlib_updatePercent(&w_health, ST_HealthColor(*w_health.n.num), refresh);
 
-  if (sts_armorcolor_type)
-  {
   // armor color dictated by type (Status Bar)
   if (plyr->armortype >= 2)
-    STlib_updatePercent(&w_armor, CR_BLUE2, refresh);
+    STlib_updatePercent(&w_armor, cr_armor_two, refresh);
   else if (plyr->armortype == 1)
-    STlib_updatePercent(&w_armor, CR_GREEN, refresh);
+    STlib_updatePercent(&w_armor, cr_armor_one, refresh);
   else if (plyr->armortype == 0)
-    STlib_updatePercent(&w_armor, CR_RED, refresh);
-  }
-  else
-  {
-  //jff 2/16/98 make color of armor depend on amount
-  if (*w_armor.n.num<armor_red)
-    STlib_updatePercent(&w_armor, CR_RED, refresh);
-  else if (*w_armor.n.num<armor_yellow)
-    STlib_updatePercent(&w_armor, CR_GOLD, refresh);
-  else if (*w_armor.n.num<=armor_green)
-    STlib_updatePercent(&w_armor, CR_GREEN, refresh);
-  else
-    STlib_updatePercent(&w_armor, CR_BLUE2, refresh); //killough 2/28/98
-  }
-
-  //e6y: moved to ST_refreshBackground() for correct single-pass stretching
-  //STlib_updateBinIcon(&w_armsbg, refresh);
+    STlib_updatePercent(&w_armor, cr_armor_zero, refresh);
 
   for (i=0;i<6;i++)
     STlib_updateMultIcon(&w_arms[i], refresh);
@@ -929,38 +897,48 @@ void ST_SetResolution(void)
   R_FillBackScreen();
 }
 
-void ST_Drawer(dboolean statusbaron, dboolean refresh, dboolean fullmenu)
+void ST_Refresh(void)
 {
+  st_firsttime = true;
+}
+
+void ST_Drawer(dboolean refresh)
+{
+  dboolean statusbaron = R_StatusBarVisible();
+
+  V_BeginUIDraw();
+
+  if (raven)
+  {
+    SB_Drawer(statusbaron, refresh);
+    V_EndUIDraw();
+    return;
+  }
+
   /* cph - let status bar on be controlled
    * completely by the call from D_Display
    * proff - really do it
    */
-  st_firsttime = st_firsttime || refresh || fullmenu;
+  st_firsttime = st_firsttime || refresh;
 
   ST_doPaletteStuff();  // Do red-/gold-shifts from damage/items
 
-  // Boom3DS Dualscreen: Status bar is exclusively drawn on bottom screen!
-  // Top screen must always remain full widescreen 3D view.
-  st_statusbaron = false;
-  statusbaron = false;
-  return;
-
   if (statusbaron) {
-    if (st_firsttime || (V_GetMode() == VID_MODEGL))
+    if (st_firsttime || (V_IsOpenGLMode() || fadeBG()))
     {
       /* If just after ST_Start(), refresh all */
       st_firsttime = false;
       ST_refreshBackground(); // draw status bar background to off-screen buff
-      if (!fullmenu)
-        ST_drawWidgets(true); // and refresh all widgets
+      ST_drawWidgets(true); // and refresh all widgets
     }
     else
     {
       /* Otherwise, update as little as possible */
-      if (!fullmenu)
-        ST_drawWidgets(false); // update all widgets
+      ST_drawWidgets(false); // update all widgets
     }
   }
+
+  V_EndUIDraw();
 }
 
 
@@ -968,10 +946,9 @@ void ST_Drawer(dboolean statusbaron, dboolean refresh, dboolean fullmenu)
 //
 // ST_loadGraphics
 //
-// CPhipps - Loads graphics needed for status bar if doload is true,
-//  unloads them otherwise
+// CPhipps - Loads graphics needed for status bar
 //
-static void ST_loadGraphics(dboolean doload)
+static void ST_loadGraphics(void)
 {
   int  i, facenum;
   char namebuf[9];
@@ -981,7 +958,7 @@ static void ST_loadGraphics(dboolean doload)
   // Load the numbers, tall and short
   for (i=0;i<10;i++)
     {
-      sprintf(namebuf, "STTNUM%d", i);
+      snprintf(namebuf, sizeof(namebuf), "STTNUM%d", i);
       R_SetPatchNum(&tallnum[i],namebuf);
       snprintf(namebuf, sizeof(namebuf), "STYSNUM%d", i);
       R_SetPatchNum(&shortnum[i],namebuf);
@@ -991,23 +968,15 @@ static void ST_loadGraphics(dboolean doload)
   R_SetPatchNum(&tallpercent,"STTPRCNT");
 
   // key cards
-  for (i=0;i<NUMCARDS+3;i++)  //jff 2/23/98 show both keys too
+  for (i=0;i<DOOM_NUMCARDS+3;i++)  //jff 2/23/98 show both keys too
     {
-      sprintf(namebuf, "STKEYS%d", i);
+      snprintf(namebuf, sizeof(namebuf), "STKEYS%d", i);
       R_SetPatchNum(&keys[i], namebuf);
     }
 
   //e6y: status bar background
   R_SetPatchNum(&stbarbg, "STBAR");
-  R_SetFloorNum(&grnrock, (gamemode == commercial ? "GRNROCK" : "FLOOR7_2"));
-  R_SetPatchNum(&brdr_t, "brdr_t");
   R_SetPatchNum(&brdr_b, "brdr_b");
-  R_SetPatchNum(&brdr_l, "brdr_l");
-  R_SetPatchNum(&brdr_r, "brdr_r");
-  R_SetPatchNum(&brdr_tl, "brdr_tl");
-  R_SetPatchNum(&brdr_tr, "brdr_tr");
-  R_SetPatchNum(&brdr_bl, "brdr_bl");
-  R_SetPatchNum(&brdr_br, "brdr_br");
 
   // arms background
   R_SetPatchNum(&armsbg, "STARMS");
@@ -1015,7 +984,7 @@ static void ST_loadGraphics(dboolean doload)
   // arms ownership widgets
   for (i=0;i<6;i++)
     {
-      sprintf(namebuf, "STGNUM%d", i+2);
+      snprintf(namebuf, sizeof(namebuf), "STGNUM%d", i+2);
 
       // gray #
       R_SetPatchNum(&arms[i][0], namebuf);
@@ -1036,18 +1005,18 @@ static void ST_loadGraphics(dboolean doload)
       int j;
       for (j=0;j<ST_NUMSTRAIGHTFACES;j++)
         {
-          sprintf(namebuf, "STFST%d%d", i, j);
+          snprintf(namebuf, sizeof(namebuf), "STFST%d%d", i, j);
           R_SetPatchNum(&faces[facenum++], namebuf);
         }
-      sprintf(namebuf, "STFTR%d0", i);        // turn right
+      snprintf(namebuf, sizeof(namebuf), "STFTR%d0", i);        // turn right
       R_SetPatchNum(&faces[facenum++], namebuf);
-      sprintf(namebuf, "STFTL%d0", i);        // turn left
+      snprintf(namebuf, sizeof(namebuf), "STFTL%d0", i);        // turn left
       R_SetPatchNum(&faces[facenum++], namebuf);
-      sprintf(namebuf, "STFOUCH%d", i);       // ouch!
+      snprintf(namebuf, sizeof(namebuf), "STFOUCH%d", i);       // ouch!
       R_SetPatchNum(&faces[facenum++], namebuf);
-      sprintf(namebuf, "STFEVL%d", i);        // evil grin ;)
+      snprintf(namebuf, sizeof(namebuf), "STFEVL%d", i);        // evil grin ;)
       R_SetPatchNum(&faces[facenum++], namebuf);
-      sprintf(namebuf, "STFKILL%d", i);       // pissed off
+      snprintf(namebuf, sizeof(namebuf), "STFKILL%d", i);       // pissed off
       R_SetPatchNum(&faces[facenum++], namebuf);
     }
   R_SetPatchNum(&faces[facenum++], "STFGOD0");
@@ -1055,16 +1024,8 @@ static void ST_loadGraphics(dboolean doload)
 
   // [FG] support widescreen status bar backgrounds
   ST_SetScaledWidth();
-}
 
-static void ST_loadData(void)
-{
-  ST_loadGraphics(true);
-}
-
-static void ST_unloadData(void)
-{
-  ST_loadGraphics(false);
+  ST_LoadTextColors();
 }
 
 static void ST_initData(void)
@@ -1075,13 +1036,10 @@ static void ST_initData(void)
   plyr = &players[displayplayer];            // killough 3/7/98
 
   st_clock = 0;
-  st_chatstate = StartChatState;
-  st_gamestate = FirstPersonState;
 
   st_statusbaron = true;
-  st_oldchat = st_chat = false;
-  st_cursoron = false;
 
+  faceindex = 0; // [crispy] fix status bar face hysteresis across level changes
   st_faceindex = 0;
   st_palette = -1;
 
@@ -1121,14 +1079,6 @@ static void ST_createWidgets(void)
                     &st_statusbaron,
                     &tallpercent);
 
-  // arms background
-  STlib_initBinIcon(&w_armsbg,
-                    ST_ARMSBGX,
-                    ST_ARMSBGY,
-                    &armsbg,
-                    &st_notdeathmatch,
-                    &st_statusbaron);
-
   // weapons owned
   for(i=0;i<6;i++)
     {
@@ -1161,7 +1111,7 @@ static void ST_createWidgets(void)
                     ST_ARMORX,
                     ST_ARMORY,
                     tallnum,
-                    &plyr->armorpoints,
+                    &plyr->armorpoints[ARMOR_ARMOR],
                     &st_statusbaron, &tallpercent);
 
   // keyboxes 0-2
@@ -1257,6 +1207,8 @@ static dboolean st_stopped = true;
 
 void ST_Start(void)
 {
+  if (raven) return SB_Start();
+
   if (!st_stopped)
     ST_Stop();
   ST_initData();
@@ -1274,6 +1226,8 @@ static void ST_Stop(void)
 
 void ST_Init(void)
 {
+  if (raven) return SB_Init();
+
   veryfirsttime = 0;
-  ST_loadData();
+  ST_loadGraphics();
 }

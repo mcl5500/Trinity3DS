@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -32,16 +32,21 @@
  *-----------------------------------------------------------------------------
  */
 
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include "z_zone.h"
 #include "doomdef.h"
 #include "i_video.h"
 #include "v_video.h"
 #include "m_random.h"
 #include "f_wipe.h"
-#ifdef GL_DOOM
 #include "gl_struct.h"
-#endif
 #include "e6y.h"//e6y
+
+#include "dsda/settings.h"
 
 //
 // SCREEN WIPE PACKAGE
@@ -64,22 +69,22 @@ static int *y_lookup = NULL;
 // e6y: resolution limitation is removed
 void R_InitMeltRes(void)
 {
-  if (y_lookup) free(y_lookup);
+  if (y_lookup) Z_Free(y_lookup);
 
-  y_lookup = calloc(1, SCREENWIDTH * sizeof(*y_lookup));
+  y_lookup = Z_Calloc(1, SCREENWIDTH * sizeof(*y_lookup));
 }
 
 static int wipe_initMelt(int ticks)
 {
   int i;
 
-  if (V_GetMode() != VID_MODEGL)
+  if (V_IsSoftwareMode())
   {
     // copy start screen to main screen
     for(i=0;i<SCREENHEIGHT;i++)
-    memcpy(wipe_scr.data+i*wipe_scr.byte_pitch,
-           wipe_scr_start.data+i*wipe_scr_start.byte_pitch,
-           SCREENWIDTH*V_GetPixelDepth());
+    memcpy(wipe_scr.data+i*wipe_scr.pitch,
+           wipe_scr_start.data+i*wipe_scr_start.pitch,
+           SCREENWIDTH);
   }
 
   // setup initial column positions (y<0 => not ready to scroll yet)
@@ -97,11 +102,10 @@ static int wipe_initMelt(int ticks)
   return 0;
 }
 
-static int wipe_doMelt(int ticks, int num_eyes)
+static int wipe_doMelt(int ticks)
 {
   dboolean done = true;
   int i;
-  const int depth = V_GetPixelDepth();
 
   while (ticks--) {
     for (i=0;i<(SCREENWIDTH);i++) {
@@ -112,7 +116,7 @@ static int wipe_doMelt(int ticks, int num_eyes)
       }
       if (y_lookup[i] < SCREENHEIGHT) {
         byte *s, *d;
-        int j, k, dy;
+        int j, dy;
 
         /* cph 2001/07/29 -
           *  The original melt rate was 8 pixels/sec, i.e. 25 frames to melt
@@ -123,46 +127,33 @@ static int wipe_doMelt(int ticks, int num_eyes)
         if (y_lookup[i]+dy >= SCREENHEIGHT)
           dy = SCREENHEIGHT - y_lookup[i];
 
-       if (V_GetMode() != VID_MODEGL) {
-        s = wipe_scr_end.data    + (y_lookup[i]*wipe_scr_end.byte_pitch+(i*depth));
-        d = wipe_scr.data        + (y_lookup[i]*wipe_scr.byte_pitch+(i*depth));
+       if (V_IsSoftwareMode()) {
+        s = wipe_scr_end.data    + (y_lookup[i]*wipe_scr_end.pitch+i);
+        d = wipe_scr.data        + (y_lookup[i]*wipe_scr.pitch+i);
         for (j=dy;j;j--) {
-          for (k=0; k<depth; k++)
-            d[k] = s[k];
-          d += wipe_scr.byte_pitch;
-          s += wipe_scr_end.byte_pitch;
+          d[0] = s[0];
+          d += wipe_scr.pitch;
+          s += wipe_scr_end.pitch;
         }
        }
         y_lookup[i] += dy;
-       if (V_GetMode() != VID_MODEGL) {
-        s = wipe_scr_start.data  + (i*depth);
-        d = wipe_scr.data        + (y_lookup[i]*wipe_scr.byte_pitch+(i*depth));
+       if (V_IsSoftwareMode()) {
+        s = wipe_scr_start.data  + i;
+        d = wipe_scr.data        + (y_lookup[i]*wipe_scr.pitch+i);
         for (j=SCREENHEIGHT-y_lookup[i];j;j--) {
-          for (k=0; k<depth; k++)
-            d[k] = s[k];
-          d += wipe_scr.byte_pitch;
-          s += wipe_scr_end.byte_pitch;
+          d[0] = s[0];
+          d += wipe_scr.pitch;
+          s += wipe_scr_end.pitch;
         }
        }
         done = false;
       }
     }
   }
-#ifdef GL_DOOM
-  if (V_GetMode() == VID_MODEGL)
+  if (V_IsOpenGLMode())
   {
-    // Stereoscopic 3D
-    for(int i = 0; i < num_eyes; i++) {
-#ifdef __3DS__
-      if(i == 0) // Left eye
-        gl_wrapper_select_screen(GFX_LEFT);
-      else if(i == 1) // Right eye
-        gl_wrapper_select_screen(GFX_RIGHT);
-#endif
-      gld_wipe_doMelt(ticks, y_lookup);
-    }
+    gld_wipe_doMelt(ticks, y_lookup);
   }
-#endif
   return done;
 }
 
@@ -170,13 +161,11 @@ static int wipe_doMelt(int ticks, int num_eyes)
 
 static int wipe_exitMelt(int ticks)
 {
-#ifdef GL_DOOM
-  if (V_GetMode() == VID_MODEGL)
+  if (V_IsOpenGLMode())
   {
     gld_wipe_exitMelt(ticks);
     return 0;
   }
-#endif
 
   V_FreeScreen(&wipe_scr_start);
   wipe_scr_start.width = 0;
@@ -192,81 +181,77 @@ static int wipe_exitMelt(int ticks)
 
 int wipe_StartScreen(void)
 {
-  if(!render_wipescreen||wasWiped) return 0;//e6y
+  if(dsda_PendingSkipWipe() || wasWiped) return 0;//e6y
   wasWiped = true;//e6y
 
-#ifdef GL_DOOM
-  if (V_GetMode() == VID_MODEGL)
+  if (V_IsOpenGLMode())
   {
     gld_wipe_StartScreen();
     return 0;
   }
-#endif
 
   wipe_scr_start.width = SCREENWIDTH;
   wipe_scr_start.height = SCREENHEIGHT;
-  wipe_scr_start.byte_pitch = screens[0].byte_pitch;
-  wipe_scr_start.short_pitch = screens[0].short_pitch;
-  wipe_scr_start.int_pitch = screens[0].int_pitch;
-  
+  wipe_scr_start.pitch = screens[0].pitch;
+
   //e6y: fixed slowdown at 1024x768 on some systems
-  if (!(wipe_scr_start.byte_pitch % 1024))
-    wipe_scr_start.byte_pitch += 32;
+  if (!(wipe_scr_start.pitch % 1024))
+    wipe_scr_start.pitch += 32;
 
   wipe_scr_start.not_on_heap = false;
   V_AllocScreen(&wipe_scr_start);
   screens[SRC_SCR] = wipe_scr_start;
-  V_CopyRect(0, SRC_SCR, 0, 0, SCREENWIDTH, SCREENHEIGHT, VPT_NONE); // Copy start screen to buffer
+  V_CopyScreen(0, SRC_SCR); // Copy start screen to buffer
   return 0;
 }
 
 int wipe_EndScreen(void)
 {
-  if(!render_wipescreen||!wasWiped) return 0;//e6y
+  if(dsda_PendingSkipWipe() || !wasWiped) return 0;//e6y
   wasWiped = false;//e6y
 
-#ifdef GL_DOOM
-  if (V_GetMode() == VID_MODEGL)
+  if (V_IsOpenGLMode())
   {
     gld_wipe_EndScreen();
     return 0;
   }
-#endif
 
   wipe_scr_end.width = SCREENWIDTH;
   wipe_scr_end.height = SCREENHEIGHT;
-  wipe_scr_end.byte_pitch = screens[0].byte_pitch;
-  wipe_scr_end.short_pitch = screens[0].short_pitch;
-  wipe_scr_end.int_pitch = screens[0].int_pitch;
+  wipe_scr_end.pitch = screens[0].pitch;
 
   //e6y: fixed slowdown at 1024x768 on some systems
-  if (!(wipe_scr_end.byte_pitch % 1024))
-    wipe_scr_end.byte_pitch += 32;
+  if (!(wipe_scr_end.pitch % 1024))
+    wipe_scr_end.pitch += 32;
 
   wipe_scr_end.not_on_heap = false;
   V_AllocScreen(&wipe_scr_end);
   screens[DEST_SCR] = wipe_scr_end;
-  V_CopyRect(0, DEST_SCR, 0, 0, SCREENWIDTH, SCREENHEIGHT, VPT_NONE); // Copy end screen to buffer
-  V_CopyRect(SRC_SCR, 0, 0, 0, SCREENWIDTH, SCREENHEIGHT, VPT_NONE); // restore start screen
+  V_CopyScreen(0, DEST_SCR); // Copy end screen to buffer
+  V_CopyScreen(SRC_SCR, 0); // restore start screen
   return 0;
 }
 
 // killough 3/5/98: reformatted and cleaned up
-int wipe_ScreenWipe(int ticks, int num_eyes)
+int wipe_ScreenWipe(int ticks)
 {
   static dboolean go;                               // when zero, stop the wipe
-  if(!render_wipescreen) return 0;//e6y
+
+  if (!dsda_RenderWipeScreen())
+    return 0;//e6y
+
   if (!go)                                         // initial stuff
-    {
-      go = 1;
-      wipe_scr = screens[0];
-      wipe_initMelt(ticks);
-    }
+  {
+    go = 1;
+    wipe_scr = screens[0];
+    wipe_initMelt(ticks);
+  }
+
   // do a piece of wipe-in
-  if (wipe_doMelt(ticks, num_eyes))     // final stuff
-    {
-      wipe_exitMelt(ticks);
-      go = 0;
-    }
+  if (wipe_doMelt(ticks))     // final stuff
+  {
+    wipe_exitMelt(ticks);
+    go = 0;
+  }
   return !go;
 }

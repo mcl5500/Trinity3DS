@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -36,14 +36,24 @@
 #ifndef __D_ENGLSH__
 #define __D_ENGLSH__
 
-/* d_main.c */
-#define D_DEVSTR    "Development mode ON.\n"
-#define D_CDROM     "CD-ROM Version: default.cfg from c:\\doomdata\n"
-
 /* m_menu.c */
 #define PRESSKEY    "press a key."
 #define PRESSYN     "press y or n."
 #define QUITMSG     "are you sure you want to\nquit this great game?"
+#define QUITMSG1    "please don't leave, there's more\ndemons to toast!"
+#define QUITMSG2    "let's beat it -- this is turning\ninto a bloodbath!"
+#define QUITMSG3    "i wouldn't leave if i were you.\ndos is much worse."
+#define QUITMSG4    "you're trying to say you like dos\nbetter than me, right?"
+#define QUITMSG5    "don't leave yet -- there's a\ndemon around that corner!"
+#define QUITMSG6    "ya know, next time you come in here\ni'm gonna toast ya."
+#define QUITMSG7    "go ahead and leave. see if i care."
+#define QUITMSG8    "you want to quit?\nthen, thou hast lost an eighth!"
+#define QUITMSG9    "don't go now, there's a \ndimensional shambler waiting\nat the dos prompt!"
+#define QUITMSG10   "get outta here and go back\nto your boring programs."
+#define QUITMSG11   "if i were your boss, i'd \n deathmatch ya in a minute!"
+#define QUITMSG12   "look, bud. you leave now\nand you forfeit your body count!"
+#define QUITMSG13   "just leave. when you come\nback, i'll be waiting with a bat."
+#define QUITMSG14   "you're lucky i don't smack\nyou for thinking about leaving."
 #define LOADNET     "you can't do load while in a net game!\n\n"PRESSKEY
 #define QLOADNET    "you can't quickload during a netgame!\n\n"PRESSKEY
 #define QSAVESPOT   "you haven't picked a quicksave slot yet!\n\n"PRESSKEY
@@ -122,6 +132,9 @@
 #define GOTPLASMA   "You got the plasma gun!"
 #define GOTSHOTGUN  "You got the shotgun!"
 #define GOTSHOTGUN2 "You got the super shotgun!"
+
+#define BETA_BONUS3 "Picked up an evil sceptre."
+#define BETA_BONUS4 "Picked up an unholy bible."
 
 /* p_doors.c */
 #define PD_BLUEO    "You need a blue key to activate this object"
@@ -296,38 +309,6 @@
 #define THUSTR_31   "level 31: pharaoh"
 #define THUSTR_32   "level 32: caribbean"
 
-#define HUSTR_CHATMACRO1  "I'm ready to kick butt!"
-#define HUSTR_CHATMACRO2  "I'm OK."
-#define HUSTR_CHATMACRO3  "I'm not looking too good!"
-#define HUSTR_CHATMACRO4  "Help!"
-#define HUSTR_CHATMACRO5  "You suck!"
-#define HUSTR_CHATMACRO6  "Next time, scumbag..."
-#define HUSTR_CHATMACRO7  "Come here!"
-#define HUSTR_CHATMACRO8  "I'll take care of it."
-#define HUSTR_CHATMACRO9  "Yes"
-#define HUSTR_CHATMACRO0  "No"
-
-#define HUSTR_TALKTOSELF1 "You mumble to yourself"
-#define HUSTR_TALKTOSELF2 "Who's there?"
-#define HUSTR_TALKTOSELF3 "You scare yourself"
-#define HUSTR_TALKTOSELF4 "You start to rave"
-#define HUSTR_TALKTOSELF5 "You've lost it..."
-
-#define HUSTR_MESSAGESENT "[Message Sent]"
-
-/* The following should NOT be changed unless it seems
- * just AWFULLY necessary */
-
-#define HUSTR_PLRGREEN    "Player 1: "
-#define HUSTR_PLRINDIGO   "Player 2: "
-#define HUSTR_PLRBROWN    "Player 3: "
-#define HUSTR_PLRRED      "Player 4: "
-
-#define HUSTR_KEYGREEN    'g'
-#define HUSTR_KEYINDIGO   'i'
-#define HUSTR_KEYBROWN    'b'
-#define HUSTR_KEYRED      'r'
-
 /* am_map.c */
 
 #define AMSTR_FOLLOWON    "Follow Mode ON"
@@ -369,6 +350,9 @@
 
 #define STSTR_COMPON    "Compatibility Mode On"            /* phares */
 #define STSTR_COMPOFF   "Compatibility Mode Off"           /* phares */
+
+// secret messages
+#define HUSTR_SECRETFOUND "A secret is revealed!"
 
 /* f_finale.c */
 

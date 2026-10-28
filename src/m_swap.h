@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -35,11 +35,7 @@
 #ifndef __M_SWAP__
 #define __M_SWAP__
 
-#ifdef __GNUG__
-#pragma interface
-#endif
-
-/* CPhipps - now the endianness handling, converting input or output to/from 
+/* CPhipps - now the endianness handling, converting input or output to/from
  * the machine's endianness to that wanted for this type of I/O
  *
  * To find our own endianness, use config.h
@@ -88,11 +84,11 @@
 #ifndef doom_swap_s
 #define doom_swap_s(x) \
         ((short int)((((unsigned short int)(x) & 0x00ff) << 8) | \
-                              (((unsigned short int)(x) & 0xff00) >> 8))) 
+                              (((unsigned short int)(x) & 0xff00) >> 8)))
 #endif
 
-/* Macros are named doom_XtoYT, where 
- * X is thing to convert from, Y is thing to convert to, chosen from 
+/* Macros are named doom_XtoYT, where
+ * X is thing to convert from, Y is thing to convert to, chosen from
  * n for network, h for host (i.e our machine's), w for WAD (Doom data files)
  * and T is the type, l or s for long or short
  *

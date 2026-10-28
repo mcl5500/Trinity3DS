@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -32,13 +32,14 @@
  *-----------------------------------------------------------------------------*/
 
 #include "doomstat.h"
+#include "am_map.h"
 #include "g_game.h"
 #include "r_data.h"
 #include "p_inter.h"
 #include "p_tick.h"
 #include "m_cheat.h"
-#include "m_argv.h"
 #include "s_sound.h"
+#include "s_advsound.h"
 #include "sounds.h"
 #include "dstrings.h"
 #include "r_main.h"
@@ -46,13 +47,27 @@
 #include "d_deh.h"  // Ty 03/27/98 - externalized strings
 /* cph 2006/07/23 - needs direct access to thinkercap */
 #include "p_tick.h"
-#include "e6y.h" // G_GotoNextLevel()
-#include "w_wad.h" // W_GetLumpInfoByNum()
+#include "w_wad.h"
+#include "p_setup.h"
+#include "p_user.h"
+#include "lprintf.h"
+
+#include "heretic/def.h"
+#include "heretic/sb_bar.h"
+
+#include "dsda.h"
+#include "dsda/configuration.h"
+#include "dsda/excmd.h"
+#include "dsda/exhud.h"
+#include "dsda/features.h"
+#include "dsda/input.h"
+#include "dsda/map_format.h"
+#include "dsda/mapinfo.h"
+#include "dsda/messenger.h"
+#include "dsda/settings.h"
+#include "dsda/skill_info.h"
 
 #define plyr (players+consoleplayer)     /* the console player */
-
-//e6y: for speedup
-static int boom_cheat_route[MAX_COMPATIBILITY_LEVEL];
 
 //-----------------------------------------------------------------------------
 //
@@ -60,43 +75,59 @@ static int boom_cheat_route[MAX_COMPATIBILITY_LEVEL];
 //
 //-----------------------------------------------------------------------------
 
-static void cheat_mus();
+static void cheat_mus(char buf[3]);
 static void cheat_choppers();
 static void cheat_god();
 static void cheat_fa();
 static void cheat_k();
 static void cheat_kfa();
 static void cheat_noclip();
-static void cheat_pw();
+static void cheat_pw(int pw);
 static void cheat_behold();
-static void cheat_clev();
 static void cheat_clev0();
+static void cheat_clev(char buf[3]);
 static void cheat_mypos();
 static void cheat_rate();
-static void cheat_comp();
+static void cheat_comp0();
+static void cheat_comp(char buf[3]);
+static void cheat_skill0();
+static void cheat_skill(char buf[1]);
 static void cheat_friction();
 static void cheat_pushers();
-static void cheat_tnttran();
 static void cheat_massacre();
 static void cheat_ddt();
+static void cheat_reveal_secret();
+static void cheat_reveal_kill();
+static void cheat_reveal_item();
 static void cheat_hom();
 static void cheat_fast();
 static void cheat_tntkey();
 static void cheat_tntkeyx();
-static void cheat_tntkeyxx();
+static void cheat_tntkeyxx(int key);
 static void cheat_tntweap();
-static void cheat_tntweapx();
+static void cheat_tntweapx(char buf[3]);
 static void cheat_tntammo();
-static void cheat_tntammox();
+static void cheat_tntammox(char buf[1]);
 static void cheat_smart();
 static void cheat_pitch();
 static void cheat_megaarmour();
 static void cheat_health();
 static void cheat_notarget();
+static void cheat_freeze();
 static void cheat_fly();
-static void cheat_skill();
-static void cheat_comp_ext();
-static void cheat_shorttics();
+
+// heretic
+static void cheat_reset_health();
+static void cheat_tome();
+static void cheat_chicken();
+static void cheat_artifact(char buf[3]);
+
+// hexen
+static void cheat_inventory();
+static void cheat_puzzle();
+static void cheat_class(char buf[2]);
+static void cheat_init();
+static void cheat_script(char buf[3]);
 
 //-----------------------------------------------------------------------------
 //
@@ -106,8 +137,7 @@ static void cheat_shorttics();
 //
 // The second argument is its DEH name, or NULL if it's not supported by -deh.
 //
-// The third argument is a combination of the bitmasks:
-// {always, not_dm, not_coop, not_net, not_menu, not_demo, not_deh},
+// The third argument is a combination of the bitmasks,
 // which excludes the cheat during certain modes of play.
 //
 // The fourth argument is the handler function.
@@ -120,86 +150,109 @@ static void cheat_shorttics();
 //-----------------------------------------------------------------------------
 
 cheatseq_t cheat[] = {
-  CHEAT("idmus",      "Change music",     always, cheat_mus, -2),
-  CHEAT("idchoppers", "Chainsaw",         cht_never, cheat_choppers, 0),
-  CHEAT("iddqd",      "God mode",         cht_never, cheat_god, 0),
-  CHEAT("idkfa",      "Ammo & Keys",      cht_never, cheat_kfa, 0),
-  CHEAT("idfa",       "Ammo",             cht_never, cheat_fa, 0),
-  CHEAT("idspispopd", "No Clipping 1",    cht_never, cheat_noclip, 0),
-  CHEAT("idclip",     "No Clipping 2",    cht_never, cheat_noclip, 0),
-  CHEAT("idbeholdh",  "Invincibility",    cht_never, cheat_health, 0),
-  CHEAT("idbeholdm",  "Invincibility",    cht_never, cheat_megaarmour, 0),
-  CHEAT("idbeholdv",  "Invincibility",    cht_never, cheat_pw, pw_invulnerability),
-  CHEAT("idbeholds",  "Berserk",          cht_never, cheat_pw, pw_strength),
-  CHEAT("idbeholdi",  "Invisibility",     cht_never, cheat_pw, pw_invisibility),
-  CHEAT("idbeholdr",  "Radiation Suit",   cht_never, cheat_pw, pw_ironfeet),
-  CHEAT("idbeholda",  "Auto-map",         not_dm, cheat_pw, pw_allmap),
-  CHEAT("idbeholdl",  "Lite-Amp Goggles", not_dm, cheat_pw, pw_infrared),
-  CHEAT("idbehold",   "BEHOLD menu",      not_dm, cheat_behold, 0),
-  CHEAT("idclev",     "Level Warp",       cht_never | not_menu, cheat_clev, -2),
-  CHEAT("idclev",     "Level Warp",       cht_never | not_menu, cheat_clev0, 0),
-  CHEAT("idmypos",    "Player Position",  not_dm, cheat_mypos, 0),
-  CHEAT("idrate",     "Frame rate",       always, cheat_rate, 0),
+  CHEAT("idmus",      "Change music",     cht_always, cheat_mus, -2, false),
+  CHEAT("idchoppers", "Chainsaw",         not_demo, cheat_choppers, 0, false),
+  CHEAT("iddqd",      "God mode",         not_classic_demo,  cheat_god, 0, false),
+  CHEAT("idkfa",      "Ammo & Keys",      not_demo, cheat_kfa, 0, false),
+  CHEAT("idfa",       "Ammo",             not_demo, cheat_fa, 0, false),
+  CHEAT("idspispopd", "No Clipping 1",    not_classic_demo,  cheat_noclip, 0, false),
+  CHEAT("idclip",     "No Clipping 2",    not_classic_demo,  cheat_noclip, 0, false),
+  CHEAT("idbeholdh",  "Invincibility",    not_demo, cheat_health, 0, false),
+  CHEAT("idbeholdm",  "Invincibility",    not_demo, cheat_megaarmour, 0, false),
+  CHEAT("idbeholdv",  "Invincibility",    not_demo, cheat_pw, pw_invulnerability, false),
+  CHEAT("idbeholds",  "Berserk",          not_demo, cheat_pw, pw_strength, false),
+  CHEAT("idbeholdi",  "Invisibility",     not_demo, cheat_pw, pw_invisibility, false),
+  CHEAT("idbeholdr",  "Radiation Suit",   not_demo, cheat_pw, pw_ironfeet, false),
+  CHEAT("idbeholda",  "Auto-map",         cht_always, cheat_pw, pw_allmap, false),
+  CHEAT("idbeholdl",  "Lite-Amp Goggles", cht_always, cheat_pw, pw_infrared, false),
+  CHEAT("idbehold",   "BEHOLD menu",      cht_always, cheat_behold, 0, false),
+  CHEAT("idclev",     "Level Warp",       not_demo | not_menu, cheat_clev, -2, false),
+  CHEAT("idclev",     "Level Warp",       not_demo | not_menu, cheat_clev0, 0, false),
+  CHEAT("idmypos",    NULL,               cht_always, cheat_mypos, 0, false),
+  CHEAT("idrate",     "Frame rate",       cht_always, cheat_rate, 0, false),
   // phares
-  CHEAT("tntcomp",    NULL,               cht_never, cheat_comp, 0),
+  CHEAT("tntcomp",    NULL,               not_demo, cheat_comp, -2, false),
+  CHEAT("tntcomp",    NULL,               not_demo, cheat_comp0, 0, false),
+  CHEAT("skill",      NULL,               not_demo, cheat_skill, -1, false),
+  CHEAT("skill",      NULL,               not_demo, cheat_skill0, 0, false),
   // jff 2/01/98 kill all monsters
-  CHEAT("tntem",      NULL,               cht_never, cheat_massacre, 0),
+  CHEAT("tntem",      NULL,               not_demo, cheat_massacre, 0, false),
   // killough 2/07/98: moved from am_map.c
-  CHEAT("iddt",       "Map cheat",        not_dm, cheat_ddt, 0),
+  CHEAT("iddt",       "Map cheat",        cht_always, cheat_ddt, 0, true),
+  CHEAT("iddst",      NULL,               cht_always, cheat_reveal_secret, 0, true),
+  CHEAT("iddkt",      NULL,               cht_always, cheat_reveal_kill, 0, true),
+  CHEAT("iddit",      NULL,               cht_always, cheat_reveal_item, 0, true),
   // killough 2/07/98: HOM autodetector
-  CHEAT("tnthom",     NULL,               always, cheat_hom, 0),
+  CHEAT("tnthom",     NULL,               cht_always, cheat_hom, 0, false),
   // killough 2/16/98: generalized key cheats
-  CHEAT("tntkey",     NULL,               cht_never, cheat_tntkey, 0),
-  CHEAT("tntkeyr",    NULL,               cht_never, cheat_tntkeyx, 0),
-  CHEAT("tntkeyy",    NULL,               cht_never, cheat_tntkeyx, 0),
-  CHEAT("tntkeyb",    NULL,               cht_never, cheat_tntkeyx, 0),
-  CHEAT("tntkeyrc",   NULL,               cht_never, cheat_tntkeyxx, it_redcard),
-  CHEAT("tntkeyyc",   NULL,               cht_never, cheat_tntkeyxx, it_yellowcard),
-  CHEAT("tntkeybc",   NULL,               cht_never, cheat_tntkeyxx, it_bluecard),
-  CHEAT("tntkeyrs",   NULL,               cht_never, cheat_tntkeyxx, it_redskull),
-  CHEAT("tntkeyys",   NULL,               cht_never, cheat_tntkeyxx, it_yellowskull),
+  CHEAT("tntkey",     NULL,               not_demo, cheat_tntkey, 0, false),
+  CHEAT("tntkeyr",    NULL,               not_demo, cheat_tntkeyx, 0, false),
+  CHEAT("tntkeyy",    NULL,               not_demo, cheat_tntkeyx, 0, false),
+  CHEAT("tntkeyb",    NULL,               not_demo, cheat_tntkeyx, 0, false),
+  CHEAT("tntkeyrc",   NULL,               not_demo, cheat_tntkeyxx, it_redcard, false),
+  CHEAT("tntkeyyc",   NULL,               not_demo, cheat_tntkeyxx, it_yellowcard, false),
+  CHEAT("tntkeybc",   NULL,               not_demo, cheat_tntkeyxx, it_bluecard, false),
+  CHEAT("tntkeyrs",   NULL,               not_demo, cheat_tntkeyxx, it_redskull, false),
+  CHEAT("tntkeyys",   NULL,               not_demo, cheat_tntkeyxx, it_yellowskull, false),
   // killough 2/16/98: end generalized keys
-  CHEAT("tntkeybs",   NULL,               cht_never, cheat_tntkeyxx, it_blueskull),
+  CHEAT("tntkeybs",   NULL,               not_demo, cheat_tntkeyxx, it_blueskull, false),
   // Ty 04/11/98 - Added TNTKA
-  CHEAT("tntka",      NULL,               cht_never, cheat_k, 0),
+  CHEAT("tntka",      NULL,               not_demo, cheat_k, 0, false),
   // killough 2/16/98: generalized weapon cheats
-  CHEAT("tntweap",    NULL,               cht_never, cheat_tntweap, 0),
-  CHEAT("tntweap",    NULL,               cht_never, cheat_tntweapx, -1),
-  CHEAT("tntammo",    NULL,               cht_never, cheat_tntammo, 0),
+  CHEAT("tntweap",    NULL,               not_demo, cheat_tntweap, 0, false),
+  CHEAT("tntweap",    NULL,               not_demo, cheat_tntweapx, -1, false),
+  CHEAT("tntammo",    NULL,               not_demo, cheat_tntammo, 0, false),
   // killough 2/16/98: end generalized weapons
-  CHEAT("tntammo",    NULL,               cht_never, cheat_tntammox, -1),
-  // invoke translucency         // phares
-  CHEAT("tnttran",    NULL,               always, cheat_tnttran, 0),
+  CHEAT("tntammo",    NULL,               not_demo, cheat_tntammox, -1, false),
   // killough 2/21/98: smart monster toggle
-  CHEAT("tntsmart",   NULL,               cht_never, cheat_smart, 0),
+  CHEAT("tntsmart",   NULL,               not_demo, cheat_smart, 0, false),
   // killough 2/21/98: pitched sound toggle
-  CHEAT("tntpitch",   NULL,               always, cheat_pitch, 0),
+  CHEAT("tntpitch",   NULL,               cht_always, cheat_pitch, 0, false),
   // killough 2/21/98: reduce RSI injury by adding simpler alias sequences:
-  // killough 2/21/98: same as tnttran
-  CHEAT("tntran",     NULL,               always, cheat_tnttran, 0),
   // killough 2/21/98: same as tntammo
-  CHEAT("tntamo",     NULL,               cht_never, cheat_tntammo, 0),
+  CHEAT("tntamo",     NULL,               not_demo, cheat_tntammo, 0, false),
   // killough 2/21/98: same as tntammo
-  CHEAT("tntamo",     NULL,               cht_never, cheat_tntammox, -1),
+  CHEAT("tntamo",     NULL,               not_demo, cheat_tntammox, -1, false),
   // killough 3/6/98: -fast toggle
-  CHEAT("tntfast",    NULL,               cht_never, cheat_fast, 0),
+  CHEAT("tntfast",    NULL,               not_demo, cheat_fast, 0, false),
   // phares 3/10/98: toggle variable friction effects
-  CHEAT("tntice",     NULL,               cht_never, cheat_friction, 0),
+  CHEAT("tntice",     NULL,               not_demo, cheat_friction, 0, false),
   // phares 3/10/98: toggle pushers
-  CHEAT("tntpush",    NULL,               cht_never, cheat_pushers, 0),
+  CHEAT("tntpush",    NULL,               not_demo, cheat_pushers, 0, false),
 
   // [RH] Monsters don't target
-  CHEAT("notarget",   NULL,               cht_never, cheat_notarget, 0),
+  CHEAT("notarget",   NULL,               not_demo, cheat_notarget, 0, false),
   // fly mode is active
-  CHEAT("fly",        NULL,               cht_never, cheat_fly, 0),
-  // Show skill level
-  CHEAT("skill",      NULL,               always, cheat_skill, 0),
+  CHEAT("fly",        NULL,               not_demo, cheat_fly, 0, false),
 
-  // Complevels with parameters
-  CHEAT("tntcl",      NULL,               cht_never, cheat_comp_ext, -2),
+  // heretic
+  CHEAT("quicken", NULL, not_classic_demo, cheat_god, 0, false),
+  CHEAT("ponce", NULL, not_demo, cheat_reset_health, 0, false),
+  CHEAT("kitty", NULL, not_classic_demo, cheat_noclip, 0, false),
+  CHEAT("massacre", NULL, not_demo, cheat_massacre, 0, false),
+  CHEAT("rambo", NULL, not_demo, cheat_fa, 0, false),
+  CHEAT("skel", NULL, not_demo, cheat_k, 0, false),
+  CHEAT("gimme", NULL, not_demo, cheat_artifact, -2, false),
+  CHEAT("shazam", NULL, not_demo, cheat_tome, 0, false),
+  CHEAT("engage", NULL, not_demo | not_menu, cheat_clev, -2, false),
+  CHEAT("ravmap", NULL, cht_always, cheat_ddt, 0, true),
+  CHEAT("cockadoodledoo", NULL, not_demo, cheat_chicken, 0, false),
 
-  // Enable/disable shorttics in-game
-  CHEAT("tntshort",   NULL,               cht_never, cheat_shorttics, 0),
+  // hexen
+  CHEAT("satan", NULL, not_classic_demo, cheat_god, 0, false),
+  CHEAT("clubmed", NULL, not_demo, cheat_reset_health, 0, false),
+  CHEAT("butcher", NULL, not_demo, cheat_massacre, 0, false),
+  CHEAT("nra", NULL, not_demo, cheat_fa, 0, false),
+  CHEAT("indiana", NULL, not_demo, cheat_inventory, 0, false),
+  CHEAT("locksmith", NULL, not_demo, cheat_k, 0, false),
+  CHEAT("sherlock", NULL, not_demo, cheat_puzzle, 0, false),
+  CHEAT("casper", NULL, not_classic_demo, cheat_noclip, 0, false),
+  CHEAT("shadowcaster", NULL, not_demo, cheat_class, -1, false),
+  CHEAT("visit", NULL, not_demo | not_menu, cheat_clev, -2, false),
+  CHEAT("init", NULL, not_demo, cheat_init, 0, false),
+  CHEAT("puke", NULL, not_demo, cheat_script, -2, false),
+  CHEAT("mapsco", NULL, cht_always, cheat_ddt, 0, true),
+  CHEAT("deliverance", NULL, not_demo, cheat_chicken, 0, false),
 
   // end-of-list marker
   {NULL}
@@ -207,10 +260,11 @@ cheatseq_t cheat[] = {
 
 //-----------------------------------------------------------------------------
 
-static void cheat_mus(buf)
-char buf[3];
+static void cheat_mus(char buf[3])
 {
-  int musnum;
+  int musnum, muslump;
+  int epsd, map;
+  char *mapname;
 
   //jff 3/20/98 note: this cheat allowed in netgame/demorecord
 
@@ -218,34 +272,40 @@ char buf[3];
   if (!isdigit(buf[0]) || !isdigit(buf[1]))
     return;
 
-  plyr->message = s_STSTR_MUS; // Ty 03/27/98 - externalized
-
   if (gamemode == commercial)
-    {
-      musnum = mus_runnin + (buf[0]-'0')*10 + buf[1]-'0' - 1;
-
-      //jff 4/11/98 prevent IDMUS00 in DOOMII and IDMUS36 or greater
-      if (musnum < mus_runnin ||  ((buf[0]-'0')*10 + buf[1]-'0') > 35)
-        plyr->message = s_STSTR_NOMUS; // Ty 03/27/98 - externalized
-      else
-        {
-          S_ChangeMusic(musnum, 1);
-          idmusnum = musnum; //jff 3/17/98 remember idmus number for restore
-        }
-    }
+  {
+    epsd = 1; //jff was 0, but espd is 1-based
+    map = (buf[0] - '0') * 10 + buf[1] - '0';
+  }
   else
-    {
-      musnum = mus_e1m1 + (buf[0]-'1')*9 + (buf[1]-'1');
+  {
+    epsd = buf[0] - '0';
+    map = buf[1] - '0';
+  }
 
-      //jff 4/11/98 prevent IDMUS0x IDMUSx0 in DOOMI and greater than introa
-      if (buf[0] < '1' || buf[1] < '1' || ((buf[0]-'1')*9 + buf[1]-'1') > 31)
-        plyr->message = s_STSTR_NOMUS; // Ty 03/27/98 - externalized
-      else
-        {
-          S_ChangeMusic(musnum, 1);
-          idmusnum = musnum; //jff 3/17/98 remember idmus number for restore
-        }
+  idmusnum = -1;
+  dsda_MapMusic(&musnum, &muslump, epsd, map);
+  idmusnum = musnum; //jff 3/17/98 remember idmus number for restore
+
+  mapname = VANILLA_MAP_LUMP_NAME(epsd,map);
+
+  if (W_LumpNameExists(mapname))
+  {
+    doom_printf("%s: %s", s_STSTR_MUS, mapname);
+
+    if (muslump != -1)
+    {
+      S_ChangeMusInfoMusic(muslump, true);
     }
+    else if (musnum != -1)
+    {
+      S_ChangeMusic(musnum, 1);
+    }
+  }
+  else
+  {
+    dsda_AddMessage(s_STSTR_NOMUS);
+  }
 }
 
 // 'choppers' invulnerability & chainsaw
@@ -253,42 +313,62 @@ static void cheat_choppers()
 {
   plyr->weaponowned[wp_chainsaw] = true;
   plyr->powers[pw_invulnerability] = true;
-  plyr->message = s_STSTR_CHOPPERS; // Ty 03/27/98 - externalized
+  dsda_AddMessage(s_STSTR_CHOPPERS);
+}
+
+void M_CheatGod(void)
+{
+  // dead players are first respawned at the current position
+  if (plyr->playerstate == PST_DEAD)
+  {
+    signed int an;
+    mapthing_t mt = {0};
+
+    P_MapStart();
+    mt.x = plyr->mo->x;
+    mt.y = plyr->mo->y;
+    mt.angle = (plyr->mo->angle + ANG45/2)*(uint64_t)45/ANG45;
+    mt.type = consoleplayer + 1;
+    mt.options = 1; // arbitrary non-zero value
+    P_SpawnPlayer(consoleplayer, &mt);
+
+    // reset view to center (heretic / hexen)
+    plyr->lookdir = 0;
+
+    // spawn a teleport fog
+    an = plyr->mo->angle >> ANGLETOFINESHIFT;
+    P_SpawnMobj(plyr->mo->x + 20*finecosine[an],
+                plyr->mo->y + 20*finesine[an],
+                plyr->mo->z + g_telefog_height,
+                g_mt_tfog);
+    S_StartMobjSound(plyr->mo, g_sfx_revive);
+    P_MapEnd();
+  }
+
+  plyr->cheats ^= CF_GODMODE;
+  if (plyr->cheats & CF_GODMODE)
+  {
+    if (plyr->mo)
+      plyr->mo->health = god_health;  // Ty 03/09/98 - deh
+
+    plyr->health = god_health;
+    dsda_AddMessage(s_STSTR_DQDON);
+  }
+  else
+    dsda_AddMessage(s_STSTR_DQDOFF);
+
+  if (raven) SB_Start();
 }
 
 static void cheat_god()
 {                                    // 'dqd' cheat for toggleable god mode
-  // dead players are first respawned at the current position
-  if (plyr->playerstate == PST_DEAD)
-    {
-      signed int an;
-      mapthing_t mt = {0};
+  if (demorecording)
+  {
+    dsda_QueueExCmdGod();
+    return;
+  }
 
-      P_MapStart();
-      mt.x = plyr->mo->x >> FRACBITS;
-      mt.y = plyr->mo->y >> FRACBITS;
-      mt.angle = (plyr->mo->angle + ANG45/2)*(uint_64_t)45/ANG45;
-      mt.type = consoleplayer + 1;
-      mt.options = 1; // arbitrary non-zero value
-      P_SpawnPlayer(consoleplayer, &mt);
-
-      // spawn a teleport fog
-      an = plyr->mo->angle >> ANGLETOFINESHIFT;
-      P_SpawnMobj(plyr->mo->x+20*finecosine[an], plyr->mo->y+20*finesine[an], plyr->mo->z, MT_TFOG);
-      S_StartSound(plyr, sfx_slop);
-      P_MapEnd();
-    }
-  plyr->cheats ^= CF_GODMODE;
-  if (plyr->cheats & CF_GODMODE)
-    {
-      if (plyr->mo)
-        plyr->mo->health = god_health;  // Ty 03/09/98 - deh
-
-      plyr->health = god_health;
-      plyr->message = s_STSTR_DQDON; // Ty 03/27/98 - externalized
-    }
-  else
-    plyr->message = s_STSTR_DQDOFF; // Ty 03/27/98 - externalized
+  M_CheatGod();
 }
 
 // CPhipps - new health and armour cheat codes
@@ -298,42 +378,60 @@ static void cheat_health()
     if (plyr->mo)
       plyr->mo->health = mega_health;
     plyr->health = mega_health;
-    plyr->message = s_STSTR_BEHOLDX; // Ty 03/27/98 - externalized
+    dsda_AddMessage(s_STSTR_BEHOLDX);
   }
 }
 
 static void cheat_megaarmour()
 {
-  plyr->armorpoints = idfa_armor;      // Ty 03/09/98 - deh
+  plyr->armorpoints[ARMOR_ARMOR] = idfa_armor;      // Ty 03/09/98 - deh
   plyr->armortype = idfa_armor_class;  // Ty 03/09/98 - deh
-  plyr->message = s_STSTR_BEHOLDX; // Ty 03/27/98 - externalized
+  dsda_AddMessage(s_STSTR_BEHOLDX);
 }
 
 static void cheat_fa()
 {
   int i;
 
-  if (!plyr->backpack)
+  if (hexen)
+  {
+    for (i = 0; i < NUMARMOR; i++)
+    {
+        plyr->armorpoints[i] = pclass[plyr->pclass].armor_increment[i];
+    }
+    for (i = 0; i < HEXEN_NUMWEAPONS; i++)
+    {
+        plyr->weaponowned[i] = true;
+    }
+    for (i = 0; i < NUMMANA; i++)
+    {
+        plyr->ammo[i] = MAX_MANA;
+    }
+  }
+  else
+  {
+    if (!plyr->backpack)
     {
       for (i=0 ; i<NUMAMMO ; i++)
         plyr->maxammo[i] *= 2;
       plyr->backpack = true;
     }
 
-  plyr->armorpoints = idfa_armor;      // Ty 03/09/98 - deh
-  plyr->armortype = idfa_armor_class;  // Ty 03/09/98 - deh
+    plyr->armorpoints[ARMOR_ARMOR] = idfa_armor;      // Ty 03/09/98 - deh
+    plyr->armortype = idfa_armor_class;  // Ty 03/09/98 - deh
 
-  // You can't own weapons that aren't in the game // phares 02/27/98
-  for (i=0;i<NUMWEAPONS;i++)
-    if (!(((i == wp_plasma || i == wp_bfg) && gamemode == shareware) ||
-          (i == wp_supershotgun && gamemode != commercial)))
-      plyr->weaponowned[i] = true;
+    // You can't own weapons that aren't in the game // phares 02/27/98
+    for (i=0;i<NUMWEAPONS;i++)
+      if (!(((i == wp_plasma || i == wp_bfg) && gamemode == shareware) ||
+            (i == wp_supershotgun && gamemode != commercial)))
+        plyr->weaponowned[i] = true;
 
-  for (i=0;i<NUMAMMO;i++)
-    if (i!=am_cell || gamemode!=shareware)
-      plyr->ammo[i] = plyr->maxammo[i];
+    for (i=0;i<NUMAMMO;i++)
+      if (i!=am_cell || gamemode!=shareware)
+        plyr->ammo[i] = plyr->maxammo[i];
 
-  plyr->message = s_STSTR_FAADDED;
+    dsda_AddMessage(s_STSTR_FAADDED);
+  }
 }
 
 static void cheat_k()
@@ -343,29 +441,45 @@ static void cheat_k()
     if (!plyr->cards[i])     // only print message if at least one key added
       {                      // however, caller may overwrite message anyway
         plyr->cards[i] = true;
-        plyr->message = "Keys Added";
+        dsda_AddMessage("Keys Added");
       }
+
+  // heretic - reset status bar
+  SB_Start();
 }
 
 static void cheat_kfa()
 {
   cheat_k();
   cheat_fa();
-  plyr->message = s_STSTR_KFAADDED;
+  dsda_AddMessage(s_STSTR_KFAADDED);
+}
+
+void M_CheatNoClip(void)
+{
+  dsda_AddMessage((plyr->cheats ^= CF_NOCLIP) & CF_NOCLIP ? s_STSTR_NCON : s_STSTR_NCOFF);
 }
 
 static void cheat_noclip()
 {
-  // Simplified, accepting both "noclip" and "idspispopd".
-  // no clipping mode cheat
+  if (demorecording)
+  {
+    dsda_QueueExCmdNoClip();
+    return;
+  }
 
-  plyr->message = (plyr->cheats ^= CF_NOCLIP) & CF_NOCLIP ?
-    s_STSTR_NCON : s_STSTR_NCOFF; // Ty 03/27/98 - externalized
+  M_CheatNoClip();
 }
 
 // 'behold?' power-up cheats (modified for infinite duration -- killough)
 static void cheat_pw(int pw)
 {
+  if (pw == pw_allmap)
+    dsda_TrackFeature(uf_automap);
+
+  if (pw == pw_infrared)
+    dsda_TrackFeature(uf_liteamp);
+
   if (plyr->powers[pw])
     plyr->powers[pw] = pw!=pw_strength && pw!=pw_allmap;  // killough
   else
@@ -374,120 +488,147 @@ static void cheat_pw(int pw)
       if (pw != pw_strength)
         plyr->powers[pw] = -1;      // infinite duration -- killough
     }
-  plyr->message = s_STSTR_BEHOLDX; // Ty 03/27/98 - externalized
+  dsda_AddMessage(s_STSTR_BEHOLDX);
 }
 
 // 'behold' power-up menu
 static void cheat_behold()
 {
-  plyr->message = s_STSTR_BEHOLD; // Ty 03/27/98 - externalized
+  dsda_AddMessage(s_STSTR_BEHOLD);
 }
 
-extern int EpiCustom;
-struct MapEntry* G_LookupMapinfo(int gameepisode, int gamemap);
-
-// 'clev' change-level cheat
+// check 'clev' change-level cheat
 static void cheat_clev0()
 {
   int epsd, map;
-  char *next;
+  char *cur, *next;
+  cur = Z_Strdup(VANILLA_MAP_LUMP_NAME(gameepisode, gamemap));
 
-  G_GotoNextLevel(&epsd, &map);
-  next = MAPNAME(epsd, map);
+  dsda_NextMap(&epsd, &map);
+  next = VANILLA_MAP_LUMP_NAME(epsd, map);
 
-  if (W_CheckNumForName(next) != -1)
-    doom_printf("Current: %s, Next: %s",  W_GetLumpInfoByNum(maplumpnum)->name, next);
+  if (W_LumpNameExists(next))
+    doom_printf("Current: %s, next: %s", cur, next);
   else
-    doom_printf("Current: %s",  W_GetLumpInfoByNum(maplumpnum)->name);
+    doom_printf("Current: %s", cur);
+
+  Z_Free(cur);
 }
 
+// 'clev' change-level cheat
 static void cheat_clev(char buf[3])
 {
   int epsd, map;
-  struct MapEntry* entry;
 
   if (gamemode == commercial)
-    {
-      epsd = 1; //jff was 0, but espd is 1-based
-      map = (buf[0] - '0')*10 + buf[1] - '0';
-    }
-  else
-    {
-      epsd = buf[0] - '0';
-      map = buf[1] - '0';
-    }
-
-  // First check if we have a mapinfo entry for the requested level. If this is present the remaining checks should be skipped.
-  entry = G_LookupMapinfo(epsd, map);
-  if (!entry)
   {
-	  char *next;
-
-	  // Catch invalid maps.
-	  if (epsd < 1 || map < 0 ||   // Ohmygod - this is not going to work.
-		  ((gamemode == retail || gamemode == registered) && (epsd > 9 || map > 9)) ||
-		  (gamemode == shareware && (epsd > 1 || map > 9)) ||
-		  (gamemode == commercial && map > 99))
-		  return;
-
-	  if (gamemission == pack_nerve && map > 9)
-		  return;
-
-	  // Chex.exe always warps to episode 1.
-	  if (gamemission == chex)
-	  {
-		  epsd = 1;
-	  }
-
-	  next = MAPNAME(epsd, map);
-	  if (W_CheckNumForName(next) == -1)
-	  {
-		  doom_printf("IDCLEV target not found: %s", next);
-		  return;
-	  }
+    epsd = 1; //jff was 0, but espd is 1-based
+    map = (buf[0] - '0') * 10 + buf[1] - '0';
   }
-  // So be it.
+  else
+  {
+    epsd = buf[0] - '0';
+    map = buf[1] - '0';
+  }
 
-  plyr->message = s_STSTR_CLEV; // Ty 03/27/98 - externalized
+  if (dsda_ResolveCLEV(&epsd, &map))
+  {
+    dsda_AddMessage(s_STSTR_CLEV);
 
-  G_DeferedInitNew(gameskill, epsd, map);
+    G_DeferedInitNew(gameskill, epsd, map);
+  }
 }
 
 // 'mypos' for player position
-// killough 2/7/98: simplified using dprintf and made output more user-friendly
 static void cheat_mypos()
 {
-  doom_printf("Position (%d,%d,%d)\tAngle %-.0f",
-          players[consoleplayer].mo->x >> FRACBITS,
-          players[consoleplayer].mo->y >> FRACBITS,
-          players[consoleplayer].mo->z >> FRACBITS,
-          players[consoleplayer].mo->angle * (90.0/ANG90));
+  dsda_ToggleConfig(dsda_config_coordinate_display, false);
 }
 
 // cph - cheat to toggle frame rate/rendering stats display
 static void cheat_rate()
 {
-  rendering_stats ^= 1;
+  dsda_ToggleRenderStats();
+}
+
+// check compatibility cheat
+static void cheat_comp0()
+{
+  if (raven)
+    return doom_printf("Cheat disabled for %s", heretic ? "Heretic" : "Hexen");
+
+  doom_printf("Complevel: %i - %s", compatibility_level, comp_lev_str[compatibility_level]);
 }
 
 // compatibility cheat
-
-static void cheat_comp()
+static void cheat_comp(char buf[3])
 {
-  // CPhipps - modified for new compatibility system
-  compatibility_level++; compatibility_level %= MAX_COMPATIBILITY_LEVEL;
-  // must call G_Compatibility after changing compatibility_level
-  // (fixes sf bug number 1558738)
-  G_Compatibility();
-  doom_printf("New compatibility level:\n%s (%d)", comp_lev_str[compatibility_level], compatibility_level);
+  int compinput = (buf[0] - '0') * 10 + buf[1] - '0';
+
+  if (raven) return;
+
+  if (compinput < 0 ||
+      compinput >= MAX_COMPATIBILITY_LEVEL ||
+      (compinput > 17 && compinput < 21))
+  {
+    return; //doom_printf("Invalid complevel");
+  }
+  else
+  {
+    compatibility_level = compinput;
+    G_Compatibility(); // this is missing options checking
+    doom_printf("New Complevel: %i - %s", compatibility_level, comp_lev_str[compatibility_level]);
+  }
+}
+
+// Get skill strings
+static const char* dsda_skill_str(void)
+{
+  if (hexen)
+  {
+    if (PlayerClass[consoleplayer] == PCLASS_FIGHTER)
+        return hexen_skill_fighter[gameskill];
+    else if (PlayerClass[consoleplayer] == PCLASS_CLERIC)
+        return hexen_skill_cleric[gameskill];
+    else if (PlayerClass[consoleplayer] == PCLASS_MAGE)
+        return hexen_skill_mage[gameskill];
+  }
+
+  return skill_infos[gameskill].name;
+}
+
+// Check skill cheat
+static void cheat_skill0()
+{
+  if (!tc_game)
+    doom_printf("Skill: %i - %s", gameskill + 1, dsda_skill_str());
+  else
+    doom_printf("Skill: %i", gameskill + 1);
+}
+
+// Skill cheat
+static void cheat_skill(char buf[1])
+{
+  int skill = buf[0] - '0';
+
+  if (skill >= 1 && skill <= num_skills)
+  {
+    gameskill = skill - 1;
+
+    if (!tc_game)
+      doom_printf("Next Level Skill: %i - %s", gameskill + 1, dsda_skill_str());
+    else
+      doom_printf("Next Level Skill: %i", gameskill + 1);
+
+    dsda_UpdateGameSkill(gameskill);
+  }
 }
 
 // variable friction cheat
 static void cheat_friction()
 {
-  plyr->message =                       // Ty 03/27/98 - *not* externalized
-    (variable_friction = !variable_friction) ? "Variable Friction enabled" :
-                                               "Variable Friction disabled";
+  dsda_AddMessage((variable_friction = !variable_friction) ? "Variable Friction enabled" :
+                                                             "Variable Friction disabled");
 }
 
 
@@ -495,20 +636,7 @@ static void cheat_friction()
 // phares 3/10/98
 static void cheat_pushers()
 {
-  plyr->message =                      // Ty 03/27/98 - *not* externalized
-    (allow_pushers = !allow_pushers) ? "Pushers enabled" : "Pushers disabled";
-}
-
-// translucency cheat
-static void cheat_tnttran()
-{
-  plyr->message =                      // Ty 03/27/98 - *not* externalized
-    (general_translucency = !general_translucency) ? "Translucency enabled" :
-                                                     "Translucency disabled";
-
-  // killough 3/1/98, 4/11/98: cache translucency map on a demand basis
-  if (general_translucency && !main_tranmap)
-    R_InitTranMap(0);
+  dsda_AddMessage((allow_pushers = !allow_pushers) ? "Pushers enabled" : "Pushers disabled");
 }
 
 static void cheat_massacre()    // jff 2/01/98 kill all monsters
@@ -524,7 +652,7 @@ static void cheat_massacre()    // jff 2/01/98 kill all monsters
   extern void A_PainDie(mobj_t *);
 
   // killough 7/20/98: kill friendly monsters only if no others to kill
-  uint_64_t mask = MF_FRIEND;
+  uint64_t mask = MF_FRIEND;
   P_MapStart();
   do
     while ((currentthinker = P_NextThinker(currentthinker,th_all)) != NULL)
@@ -551,57 +679,171 @@ static void cheat_massacre()    // jff 2/01/98 kill all monsters
   doom_printf("%d Monster%s Killed", killcount, killcount==1 ? "" : "s");
 }
 
+void M_CheatIDDT(void)
+{
+  extern int dsda_reveal_map;
+
+  dsda_TrackFeature(uf_iddt);
+
+  dsda_reveal_map = (dsda_reveal_map+1) % 3;
+}
+
 // killough 2/7/98: move iddt cheat from am_map.c to here
 // killough 3/26/98: emulate Doom better
 static void cheat_ddt()
 {
-  extern int ddt_cheating;
-  if (automapmode & am_active)
-    ddt_cheating = (ddt_cheating+1) % 3;
+  if (automap_input)
+    M_CheatIDDT();
+}
+
+static void cheat_reveal_secret()
+{
+  static int last_secret = -1;
+
+  if (automap_input)
+  {
+    int i, start_i;
+
+    dsda_TrackFeature(uf_iddt);
+
+    i = last_secret + 1;
+    if (i >= numsectors)
+      i = 0;
+    start_i = i;
+
+    do
+    {
+      sector_t *sec = &sectors[i];
+
+      if (P_IsSecret(sec))
+      {
+        dsda_UpdateIntConfig(dsda_config_automap_follow, false, true);
+
+        // This is probably not necessary
+        if (sec->lines && sec->lines[0] && sec->lines[0]->v1)
+        {
+          AM_SetMapCenter(sec->lines[0]->v1->x, sec->lines[0]->v1->y);
+          last_secret = i;
+          break;
+        }
+      }
+
+      i++;
+      if (i >= numsectors)
+        i = 0;
+    } while (i != start_i);
+  }
+}
+
+static void cheat_cycle_mobj(mobj_t **last_mobj, int *last_count, int flags, int alive)
+{
+  extern int init_thinkers_count;
+  thinker_t *th, *start_th;
+
+  // If the thinkers have been wiped, addresses are invalid
+  if (*last_count != init_thinkers_count)
+  {
+    *last_count = init_thinkers_count;
+    *last_mobj = NULL;
+  }
+
+  if (*last_mobj)
+    th = &(*last_mobj)->thinker;
+  else
+    th = &thinkercap;
+
+  start_th = th;
+
+  do
+  {
+    th = th->next;
+    if (th->function == P_MobjThinker)
+    {
+      mobj_t *mobj;
+
+      mobj = (mobj_t *) th;
+
+      if (mobj->intflags & MIF_SPAWNED_BY_ICON ||
+          mobj->intflags & MIF_SPAWNED_BY_DSPARIL)
+      {
+        continue;
+      }
+
+      if ((!alive || mobj->health > 0) && mobj->flags & flags)
+      {
+        dsda_UpdateIntConfig(dsda_config_automap_follow, false, true);
+        AM_SetMapCenter(mobj->x, mobj->y);
+        P_SetTarget(last_mobj, mobj);
+        break;
+      }
+    }
+  } while (th != start_th);
+}
+
+static void cheat_reveal_kill()
+{
+  if (automap_input)
+  {
+    static int last_count;
+    static mobj_t *last_mobj;
+
+    dsda_TrackFeature(uf_iddt);
+
+    cheat_cycle_mobj(&last_mobj, &last_count, MF_COUNTKILL, true);
+  }
+}
+
+static void cheat_reveal_item()
+{
+  if (automap_input)
+  {
+    static int last_count;
+    static mobj_t *last_mobj;
+
+    dsda_TrackFeature(uf_iddt);
+
+    cheat_cycle_mobj(&last_mobj, &last_count, MF_COUNTITEM, false);
+  }
 }
 
 // killough 2/7/98: HOM autodetection
 static void cheat_hom()
 {
-  plyr->message = (flashing_hom = !flashing_hom) ? "HOM Detection On" :
-    "HOM Detection Off";
+  dsda_AddMessage(dsda_ToggleConfig(dsda_config_flashing_hom, true) ? "HOM Detection On"
+                                                                    : "HOM Detection Off");
 }
 
 // killough 3/6/98: -fast parameter toggle
 static void cheat_fast()
 {
-  plyr->message = (fastparm = !fastparm) ? "Fast Monsters On" :
-    "Fast Monsters Off";  // Ty 03/27/98 - *not* externalized
-  G_SetFastParms(fastparm); // killough 4/10/98: set -fast parameter correctly
+  dsda_AddMessage(dsda_ToggleConfig(dsda_config_fast_monsters, true) ? "Fast Monsters On" : "Fast Monsters Off");
+  dsda_RefreshGameSkill(); // refresh fast monsters
 }
 
 // killough 2/16/98: keycard/skullkey cheat functions
 static void cheat_tntkey()
 {
-  plyr->message = "Red, Yellow, Blue";  // Ty 03/27/98 - *not* externalized
+  dsda_AddMessage("Red, Yellow, Blue");
 }
 
 static void cheat_tntkeyx()
 {
-  plyr->message = "Card, Skull";        // Ty 03/27/98 - *not* externalized
+  dsda_AddMessage("Card, Skull");
 }
 
 static void cheat_tntkeyxx(int key)
 {
-  plyr->message = (plyr->cards[key] = !plyr->cards[key]) ?
-    "Key Added" : "Key Removed";  // Ty 03/27/98 - *not* externalized
+  dsda_AddMessage((plyr->cards[key] = !plyr->cards[key]) ? "Key Added" : "Key Removed");
 }
 
 // killough 2/16/98: generalized weapon cheats
 
 static void cheat_tntweap()
-{                                   // Ty 03/27/98 - *not* externalized
-  plyr->message = gamemode==commercial ?           // killough 2/28/98
-    "Weapon number 1-9" : "Weapon number 1-8";
+{
+  dsda_AddMessage(gamemode == commercial ? "Weapon number 1-9" : "Weapon number 1-8");
 }
 
-static void cheat_tntweapx(buf)
-char buf[3];
+static void cheat_tntweapx(char buf[3])
 {
   int w = *buf - '1';
 
@@ -614,10 +856,10 @@ char buf[3];
   else
     if (w >= 0 && w < NUMWEAPONS) {
       if ((plyr->weaponowned[w] = !plyr->weaponowned[w]))
-        plyr->message = "Weapon Added";  // Ty 03/27/98 - *not* externalized
+        dsda_AddMessage("Weapon Added");
       else
         {
-          plyr->message = "Weapon Removed"; // Ty 03/27/98 - *not* externalized
+          dsda_AddMessage("Weapon Removed");
           if (w==plyr->readyweapon)         // maybe switch if weapon removed
             plyr->pendingweapon = P_SwitchWeapon(plyr);
         }
@@ -627,239 +869,111 @@ char buf[3];
 // killough 2/16/98: generalized ammo cheats
 static void cheat_tntammo()
 {
-  plyr->message = "Ammo 1-4, Backpack";  // Ty 03/27/98 - *not* externalized
+  dsda_AddMessage("Ammo 1-4, Backpack");
 }
 
-static void cheat_tntammox(buf)
-char buf[1];
+static void cheat_tntammox(char buf[1])
 {
   int a = *buf - '1';
   if (*buf == 'b')  // Ty 03/27/98 - strings *not* externalized
     if ((plyr->backpack = !plyr->backpack))
-      for (plyr->message = "Backpack Added",   a=0 ; a<NUMAMMO ; a++)
+    {
+      dsda_AddMessage("Backpack Added");
+      for (a = 0; a < NUMAMMO; a++)
         plyr->maxammo[a] <<= 1;
+    }
     else
-      for (plyr->message = "Backpack Removed", a=0 ; a<NUMAMMO ; a++)
-        {
-          if (plyr->ammo[a] > (plyr->maxammo[a] >>= 1))
-            plyr->ammo[a] = plyr->maxammo[a];
-        }
+    {
+      dsda_AddMessage("Backpack Removed");
+      for (a = 0; a < NUMAMMO; a++)
+        if (plyr->ammo[a] > (plyr->maxammo[a] >>= 1))
+          plyr->ammo[a] = plyr->maxammo[a];
+    }
   else
     if (a>=0 && a<NUMAMMO)  // Ty 03/27/98 - *not* externalized
       { // killough 5/5/98: switch plasma and rockets for now -- KLUDGE
         a = a==am_cell ? am_misl : a==am_misl ? am_cell : a;  // HACK
-        plyr->message = (plyr->ammo[a] = !plyr->ammo[a]) ?
-          plyr->ammo[a] = plyr->maxammo[a], "Ammo Added" : "Ammo Removed";
+        dsda_AddMessage((plyr->ammo[a] = !plyr->ammo[a]) ?
+                        plyr->ammo[a] = plyr->maxammo[a], "Ammo Added" : "Ammo Removed");
       }
 }
 
 static void cheat_smart()
 {
-  plyr->message = (monsters_remember = !monsters_remember) ?
-    "Smart Monsters Enabled" : "Smart Monsters Disabled";
+  dsda_AddMessage((monsters_remember = !monsters_remember) ?
+                  "Smart Monsters Enabled" : "Smart Monsters Disabled");
 }
 
 static void cheat_pitch()
 {
-  plyr->message=(pitched_sounds = !pitched_sounds) ? "Pitch Effects Enabled" :
-    "Pitch Effects Disabled";
+  dsda_AddMessage(dsda_ToggleConfig(dsda_config_pitched_sounds, true) ? "Pitch Effects Enabled"
+                                                                      : "Pitch Effects Disabled");
 }
 
 static void cheat_notarget()
 {
   plyr->cheats ^= CF_NOTARGET;
   if (plyr->cheats & CF_NOTARGET)
-    plyr->message = "Notarget Mode ON";
+    dsda_AddMessage("Notarget Mode ON");
   else
-    plyr->message = "Notarget Mode OFF";
+    dsda_AddMessage("Notarget Mode OFF");
+}
+
+static void cheat_freeze()
+{
+  dsda_ToggleFrozenMode();
+  dsda_AddMessage(dsda_FrozenMode() ? "FREEZE ON" : "FREEZE OFF");
 }
 
 static void cheat_fly()
 {
   if (plyr->mo != NULL)
   {
-    plyr->cheats ^= CF_FLY;
-    if (plyr->cheats & CF_FLY)
+    if (raven)
     {
-      plyr->mo->flags |= MF_NOGRAVITY;
-      plyr->mo->flags |= MF_FLY;
-      plyr->message = "Fly mode ON";
+      if (plyr->powers[pw_flight])
+      {
+        P_PlayerEndFlight(plyr);
+        plyr->powers[pw_flight] = 0;
+        dsda_AddMessage("Fly mode OFF");
+      }
+      else
+      {
+        P_GivePower(plyr, pw_flight);
+        plyr->powers[pw_flight] = INT_MAX;
+        dsda_AddMessage("Fly mode ON");
+      }
     }
     else
     {
-      plyr->mo->flags &= ~MF_NOGRAVITY;
-      plyr->mo->flags &= ~MF_FLY;
-      plyr->message = "Fly mode OFF";
-    }
-  }
-}
-
-static void cheat_skill()
-{
-  doom_printf("Skill: %d", gameskill+1);
-}
-
-//-----------------------------------------------------------------------------
-// 2/7/98: Cheat detection rewritten by Lee Killough, to avoid
-// scrambling and to use a more general table-driven approach.
-//-----------------------------------------------------------------------------
-
-static int M_FindCheats_Boom(int key)
-{
-  static uint_64_t sr;
-  static char argbuf[CHEAT_ARGS_MAX+1], *arg;
-  static int init, argsleft, cht;
-  int i, ret, matchedbefore;
-
-  // If we are expecting arguments to a cheat
-  // (e.g. idclev), put them in the arg buffer
-
-  if (argsleft)
-    {
-      *arg++ = tolower(key);             // store key in arg buffer
-      if (!--argsleft)                   // if last key in arg list,
-        cheat[cht].func(argbuf);         // process the arg buffer
-      return 1;                          // affirmative response
-    }
-
-  key = tolower(key) - 'a';
-  if (key < 0 || key >= 32)              // ignore most non-alpha cheat letters
-    {
-      sr = 0;        // clear shift register
-      return 0;
-    }
-
-  if (!init)                             // initialize aux entries of table
-    {
-      init = 1;
-      for (i=0;cheat[i].cheat;i++)
-        {
-          uint_64_t c=0, m=0;
-          const char *p;
-
-          for (p=cheat[i].cheat; *p; p++)
-            {
-              unsigned key = tolower(*p)-'a';  // convert to 0-31
-              if (key >= 32)            // ignore most non-alpha cheat letters
-                continue;
-              c = (c<<5) + key;         // shift key into code
-              m = (m<<5) + 31;          // shift 1's into mask
-            }
-          cheat[i].code = c;            // code for this cheat key
-          cheat[i].mask = m;            // mask for this cheat key
-        }
-    }
-
-  sr = (sr<<5) + key;                   // shift this key into shift register
-
-  for (matchedbefore = ret = i = 0; cheat[i].cheat; i++)
-    if ((sr & cheat[i].mask) == cheat[i].code &&      // if match found
-        !(cheat[i].when & not_dm   && deathmatch) &&  // and if cheat allowed
-        !(cheat[i].when & not_coop && netgame && !deathmatch) &&
-        !(cheat[i].when & not_demo && (demorecording || demoplayback)) &&
-        !(cheat[i].when & not_menu && menuactive) &&
-        !(cheat[i].when & not_deh  && M_CheckParm("-deh"))) {
-      if (cheat[i].arg < 0)               // if additional args are required
-        {
-          cht = i;                        // remember this cheat code
-          arg = argbuf;                   // point to start of arg buffer
-          argsleft = -cheat[i].arg;       // number of args expected
-          ret = 1;                        // responder has eaten key
-        }
+      plyr->cheats ^= CF_FLY;
+      if (plyr->cheats & CF_FLY)
+      {
+        plyr->mo->flags |= MF_NOGRAVITY;
+        plyr->mo->flags |= MF_FLY;
+        dsda_AddMessage("Fly mode ON");
+      }
       else
-        if (!matchedbefore)               // allow only one cheat at a time
-          {
-            matchedbefore = ret = 1;      // responder has eaten key
-            cheat[i].func(cheat[i].arg);  // call cheat handler
-          }
-    }
-  return ret;
-}
-
-//
-// CHEAT SEQUENCE PACKAGE
-//
-
-//
-// Called in st_stuff module, which handles the input.
-// Returns a 1 if the cheat was successful, 0 if failed.
-//
-static int M_FindCheats_Doom(int key)
-{
-  int rc = 0;
-  cheatseq_t* cht;
-  char char_key;
-
-  char_key = (char)key;
-
-  for (cht = cheat; cht->cheat; cht++)
-  {
-    if (!(cht->when & not_dm   && deathmatch) &&  // and if cheat allowed
-        !(cht->when & not_coop && netgame && !deathmatch) &&
-        !(cht->when & not_demo && (demorecording || demoplayback)) &&
-        !(cht->when & not_menu && menuactive) &&
-        !(cht->when & not_deh  && M_CheckParm("-deh")))
-    {
-      // if we make a short sequence on a cheat with parameters, this 
-      // will not work in vanilla doom.  behave the same.
-
-      if (demo_compatibility || compatibility_level == lxdoom_1_compatibility)
       {
-        if (cht->arg < 0 && cht->deh_sequence_len < cht->sequence_len)
-          continue;
-      }
-
-      if (cht->chars_read < cht->deh_sequence_len)
-      {
-        // still reading characters from the cheat code
-        // and verifying.  reset back to the beginning 
-        // if a key is wrong
-
-        if (char_key == cht->cheat[cht->chars_read])
-          ++cht->chars_read;
-        else
-          cht->chars_read = 0;
-
-        cht->param_chars_read = 0;
-      }
-      else if (cht->param_chars_read < -cht->arg)
-      {
-        // we have passed the end of the cheat sequence and are 
-        // entering parameters now 
-
-        cht->parameter_buf[cht->param_chars_read] = char_key;
-
-        ++cht->param_chars_read;
-
-        // affirmative response
-        rc = 1;
-      }
-
-      if (cht->chars_read >= cht->deh_sequence_len &&
-          cht->param_chars_read >= -cht->arg)
-      {
-        if (cht->param_chars_read)
-        {
-          static char argbuf[CHEAT_ARGS_MAX + 1];
-
-          // process the arg buffer
-          memcpy(argbuf, cht->parameter_buf, -cht->arg);
-          
-          cht->func(argbuf);
-        }
-        else
-        {
-          // call cheat handler
-          cht->func(cht->arg);
-        }
-
-        cht->chars_read = cht->param_chars_read = 0;
-        rc = 1;
+        plyr->mo->flags &= ~MF_NOGRAVITY;
+        plyr->mo->flags &= ~MF_FLY;
+        dsda_AddMessage("Fly mode OFF");
       }
     }
   }
+}
 
-  return rc;
+static dboolean M_ClassicDemo(void)
+{
+  return (demorecording || demoplayback) && !dsda_AllowCasualExCmdFeatures();
+}
+
+static dboolean M_CheatAllowed(int when)
+{
+  return !dsda_StrictMode() &&
+         !(when & not_demo         && (demorecording || demoplayback)) &&
+         !(when & not_classic_demo && M_ClassicDemo()) &&
+         !(when & not_menu         && menuactive);
 }
 
 static void cht_InitCheats(void)
@@ -872,53 +986,395 @@ static void cht_InitCheats(void)
 
     init = true;
 
-    memset(boom_cheat_route, 0, sizeof(boom_cheat_route));
-    boom_cheat_route[boom_compatibility_compatibility] = 1;
-    boom_cheat_route[boom_201_compatibility] = 1;
-    boom_cheat_route[boom_202_compatibility] = 1;
-    boom_cheat_route[mbf_compatibility] = 1;
-
     for (cht = cheat; cht->cheat; cht++)
     {
-      cht->deh_sequence_len = strlen(cht->cheat);
+      cht->sequence_len = strlen(cht->cheat);
     }
   }
 }
 
-dboolean M_FindCheats(int key)
+//
+// CHEAT SEQUENCE PACKAGE
+//
+
+//
+// Called in st_stuff module, which handles the input.
+// Returns a 1 if the cheat was successful, 0 if failed.
+//
+static int M_FindCheats(int key)
 {
+  int rc = 0;
+  cheatseq_t* cht;
+  char char_key;
+
   cht_InitCheats();
 
-  if (boom_cheat_route[compatibility_level])
-    return M_FindCheats_Boom(key);
+  char_key = (char)key;
+
+  for (cht = cheat; cht->cheat; cht++)
+  {
+    if (M_CheatAllowed(cht->when))
+    {
+      if (cht->chars_read < cht->sequence_len)
+      {
+        // still reading characters from the cheat code
+        // and verifying.  reset back to the beginning
+        // if a key is wrong
+
+        if (char_key == cht->cheat[cht->chars_read])
+          ++cht->chars_read;
+        else if (char_key == cht->cheat[0])
+          cht->chars_read = 1;
+        else
+          cht->chars_read = 0;
+
+        cht->param_chars_read = 0;
+      }
+      else if (cht->param_chars_read < -cht->arg)
+      {
+        // we have passed the end of the cheat sequence and are
+        // entering parameters now
+
+        cht->parameter_buf[cht->param_chars_read] = char_key;
+
+        ++cht->param_chars_read;
+
+        // affirmative response
+        rc = 1;
+      }
+
+      if (cht->chars_read >= cht->sequence_len &&
+          cht->param_chars_read >= -cht->arg)
+      {
+        if (cht->param_chars_read)
+        {
+          static char argbuf[CHEAT_ARGS_MAX + 1];
+
+          // process the arg buffer
+          memcpy(argbuf, cht->parameter_buf, -cht->arg);
+
+          cht->func(argbuf);
+        }
+        else
+        {
+          // call cheat handler
+          cht->func(cht->arg);
+
+          if (cht->repeatable)
+          {
+            --cht->chars_read;
+          }
+        }
+
+        if (!cht->repeatable)
+          cht->chars_read = cht->param_chars_read = 0;
+        rc = 1;
+      }
+    }
+  }
+
+  return rc;
+}
+
+typedef struct cheat_input_s {
+  int input;
+  const cheat_when_t when;
+  void (*const func)();
+  const int arg;
+} cheat_input_t;
+
+static cheat_input_t cheat_input[] = {
+  { dsda_input_iddqd, not_classic_demo, cheat_god, 0 },
+  { dsda_input_idkfa, not_demo, cheat_kfa, 0 },
+  { dsda_input_idfa, not_demo, cheat_fa, 0 },
+  { dsda_input_idclip, not_classic_demo, cheat_noclip, 0 },
+  { dsda_input_idbeholdh, not_demo, cheat_health, 0 },
+  { dsda_input_idbeholdm, not_demo, cheat_megaarmour, 0 },
+  { dsda_input_idbeholdv, not_demo, cheat_pw, pw_invulnerability },
+  { dsda_input_idbeholds, not_demo, cheat_pw, pw_strength },
+  { dsda_input_idbeholdi, not_demo, cheat_pw, pw_invisibility },
+  { dsda_input_idbeholdr, not_demo, cheat_pw, pw_ironfeet },
+  { dsda_input_idbeholda, cht_always, cheat_pw, pw_allmap },
+  { dsda_input_idbeholdl, cht_always, cheat_pw, pw_infrared },
+  { dsda_input_idmypos, cht_always, cheat_mypos, 0 },
+  { dsda_input_idrate, cht_always, cheat_rate, 0 },
+  { dsda_input_iddt, cht_always, cheat_ddt, 0 },
+  { dsda_input_ponce, not_demo, cheat_reset_health, 0 },
+  { dsda_input_shazam, not_demo, cheat_tome, 0 },
+  { dsda_input_chicken, not_demo, cheat_chicken, 0 },
+  { dsda_input_notarget, not_demo, cheat_notarget, 0 },
+  { dsda_input_freeze, not_demo, cheat_freeze, 0 },
+  { 0 }
+};
+
+dboolean M_CheatResponder(event_t *ev)
+{
+  cheat_input_t* cheat_i;
+
+  if (dsda_ProcessCheatCodes() &&
+      ev->type == ev_keydown &&
+      M_FindCheats(ev->data1.i))
+    return true;
+
+  for (cheat_i = cheat_input; cheat_i->input; cheat_i++)
+  {
+    if (dsda_InputActivated(cheat_i->input))
+    {
+      if (M_CheatAllowed(cheat_i->when))
+        cheat_i->func(cheat_i->arg);
+
+      return true;
+    }
+  }
+
+  if (M_CheatAllowed(not_demo) && dsda_InputActivated(dsda_input_avj))
+  {
+    plyr->mo->momz = 1000 * FRACUNIT / plyr->mo->info->mass;
+
+    return true;
+  }
+
+  return false;
+}
+
+dboolean M_CheatEntered(const char* element, const char* value)
+{
+  cheatseq_t* cheat_i;
+
+  for (cheat_i = cheat; cheat_i->cheat; cheat_i++)
+  {
+    if (!strcmp(cheat_i->cheat, element) && M_CheatAllowed(cheat_i->when & ~not_menu))
+    {
+      if (cheat_i->arg >= 0)
+        cheat_i->func(cheat_i->arg);
+      else
+        cheat_i->func(value);
+      return true;
+    }
+  }
+  return false;
+}
+
+// heretic
+
+#include "p_user.h"
+
+static void cheat_reset_health(void)
+{
+  if (heretic && plyr->chickenTics)
+  {
+    plyr->health = plyr->mo->health = MAXCHICKENHEALTH;
+  }
+  else if (hexen && plyr->morphTics)
+  {
+    plyr->health = plyr->mo->health = MAXMORPHHEALTH;
+  }
   else
-    return M_FindCheats_Doom(key);
+  {
+    plyr->health = plyr->mo->health = MAXHEALTH;
+  }
+  dsda_AddMessage("FULL HEALTH");
 }
 
-// Extended compatibility cheat
-static void cheat_comp_ext(char buf[3])
+static void cheat_artifact(char buf[3])
 {
-  int cl = atoi(buf);
-  if(cl == 0 && (buf[0] != '0' || buf[1] != '0')) {
-    return;
+  int i;
+  int j;
+  int type;
+  int count;
+
+  if (!heretic) return;
+
+  type = buf[0] - 'a' + 1;
+  count = buf[1] - '0';
+  if (type == 26 && count == 0)
+  { // All artifacts
+    for (i = arti_none + 1; i < NUMARTIFACTS; i++)
+    {
+      if (gamemode == shareware && (i == arti_superhealth || i == arti_teleport))
+      {
+        continue;
+      }
+      for (j = 0; j < 16; j++)
+      {
+        P_GiveArtifact(plyr, i, NULL);
+      }
+    }
+    dsda_AddMessage("YOU GOT IT");
   }
-  if( cl < 0 || cl >= MAX_COMPATIBILITY_LEVEL ) {
-    return;
+  else if (type > arti_none && type < NUMARTIFACTS && count > 0 && count < 10)
+  {
+    if (gamemode == shareware && (type == arti_superhealth || type == arti_teleport))
+    {
+      dsda_AddMessage("BAD INPUT");
+      return;
+    }
+    for (i = 0; i < count; i++)
+    {
+      P_GiveArtifact(plyr, type, NULL);
+    }
+    dsda_AddMessage("YOU GOT IT");
   }
-  compatibility_level = cl;
-  G_Compatibility();
-  doom_printf("New compatibility level:\n%s (%d)", comp_lev_str[compatibility_level], compatibility_level);
+  else
+  {
+    dsda_AddMessage("BAD INPUT");
+  }
 }
 
-// Enable/disable shorttics in-game
-static void cheat_shorttics()
+static void cheat_tome(void)
 {
-  shorttics = !shorttics;
-  if (shorttics) {
-    angle_t angle = plyr->mo->angle;
-    plyr->mo->angle = (angle >> 24) << 24;
-    doom_printf("Shorttics enabled");
-  } else {
-    doom_printf("Shorttics disabled");
+  if (!heretic) return;
+
+  if (plyr->powers[pw_weaponlevel2])
+  {
+    plyr->powers[pw_weaponlevel2] = 0;
+    dsda_AddMessage("POWER OFF");
+  }
+  else
+  {
+    P_UseArtifact(plyr, arti_tomeofpower);
+    dsda_AddMessage("POWER ON");
+  }
+}
+
+static void cheat_chicken(void)
+{
+  if (!raven) return;
+
+  P_MapStart();
+  if (heretic)
+  {
+    if (plyr->chickenTics)
+    {
+      if (P_UndoPlayerChicken(plyr))
+      {
+          dsda_AddMessage("CHICKEN OFF");
+      }
+    }
+    else if (P_ChickenMorphPlayer(plyr))
+    {
+      dsda_AddMessage("CHICKEN ON");
+    }
+  }
+  else
+  {
+    if (plyr->morphTics)
+    {
+      P_UndoPlayerMorph(plyr);
+    }
+    else
+    {
+      P_MorphPlayer(plyr);
+    }
+    dsda_AddMessage("SQUEAL!!");
+  }
+  P_MapEnd();
+}
+
+// hexen
+
+#include "hexen/p_acs.h"
+
+static void cheat_init(void)
+{
+  if (dsda_ResolveINIT())
+  {
+    P_SetMessage(plyr, "LEVEL WARP", true);
+  }
+}
+
+static void cheat_inventory(void)
+{
+  int i, j;
+  int start, end;
+
+  if (!raven) return;
+
+  if (heretic)
+  {
+    start = arti_none + 1;
+    end = NUMARTIFACTS;
+  }
+  else
+  {
+    start = hexen_arti_none + 1;
+    end = hexen_arti_firstpuzzitem;
+  }
+
+  for (i = start; i < end; i++)
+  {
+    for (j = 0; j < g_arti_limit; j++)
+    {
+      P_GiveArtifact(plyr, i, NULL);
+    }
+  }
+  P_SetMessage(plyr, "ALL ARTIFACTS", true);
+}
+
+static void cheat_puzzle(void)
+{
+  int i;
+
+  if (!hexen) return;
+
+  for (i = hexen_arti_firstpuzzitem; i < HEXEN_NUMARTIFACTS; i++)
+  {
+    P_GiveArtifact(plyr, i, NULL);
+  }
+  P_SetMessage(plyr, "ALL PUZZLE ITEMS", true);
+}
+
+static void cheat_class(char buf[2])
+{
+  int i;
+  int new_class;
+
+  if (!hexen) return;
+
+  if (plyr->morphTics)
+  {                           // don't change class if the player is morphed
+      return;
+  }
+
+  new_class = 1 + (buf[0] - '0');
+  if (new_class > PCLASS_MAGE || new_class < PCLASS_FIGHTER)
+  {
+    P_SetMessage(plyr, "INVALID PLAYER CLASS", true);
+    return;
+  }
+  plyr->pclass = new_class;
+  for (i = 0; i < NUMARMOR; i++)
+  {
+    plyr->armorpoints[i] = 0;
+  }
+  PlayerClass[consoleplayer] = new_class;
+  P_PostMorphWeapon(plyr, wp_first);
+  SB_SetClassData();
+  SB_Start();
+  P_SetMessage(plyr, "CLASS CHANGED", true);
+}
+
+static void cheat_script(char buf[3])
+{
+  int script;
+  byte script_args[3];
+  int tens, ones;
+  static char textBuffer[40];
+
+  if (!map_format.acs) return;
+
+  tens = buf[0] - '0';
+  ones = buf[1] - '0';
+  script = tens * 10 + ones;
+  if (script < 1)
+      return;
+  if (script > 99)
+      return;
+  script_args[0] = script_args[1] = script_args[2] = 0;
+
+  if (P_StartACS(script, 0, script_args, plyr->mo, NULL, 0))
+  {
+    snprintf(textBuffer, sizeof(textBuffer), "RUNNING SCRIPT %.2d", script);
+    P_SetMessage(plyr, textBuffer, true);
   }
 }

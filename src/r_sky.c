@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -34,12 +34,14 @@
  *
  *-----------------------------------------------------------------------------*/
 
-#ifdef __GNUG__
-#pragma implementation "r_sky.h"
-#endif
 #include "r_sky.h"
 #include "r_main.h"
 #include "e6y.h"
+
+#include "dsda/configuration.h"
+#include "dsda/excmd.h"
+#include "dsda/mapinfo.h"
+#include "dsda/settings.h"
 
 //
 // sky mapping
@@ -48,7 +50,6 @@ int skyflatnum;
 int skytexture;
 int skytexturemid;
 
-int r_stretchsky = 1;
 int skystretch;
 fixed_t freelookviewheight;
 
@@ -58,14 +59,15 @@ fixed_t freelookviewheight;
 //
 void R_InitSkyMap(void)
 {
-  if (!GetMouseLook())
+  int r_stretchsky;
+
+  r_stretchsky = dsda_IntConfig(dsda_config_render_stretchsky);
+
+  if (raven || !dsda_FreeAim())
   {
     skystretch = false;
-    skytexturemid = 100*FRACUNIT;
-    if (viewwidth != 0)
-    {
-      skyiscale = (fixed_t)(((uint_64_t)FRACUNIT * SCREENWIDTH * 200) / (viewwidth * SCREENHEIGHT));
-    }
+    skytexturemid = (raven ? 200 : 100) * FRACUNIT;
+    skyiscale = (200 << FRACBITS) / SCREENHEIGHT;
   }
   else
   {
@@ -101,19 +103,12 @@ void R_InitSkyMap(void)
       skytexturemid = (200 - skyheight) << FRACBITS;
     }
 
-    if (viewwidth != 0 && viewheight != 0)
-    {
-      //skyiscale = 200 * FRACUNIT / freelookviewheight;
-      skyiscale = (fixed_t)(((uint_64_t)FRACUNIT * SCREENWIDTH * 200) / (viewwidth * SCREENHEIGHT));
-      // line below is from zdoom, but it works incorrectly with prboom
-      // with widescreen resolutions (eg 1280x720) by some reasons
-      //skyiscale = (fixed_t)((int_64_t)skyiscale * FieldOfView / 2048);
-    }
+    skyiscale = (200 << FRACBITS) / SCREENHEIGHT;
 
     if (skystretch)
     {
-      skyiscale = (fixed_t)((int_64_t)skyiscale * skyheight / SKYSTRETCH_HEIGHT);
-      skytexturemid = (int)((int_64_t)skytexturemid * skyheight / SKYSTRETCH_HEIGHT);
+      skyiscale = (fixed_t)((int64_t)skyiscale * skyheight / SKYSTRETCH_HEIGHT);
+      skytexturemid = (int)((int64_t)skytexturemid * skyheight / SKYSTRETCH_HEIGHT);
     }
     else
     {

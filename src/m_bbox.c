@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -30,12 +30,10 @@
  *      Main loop menu stuff.
  *      Random number LUT.
  *      Default Config File.
+ *      PCX Screenshots.
  *
  *-----------------------------------------------------------------------------*/
 
-#ifdef __GNUG__
-#pragma implementation "m_bbox.h"
-#endif
 #include "m_bbox.h"
 
 void M_ClearBox (fixed_t *box)

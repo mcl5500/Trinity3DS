@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -36,6 +36,7 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
+#include "SDL.h"
 
 #include "doomstat.h"
 #include "d_net.h"
@@ -52,12 +53,27 @@
 #include "st_stuff.h"
 #include "i_main.h"
 #include "i_system.h"
+#include "i_video.h"
 #include "g_game.h"
-#include "r_demo.h"
+#include "smooth.h"
 #include "r_fps.h"
 #include <math.h>
 #include "e6y.h"//e6y
 #include "xs_Float.h"
+
+#include "dsda/configuration.h"
+#include "dsda/excmd.h"
+#include "dsda/exhud.h"
+#include "dsda/features.h"
+#include "dsda/map_format.h"
+#include "dsda/mapinfo.h"
+#include "dsda/render_stats.h"
+#include "dsda/settings.h"
+#include "dsda/signal_context.h"
+#include "dsda/stretch.h"
+#include "dsda/gl/render_scale.h"
+
+#include "hexen/a_action.h"
 
 // e6y
 // Now they are variables. Depends from render_doom_lightmaps variable.
@@ -65,30 +81,22 @@
 int LIGHTLEVELS   = 32;
 int LIGHTSEGSHIFT = 3;
 int LIGHTBRIGHT   = 2;
-int render_doom_lightmaps;
 
 int r_frame_count;
-
-int r_have_internal_hires = false;
 
 // Fineangles in the SCREENWIDTH wide window.
 #define FIELDOFVIEW 2048
 
-// killough: viewangleoffset is a legacy from the pre-v1.2 days, when Doom
-// had Left/Mid/Right viewing. +/-ANG90 offsets were placed here on each
-// node, by d_net.c, to set up a L/M/R session.
+#define HEXEN_PI 3.141592657
 
-int viewangleoffset;
-int viewpitchoffset;
+#define FIXED2DOUBLE(x) ((x)/(double)FRACUNIT)
+
 int validcount = 1;         // increment every time a check is made
+int validcount2 = 1;
 const lighttable_t *fixedcolormap;
 int      centerx, centery;
 // e6y: wide-res
 int wide_centerx;
-int wide_offsetx;
-int wide_offset2x;
-int wide_offsety;
-int wide_offset2y;
 
 fixed_t  focallength;
 fixed_t  focallengthy;
@@ -116,7 +124,6 @@ float modelMatrix[16];
 float projMatrix[16];
 
 extern const lighttable_t **walllights;
-extern const lighttable_t **walllightsnext;
 
 //
 // precalculated math tables
@@ -138,6 +145,9 @@ int viewangletox[FINEANGLES/2];
 // e6y: resolution limitation is removed
 angle_t *xtoviewangle;   // killough 2/8/98
 
+// [FG] linear horizontal sky scrolling
+angle_t *linearskyangle;
+
 // killough 3/20/98: Support dynamic colormaps, e.g. deep water
 // killough 4/4/98: support dynamic number of them as well
 
@@ -148,8 +158,8 @@ const lighttable_t *(*scalelight)[MAXLIGHTSCALE];
 const lighttable_t *(*zlight)[MAXLIGHTZ];
 const lighttable_t *fullcolormap;
 const lighttable_t **colormaps;
-/* cph - allow crappy fake contrast to be disabled */
-int fake_contrast;
+
+const byte* colormap_lump;
 
 // killough 3/20/98, 4/4/98: end dynamic colormaps
 
@@ -169,13 +179,7 @@ int extralight;                           // bumped light from gun blasts
 // killough 5/2/98: reformatted
 //
 
-// Workaround for optimization bug in clang
-// fixes desync in competn/doom/fp2-3655.lmp and in dmnsns.wad dmn01m909.lmp
-#if defined(__clang__)
-PUREFUNC int R_PointOnSide(volatile fixed_t x, volatile fixed_t y, const node_t *node)
-#else
-PUREFUNC int R_PointOnSide(fixed_t x, fixed_t y, const node_t *node)
-#endif
+PUREFUNC int R_CompatiblePointOnSide(fixed_t x, fixed_t y, const node_t *node)
 {
   if (!node->dx)
     return x <= node->x ? node->dy > 0 : node->dy < 0;
@@ -183,8 +187,8 @@ PUREFUNC int R_PointOnSide(fixed_t x, fixed_t y, const node_t *node)
   if (!node->dy)
     return y <= node->y ? node->dx < 0 : node->dx > 0;
 
-  x -= node->x;
-  y -= node->y;
+  x = (fixed_t)(((ufixed_t)x) - ((ufixed_t)node->x));
+  y = (fixed_t)(((ufixed_t)y) - ((ufixed_t)node->y));
 
   // Try to quickly decide by looking at sign bits.
   if ((node->dy ^ node->dx ^ x ^ y) < 0)
@@ -192,14 +196,33 @@ PUREFUNC int R_PointOnSide(fixed_t x, fixed_t y, const node_t *node)
   return FixedMul(y, node->dx>>FRACBITS) >= FixedMul(node->dy>>FRACBITS, x);
 }
 
+PUREFUNC int R_ZDoomPointOnSide(fixed_t x, fixed_t y, const node_t *node)
+{
+  if (!node->dx)
+    return x <= node->x ? node->dy > 0 : node->dy < 0;
+
+  if (!node->dy)
+    return y <= node->y ? node->dx < 0 : node->dx > 0;
+
+  x = (fixed_t)(((ufixed_t)x) - ((ufixed_t)node->x));
+  y = (fixed_t)(((ufixed_t)y) - ((ufixed_t)node->y));
+
+  // Try to quickly decide by looking at sign bits.
+  if ((node->dy ^ node->dx ^ x ^ y) < 0)
+    return (node->dy ^ x) < 0;  // (left is negative)
+  return (long long) y * node->dx >= (long long) x * node->dy;
+}
+
+int (*R_PointOnSide)(fixed_t x, fixed_t y, const node_t *node);
+
 // killough 5/2/98: reformatted
 
-PUREFUNC int R_PointOnSegSide(fixed_t x, fixed_t y, const seg_t *line)
+PUREFUNC int R_CompatiblePointOnSegSide(fixed_t x, fixed_t y, const seg_t *line)
 {
   fixed_t lx = line->v1->x;
   fixed_t ly = line->v1->y;
-  fixed_t ldx = line->v2->x - lx;
-  fixed_t ldy = line->v2->y - ly;
+  fixed_t ldx = (fixed_t)(((ufixed_t)line->v2->x) - ((ufixed_t)lx));
+  fixed_t ldy = (fixed_t)(((ufixed_t)line->v2->y) - ((ufixed_t)ly));
 
   if (!ldx)
     return x <= lx ? ldy > 0 : ldy < 0;
@@ -207,14 +230,38 @@ PUREFUNC int R_PointOnSegSide(fixed_t x, fixed_t y, const seg_t *line)
   if (!ldy)
     return y <= ly ? ldx < 0 : ldx > 0;
 
-  x -= lx;
-  y -= ly;
+  x = (fixed_t)(((ufixed_t)x) - ((ufixed_t)lx));
+  y = (fixed_t)(((ufixed_t)y) - ((ufixed_t)ly));
 
   // Try to quickly decide by looking at sign bits.
   if ((ldy ^ ldx ^ x ^ y) < 0)
     return (ldy ^ x) < 0;          // (left is negative)
   return FixedMul(y, ldx>>FRACBITS) >= FixedMul(ldy>>FRACBITS, x);
 }
+
+PUREFUNC int R_ZDoomPointOnSegSide(fixed_t x, fixed_t y, const seg_t *line)
+{
+  fixed_t lx = line->v1->x;
+  fixed_t ly = line->v1->y;
+  fixed_t ldx = (fixed_t)(((ufixed_t)line->v2->x) - ((ufixed_t)lx));
+  fixed_t ldy = (fixed_t)(((ufixed_t)line->v2->y) - ((ufixed_t)ly));
+
+  if (!ldx)
+    return x <= lx ? ldy > 0 : ldy < 0;
+
+  if (!ldy)
+    return y <= ly ? ldx < 0 : ldx > 0;
+
+  x = (fixed_t)(((ufixed_t)x) - ((ufixed_t)lx));
+  y = (fixed_t)(((ufixed_t)y) - ((ufixed_t)ly));
+
+  // Try to quickly decide by looking at sign bits.
+  if ((ldy ^ ldx ^ x ^ y) < 0)
+    return (ldy ^ x) < 0;          // (left is negative)
+  return (long long) y * ldx >= (long long) x * ldy;
+}
+
+int (*R_PointOnSegSide)(fixed_t x, fixed_t y, const seg_t *line);
 
 //
 // R_PointToAngle
@@ -258,8 +305,8 @@ angle_t R_PointToAngleEx(fixed_t x, fixed_t y)
 angle_t R_PointToAngleEx2(fixed_t x1, fixed_t y1, fixed_t x, fixed_t y)
 {
   // [crispy] fix overflows for very long distances
-  long long y_viewy = (long long)y - y1;
-  long long x_viewx = (long long)x - x1;
+  int64_t y_viewy = (int64_t)y - y1;
+  int64_t x_viewx = (int64_t)x - x1;
 
   // [crispy] the worst that could happen is e.g. INT_MIN-INT_MAX = 2*INT_MIN
   if (x_viewx < INT_MIN || x_viewx > INT_MAX ||y_viewy < INT_MIN || y_viewy > INT_MAX)
@@ -275,9 +322,9 @@ angle_t R_PointToAngleEx2(fixed_t x1, fixed_t y1, fixed_t x, fixed_t y)
 
 //-----------------------------------------------------------------------------
 //
-// ! Returns the pseudoangle between the line p1 to (infinity, p1.y) and the 
-// line from p1 to p2. The pseudoangle has the property that the ordering of 
-// points by true angle anround p1 and ordering of points by pseudoangle are the 
+// ! Returns the pseudoangle between the line p1 to (infinity, p1.y) and the
+// line from p1 to p2. The pseudoangle has the property that the ordering of
+// points by true angle anround p1 and ordering of points by pseudoangle are the
 // same.
 //
 // For clipping exact angles are not needed. Only the ordering matters.
@@ -314,7 +361,8 @@ angle_t R_PointToPseudoAngle (fixed_t x, fixed_t y)
 
 static void R_InitTextureMapping (void)
 {
-  int i,x;
+  int i,x,angle;
+  double linearskyfactor;
   FieldOfView = FIELDOFVIEW;
 
   // For widescreen displays, increase the FOV so that the middle part of the
@@ -362,11 +410,17 @@ static void R_InitTextureMapping (void)
   //  xtoviewangle will give the smallest view angle
   //  that maps to x.
 
+  linearskyfactor = FIXED2DOUBLE(finetangent[FINEANGLES/4 + FieldOfView/2]) * ANG90;
+
   for (x=0; x<=viewwidth; x++)
     {
       for (i=0; viewangletox[i] > x; i++)
         ;
       xtoviewangle[x] = (i<<ANGLETOFINESHIFT)-ANG90;
+
+      // [FG] linear horizontal sky scrolling
+      angle = (0.5 - x / (double)viewwidth) * linearskyfactor;
+      linearskyangle[x] = (angle >= 0) ? angle : ANGLE_MAX + angle;
     }
 
   // Take out the fencepost cases from viewangletox.
@@ -391,10 +445,14 @@ static void R_InitTextureMapping (void)
 static void R_InitLightTables (void)
 {
   int i;
+  int render_doom_lightmaps;
 
   // killough 4/4/98: dynamic colormaps
-  c_zlight = malloc(sizeof(*c_zlight) * numcolormaps);
-  c_scalelight = malloc(sizeof(*c_scalelight) * numcolormaps);
+  c_zlight = Z_Malloc(sizeof(*c_zlight) * numcolormaps);
+  c_scalelight = Z_Malloc(sizeof(*c_scalelight) * numcolormaps);
+
+  // hexen_note: does hexen require render_doom_lightmaps?
+  render_doom_lightmaps = dsda_IntConfig(dsda_config_render_doom_lightmaps);
 
   LIGHTLEVELS   = (render_doom_lightmaps ? 16 : 32);
   LIGHTSEGSHIFT = (render_doom_lightmaps ? 4 : 3);
@@ -404,8 +462,8 @@ static void R_InitLightTables (void)
   //  for each level / distance combination.
   for (i=0; i< LIGHTLEVELS; i++)
     {
-      // SoM: the LIGHTBRIGHT constant must be used to scale the start offset of 
-      // the colormaps, otherwise the levels are staggered and become slightly 
+      // SoM: the LIGHTBRIGHT constant must be used to scale the start offset of
+      // the colormaps, otherwise the levels are staggered and become slightly
       // darker.
       int j, startmap = ((LIGHTLEVELS-LIGHTBRIGHT-i)*2)*NUMCOLORMAPS/LIGHTLEVELS;
       for (j=0; j<MAXLIGHTZ; j++)
@@ -436,161 +494,15 @@ static void R_InitLightTables (void)
 // The change will take effect next refresh.
 //
 
+extern dboolean BorderNeedRefresh;
 dboolean setsizeneeded;
-int     setblocks;
+static int setblocks;
 
-void R_SetViewSize(int blocks)
+void R_SetViewSize(void)
 {
+  BorderNeedRefresh = true;
   setsizeneeded = true;
-  setblocks = blocks;
-}
-
-static void GenLookup(short *lookup1, short *lookup2, int size, int max, int step)
-{
-  int i;
-  fixed_t frac, lastfrac;
-
-  memset(lookup1, 0, max * sizeof(lookup1[0]));
-  memset(lookup2, 0, max * sizeof(lookup2[0]));
-
-  lastfrac = frac = 0;
-  for(i = 0; i < size; i++)
-  {
-    if(frac >> FRACBITS > lastfrac >> FRACBITS)
-    {
-      lookup1[frac >> FRACBITS] = i;
-      lookup2[lastfrac >> FRACBITS] = i - 1;
-
-      lastfrac = frac;
-    }
-    frac += step;
-  }
-  lookup2[max - 1] = size - 1;
-  lookup1[max] = lookup2[max] = size;
-
-  for(i = 1; i < max; i++)
-  {
-    if (lookup1[i] == 0 && lookup1[i - 1] != 0)
-    {
-      lookup1[i] = lookup1[i - 1];
-    }
-    if (lookup2[i] == 0 && lookup2[i - 1] != 0)
-    {
-      lookup2[i] = lookup2[i - 1];
-    }
-  }
-}
-
-static void InitStretchParam(stretch_param_t* offsets, int stretch, enum patch_translation_e flags)
-{
-  memset(offsets, 0, sizeof(*offsets));
-
-  switch (stretch)
-  {
-  case patch_stretch_16x10:
-    if (flags == VPT_ALIGN_WIDE)
-    {
-      offsets->video = &video_stretch;
-      offsets->deltax1 = (SCREENWIDTH - WIDE_SCREENWIDTH) / 2;
-      offsets->deltax2 = (SCREENWIDTH - WIDE_SCREENWIDTH) / 2;
-    }
-    else
-    {
-      offsets->video = &video;
-      offsets->deltax1 = wide_offsetx;
-      offsets->deltax2 = wide_offsetx;
-    }
-    break;
-  case patch_stretch_4x3:
-    offsets->video = &video_stretch;
-    offsets->deltax1 = (SCREENWIDTH - WIDE_SCREENWIDTH) / 2;
-    offsets->deltax2 = (SCREENWIDTH - WIDE_SCREENWIDTH) / 2;
-    break;
-  case patch_stretch_full:
-    offsets->video = &video_full;
-    offsets->deltax1 = 0;
-    offsets->deltax2 = 0;
-    break;
-  }
-
-  if (flags == VPT_ALIGN_LEFT || flags == VPT_ALIGN_LEFT_BOTTOM || flags == VPT_ALIGN_LEFT_TOP)
-  {
-    offsets->deltax1 = 0;
-    offsets->deltax2 = 0;
-  }
-
-  if (flags == VPT_ALIGN_RIGHT || flags == VPT_ALIGN_RIGHT_BOTTOM || flags == VPT_ALIGN_RIGHT_TOP)
-  {
-    offsets->deltax1 *= 2;
-    offsets->deltax2 *= 2;
-  }
-
-  offsets->deltay1 = wide_offsety;
-
-  if (flags == VPT_ALIGN_BOTTOM || flags == VPT_ALIGN_LEFT_BOTTOM || flags == VPT_ALIGN_RIGHT_BOTTOM)
-  {
-    offsets->deltay1 = wide_offset2y;
-  }
-
-  if (flags == VPT_ALIGN_TOP || flags == VPT_ALIGN_LEFT_TOP || flags == VPT_ALIGN_RIGHT_TOP)
-  {
-    offsets->deltay1 = 0;
-  }
-
-  if (flags == VPT_ALIGN_WIDE && !tallscreen)
-  {
-    offsets->deltay1 = 0;
-  }
-}
-
-void R_SetupViewScaling(void)
-{
-  int i, k;
-
-  for (i = 0; i < 3; i++)
-  {
-    for (k = 0; k < VPT_ALIGN_MAX; k++)
-    {
-      InitStretchParam(&stretch_params_table[i][k], i, k);
-    }
-  }
-  stretch_params = stretch_params_table[render_stretch_hud];
-
-  // SoM: ANYRES
-  // Moved stuff, reformatted a bit
-  // haleyjd 04/03/05: removed unnecessary FixedDiv calls
-
-  video.xstep = ((320 << FRACBITS) / 320 / patches_scalex) + 1;
-  video.ystep = ((200 << FRACBITS) / 200 / patches_scaley) + 1;
-  video_stretch.xstep   = ((320 << FRACBITS) / WIDE_SCREENWIDTH) + 1;
-  video_stretch.ystep   = ((200 << FRACBITS) / WIDE_SCREENHEIGHT) + 1;
-  video_full.xstep   = ((320 << FRACBITS) / SCREENWIDTH) + 1;
-  video_full.ystep   = ((200 << FRACBITS) / SCREENHEIGHT) + 1;
-
-  // SoM: ok, assemble the realx1/x2 arrays differently. To start, we are using floats
-  // to do the scaling which is 100 times more accurate, secondly, I realized that the
-  // reason the old single arrays were causing problems was they was only calculating the 
-  // top-left corner of the scaled pixels. Calculating widths through these arrays is wrong
-  // because the scaling will change the final scaled widths depending on what their unscaled
-  // screen coords were. Thusly, all rectangles should be converted to unscaled x1, y1, x2, y2
-  // coords, scaled, and then converted back to x, y, w, h
-  //
-  // e6y: wide-res
-
-  video.width = 320 * patches_scalex;
-  video.height = 200 * patches_scaley;
-  GenLookup(video.x1lookup, video.x2lookup, video.width, 320, video.xstep);
-  GenLookup(video.y1lookup, video.y2lookup, video.height, 200, video.ystep);
-
-  video_stretch.width = WIDE_SCREENWIDTH;
-  video_stretch.height = WIDE_SCREENHEIGHT;
-  GenLookup(video_stretch.x1lookup, video_stretch.x2lookup, video_stretch.width, 320, video_stretch.xstep);
-  GenLookup(video_stretch.y1lookup, video_stretch.y2lookup, video_stretch.height, 200, video_stretch.ystep);
-
-  video_full.width = SCREENWIDTH;
-  video_full.height = SCREENHEIGHT;
-  GenLookup(video_full.x1lookup, video_full.x2lookup, video_full.width, 320, video_full.xstep);
-  GenLookup(video_full.y1lookup, video_full.y2lookup, video_full.height, 200, video_full.ystep);
+  setblocks = dsda_IntConfig(dsda_config_screenblocks);
 }
 
 void R_MultMatrixVecd(const float matrix[16], const float in[4], float out[4])
@@ -616,17 +528,17 @@ int R_Project(float objx, float objy, float objz, float *winx, float *winy, floa
   in[1] = objy;
   in[2] = objz;
   in[3] = 1.0f;
-  
+
   R_MultMatrixVecd(modelMatrix, in, out);
   R_MultMatrixVecd(projMatrix, out, in);
-  
+
   if (in[3] == 0.0f)
     return false;
 
   in[0] /= in[3];
   in[1] /= in[3];
   in[2] /= in[3];
-  
+
   /* Map x, y and z to range 0-1 */
   in[0] = in[0] * 0.5f + 0.5f;
   in[1] = in[1] * 0.5f + 0.5f;
@@ -645,20 +557,10 @@ int R_Project(float objx, float objy, float objz, float *winx, float *winy, floa
 
 void R_SetupViewport(void)
 {
-  extern int screenblocks;
-  int height;
-
-  if (screenblocks == 11)
-    height = SCREENHEIGHT;
-  else if (screenblocks == 10)
-    height = SCREENHEIGHT;
-  else
-    height = (screenblocks*SCREENHEIGHT/10) & ~7;
-
-  viewport[0] = viewwindowx;
-  viewport[1] = SCREENHEIGHT-(height+viewwindowy-((height-viewheight)/2));
+  viewport[0] = 0;
+  viewport[1] = (SCREENHEIGHT - viewheight) / 2;
   viewport[2] = viewwidth;
-  viewport[3] = height;
+  viewport[3] = SCREENHEIGHT;
 }
 
 void R_SetupPerspective(float fovy, float aspect, float znear)
@@ -687,7 +589,7 @@ void R_BuildModelViewMatrix(void)
   yaw = 270.0f - (float)(viewangle>>ANGLETOFINESHIFT) * 360.0f / FINEANGLES;
   yaw *= (float)M_PI / 180.0f;
   pitch = 0;
-  if (V_GetMode() == VID_MODEGL)
+  if (V_IsOpenGLMode())
   {
     pitch = (float)(viewpitch>>ANGLETOFINESHIFT) * 360.0f / FINEANGLES;
     pitch *= (float)M_PI / 180.0f;
@@ -697,7 +599,7 @@ void R_BuildModelViewMatrix(void)
   z = -(float)viewy / MAP_SCALE;
   y = -(float)viewz / MAP_SCALE;
 
-/*  
+/*
   R_LoadIdentity(modelMatrix);
   R_Rotate(modelMatrix, pitch, 0);
   R_Rotate(modelMatrix, yaw, 1);
@@ -708,7 +610,7 @@ void R_BuildModelViewMatrix(void)
   B = (float)sin(pitch);
   C = (float)cos(yaw);
   D = (float)sin(yaw);
-  
+
   m[0] = C;
   m[1] = D*B;
   m[2] = -D*A;
@@ -749,27 +651,18 @@ void R_ExecuteSetViewSize (void)
   SetRatio(SCREENWIDTH, SCREENHEIGHT);
 
   if (setblocks == 11)
-    {
-      scaledviewwidth = SCREENWIDTH;
-      viewheight = SCREENHEIGHT;
-      freelookviewheight = viewheight;
-    }
-// proff 09/24/98: Added for high-res
-  else if (setblocks == 10)
-    {
-      scaledviewwidth = SCREENWIDTH;
-      viewheight = SCREENHEIGHT-ST_SCALED_HEIGHT;
-      freelookviewheight = SCREENHEIGHT;
-    }
+  {
+    viewheight = SCREENHEIGHT;
+    freelookviewheight = viewheight;
+  }
+  // proff 09/24/98: Added for high-res
   else
-    {
-// proff 08/17/98: Changed for high-res
-      scaledviewwidth = setblocks*SCREENWIDTH/10;
-      viewheight = (setblocks*(SCREENHEIGHT-ST_SCALED_HEIGHT)/10) & ~7;
-      freelookviewheight = setblocks*SCREENHEIGHT/10;
-    }
+  {
+    viewheight = SCREENHEIGHT - ST_SCALED_HEIGHT;
+    freelookviewheight = SCREENHEIGHT;
+  }
 
-  viewwidth = scaledviewwidth;
+  viewwidth = SCREENWIDTH;
 
   viewheightfrac = viewheight<<FRACBITS;//e6y
 
@@ -793,14 +686,14 @@ void R_ExecuteSetViewSize (void)
   projection = wide_centerx<<FRACBITS;
 
 // proff 11/06/98: Added for high-res
-  // calculate projectiony using int_64_t math to avoid overflow when SCREENWIDTH>4228
-  projectiony = (fixed_t)((((int_64_t)cheight * centerx * 320) / 200) / SCREENWIDTH * FRACUNIT);
+  // calculate projectiony using int64_t math to avoid overflow when SCREENWIDTH>4228
+  projectiony = (fixed_t)((((int64_t)cheight * centerx * 320) / 200) / SCREENWIDTH * FRACUNIT);
   // e6y: this is a precalculated value for more precise flats drawing (see R_MapPlane)
   viewfocratio = projectiony / wide_centerx;
 
-  R_SetupViewScaling();
+  dsda_SetupStretchParams();
 
-  R_InitBuffer (scaledviewwidth, viewheight);
+  R_InitBuffer (SCREENWIDTH, viewheight);
 
   R_InitTextureMapping();
 
@@ -809,7 +702,7 @@ void R_ExecuteSetViewSize (void)
   // proff 11/06/98: Added for high-res
   // e6y: wide-res
   pspritexscale = (wide_centerx << FRACBITS) / 160;
-  pspriteyscale = (((cheight*viewwidth)/SCREENWIDTH) << FRACBITS) / 200;
+  pspriteyscale = (cheight << FRACBITS) / 200;
   pspriteiscale = FixedDiv (FRACUNIT, pspritexscale);
   // [FG] make sure that the product of the weapon sprite scale factor
   //      and its reciprocal is always at least FRACUNIT to
@@ -820,9 +713,9 @@ void R_ExecuteSetViewSize (void)
 
   //e6y: added for GL
   pspritexscale_f = (float)wide_centerx/160.0f;
-  pspriteyscale_f = (((float)cheight*viewwidth)/(float)SCREENWIDTH) / 200.0f;
+  pspriteyscale_f = (float)cheight / 200.0f;
 
-  skyiscale = (fixed_t)(((uint_64_t)FRACUNIT * SCREENWIDTH * 200) / (viewwidth * SCREENHEIGHT));
+  skyiscale = (200 << FRACBITS) / SCREENHEIGHT;
 
 	// [RH] Sky height fix for screens not 200 (or 240) pixels tall
 	R_InitSkyMap();
@@ -847,7 +740,7 @@ void R_ExecuteSetViewSize (void)
     int j, startmap = ((LIGHTLEVELS-LIGHTBRIGHT-i)*2)*NUMCOLORMAPS/LIGHTLEVELS;
     for (j=0 ; j<MAXLIGHTSCALE ; j++)
     {
-      int t, level = startmap - j/**320/viewwidth*//DISTMAP;
+      int t, level = startmap - j/DISTMAP;
 
       if (level < 0)
         level = 0;
@@ -862,33 +755,40 @@ void R_ExecuteSetViewSize (void)
         c_scalelight[t][i][j] = colormaps[t] + level;
     }
   }
+
+  I_SetWindowRect();
+  I_SetViewportRect();
+
+  if (V_IsOpenGLMode())
+    dsda_GLSetRenderViewportParams();
+
+  dsda_InitExHud();
+  dsda_BeginRenderStats();
 }
 
 //
 // R_Init
 //
 
-extern int screenblocks;
-
 void R_Init (void)
 {
   // CPhipps - R_DrawColumn isn't constant anymore, so must
   //  initialise in code
   // current column draw function
-  lprintf(LO_INFO, "\nR_LoadTrigTables: ");
+  lprintf(LO_DEBUG, "\nR_LoadTrigTables: ");
   R_LoadTrigTables();
-  lprintf(LO_INFO, "\nR_InitData: ");
+  lprintf(LO_DEBUG, "\nR_InitData: ");
   R_InitData();
-  R_SetViewSize(screenblocks);
-  lprintf(LO_INFO, "\nR_Init: R_InitPlanes ");
+  R_SetViewSize();
+  lprintf(LO_DEBUG, "\nR_Init: R_InitPlanes ");
   R_InitPlanes();
-  lprintf(LO_INFO, "R_InitLightTables ");
+  lprintf(LO_DEBUG, "R_InitLightTables ");
   R_InitLightTables();
-  lprintf(LO_INFO, "R_InitSkyMap ");
+  lprintf(LO_DEBUG, "R_InitSkyMap ");
   R_InitSkyMap();
-  lprintf(LO_INFO, "R_InitTranslationsTables ");
+  lprintf(LO_DEBUG, "R_InitTranslationsTables ");
   R_InitTranslationTables();
-  lprintf(LO_INFO, "R_InitPatches ");
+  lprintf(LO_DEBUG, "R_InitPatches ");
   R_InitPatches();
 }
 
@@ -910,26 +810,70 @@ subsector_t *R_PointInSubsector(fixed_t x, fixed_t y)
   return &subsectors[nodenum & ~NF_SUBSECTOR];
 }
 
+sector_t *R_PointInSector(fixed_t x, fixed_t y)
+{
+  return R_PointInSubsector(x, y)->sector;
+}
+
+void R_SectorCenter(fixed_t *x, fixed_t *y, sector_t *sec)
+{
+  int i;
+  *x = 0;
+  *y = 0;
+
+  if (!sec->linecount)
+    return;
+
+  for (i = 0; i < sec->linecount; ++i)
+  {
+    *x += sec->lines[i]->v1->x;
+    *y += sec->lines[i]->v1->y;
+  }
+
+  *x /= sec->linecount;
+  *y /= sec->linecount;
+
+  if (R_PointInSector(*x, *y) != sec)
+  {
+    *x = sec->lines[0]->v1->x;
+    *y = sec->lines[0]->v1->y;
+  }
+}
+
+void R_LineCenter(fixed_t *x, fixed_t *y, line_t *line)
+{
+  if (!line->v1 || !line->v2)
+  {
+    *x = 0;
+    *y = 0;
+
+    return;
+  }
+
+  *x = (line->v1->x + line->v2->x) / 2;
+  *y = (line->v1->y + line->v2->y) / 2;
+}
+
 //
 // R_SetupFreelook
 //
 
 void R_SetupFreelook(void)
 {
-  if (V_GetMode() != VID_MODEGL)
+  if (V_IsSoftwareMode())
   {
     fixed_t InvZtoScale;
     fixed_t dy;
     int i;
 
     centery = viewheight / 2;
-    if (GetMouseLook())
+    if (raven || dsda_FreeAim())
     {
       dy = FixedMul(focallengthy, finetangent[(ANG90-viewpitch)>>ANGLETOFINESHIFT]);
       centery += dy >> FRACBITS;
     }
     centeryfrac = centery<<FRACBITS;
-    
+
     InvZtoScale = yaspectmul * centerx;
     globaluclip = FixedDiv (-centeryfrac, InvZtoScale);
     globaldclip = FixedDiv ((viewheight<<FRACBITS)-centeryfrac, InvZtoScale);
@@ -953,20 +897,18 @@ void R_SetupMatrix(void)
 
   R_SetupViewport();
 
-  #ifdef GL_DOOM
-  if (V_GetMode() == VID_MODEGL)
-  {
-    extern int gl_nearclip;
-    r_nearclip = gl_nearclip;
-  }
-  #endif
-
-  fovy = render_fovy;
-  aspect = render_ratio;
+  fovy = gl_render_fovy;
+  aspect = gl_render_ratio;
   znear = (float)r_nearclip / 100.0f;
 
   R_SetupPerspective(fovy, aspect, znear);
   R_BuildModelViewMatrix();
+}
+
+void R_ResetColorMap(void)
+{
+  fullcolormap = colormaps[0];
+  fixedcolormap = 0;
 }
 
 //
@@ -975,13 +917,24 @@ void R_SetupMatrix(void)
 
 static void R_SetupFrame (player_t *player)
 {
+  dboolean HU_CrosshairEnabled(void);
+
   int i, cm;
-  
+
   int FocalTangent = finetangent[FINEANGLES/4 + FieldOfView/2];
+  int extra_brightness = dsda_IntConfig(dsda_config_extra_level_brightness);
 
   viewplayer = player;
 
   extralight = player->extralight;
+
+  if (extra_brightness < 0 || extra_brightness > 4) {
+    extra_brightness = 0;
+  }
+  if (extra_brightness != 0) {
+      dsda_TrackFeature(uf_levelbrightness);
+  }
+  extralight += extra_brightness;
 
   viewsin = finesine[viewangle>>ANGLETOFINESHIFT];
   viewcos = finecosine[viewangle>>ANGLETOFINESHIFT];
@@ -993,16 +946,19 @@ static void R_SetupFrame (player_t *player)
 
   // killough 3/20/98, 4/4/98: select colormap based on player status
 
-  if (player->mo->subsector->sector->heightsec != -1)
-    {
-      const sector_t *s = player->mo->subsector->sector->heightsec + sectors;
-      cm = viewz < s->floorheight ? s->bottommap : viewz > s->ceilingheight ?
-        s->topmap : s->midmap;
-      if (cm < 0 || cm > numcolormaps)
-        cm = 0;
-    }
+  if (player->mo->subsector->sector->colormap)
+    cm = player->mo->subsector->sector->colormap;
+  else if (player->mo->subsector->sector->heightsec != -1)
+  {
+    const sector_t *s = player->mo->subsector->sector->heightsec + sectors;
+    cm = viewz < s->floorheight ? s->bottommap :
+         viewz > s->ceilingheight ? s->topmap :
+         s->midmap;
+    if (cm < 0 || cm > numcolormaps)
+      cm = 0;
+  }
   else
-    cm = 0;
+    cm = map_colormap;
 
   //e6y: save previous and current colormap
   boom_cm = cm;
@@ -1027,7 +983,6 @@ static void R_SetupFrame (player_t *player)
         + player->fixedcolormap*256*sizeof(lighttable_t);
 
       walllights = scalelightfixed;
-      walllightsnext = scalelightfixed;
 
       for (i=0 ; i<MAXLIGHTSCALE ; i++)
         scalelightfixed[i] = fixedcolormap;
@@ -1037,133 +992,133 @@ static void R_SetupFrame (player_t *player)
 
   R_SetClipPlanes();
 
-  if (V_GetMode() == VID_MODEGL || hudadd_crosshair)
+  if (V_IsOpenGLMode() || HU_CrosshairEnabled())
     R_SetupMatrix();
 
   validcount++;
 }
 
-//
-// R_ShowStats
-//
-int rendered_visplanes, rendered_segs, rendered_vissprites;
-dboolean rendering_stats;
-int renderer_fps = 0;
-
-void R_ShowStats(void)
+static void R_InitDrawScene(void)
 {
-  static unsigned int FPS_SavedTick = 0, FPS_FrameCount = 0;
-  unsigned int tick = I_GetTime_MS();
-  FPS_FrameCount++;
-  if(tick >= FPS_SavedTick + 1000)
+  // Framerate-independent fuzz progression
+  static int fuzzgametic = 0;
+  static int savedfuzzpos = 0;
+
+  if (V_IsOpenGLMode())
   {
-    renderer_fps = 1000 * FPS_FrameCount / (tick - FPS_SavedTick);
-    if (rendering_stats)
+    // proff 11/99: clear buffers
+    gld_InitDrawScene();
+
+    if (!automap_solid)
     {
-      doom_printf((V_GetMode() == VID_MODEGL)
-                  ?"Frame rate %d fps\nWalls %d, Flats %d, Sprites %d"
-                  :"Frame rate %d fps\nSegs %d, Visplanes %d, Sprites %d",
-      renderer_fps, rendered_segs, rendered_visplanes, rendered_vissprites);
+      // proff 11/99: switch to perspective mode
+      gld_StartDrawScene();
     }
-    FPS_SavedTick = tick;
-    FPS_FrameCount = 0;
+  } else {
+    if (dsda_IntConfig(dsda_config_flashing_hom))
+    { // killough 2/10/98: add flashing red HOM indicators
+      unsigned char color=(gametic % 20) < 9 ? 0xb0 : 0;
+      V_FillRect(0, 0, 0, viewwidth, viewheight, color);
+      R_DrawViewBorder();
+    }
+
+    // Only progress software fuzz offset if the gametic has progressed
+    if (fuzzgametic != gametic)
+    {
+      fuzzgametic = gametic;
+      savedfuzzpos = R_GetFuzzPos();
+    }
+    else
+    {
+      R_SetFuzzPos(savedfuzzpos);
+    }
   }
 }
 
-void R_ClearStats(void)
+static void R_RenderBSPNodes(void)
 {
-  rendered_visplanes = 0;
-  rendered_segs = 0;
-  rendered_vissprites = 0;
+  // Make displayed player invisible locally
+  if (localQuakeHappening[displayplayer] && gamestate == GS_LEVEL)
+  {
+    players[displayplayer].mo->flags2 |= MF2_DONTDRAW;
+    R_RenderBSPNode(numnodes - 1);  // head node is the last node output
+    players[displayplayer].mo->flags2 &= ~MF2_DONTDRAW;
+  }
+  else
+  {
+    // The head node is the last node output.
+    R_RenderBSPNode(numnodes - 1);
+  }
+
+  if (map_format.zdoom && V_IsOpenGLMode())
+  {
+    R_ForceRenderPolyObjs();
+  }
 }
 
 //
 // R_RenderView
 //
+
 void R_RenderPlayerView (player_t* player)
 {
-  dboolean automap = (automapmode & am_active) && !(automapmode & am_overlay);
-
   r_frame_count++;
 
+  DSDA_ADD_CONTEXT(sf_setup_frame);
   R_SetupFrame (player);
+  DSDA_REMOVE_CONTEXT(sf_setup_frame);
 
-  // Clear buffers.
+  DSDA_ADD_CONTEXT(sf_clear);
   R_ClearClipSegs ();
   R_ClearDrawSegs ();
   R_ClearPlanes ();
   R_ClearSprites ();
+  DSDA_REMOVE_CONTEXT(sf_clear);
 
-  if (V_GetMode() == VID_MODEGL)
+  DSDA_ADD_CONTEXT(sf_init_scene);
+  R_InitDrawScene();
+  DSDA_REMOVE_CONTEXT(sf_init_scene);
+
+  FakeNetUpdate();
+
+  if (V_IsOpenGLMode()) {
+    DSDA_ADD_CONTEXT(sf_gl_frustum);
+    gld_FrustumSetup();
+    DSDA_REMOVE_CONTEXT(sf_gl_frustum);
+  }
+
+  DSDA_ADD_CONTEXT(sf_bsp_nodes);
+  R_RenderBSPNodes();
+  DSDA_REMOVE_CONTEXT(sf_bsp_nodes);
+
+  FakeNetUpdate();
+
+  if (V_IsSoftwareMode())
   {
-#ifdef GL_DOOM
-    // proff 11/99: clear buffers
-    gld_InitDrawScene();
-    
-    if (!automap)
-    {
-      // proff 11/99: switch to perspective mode
-      gld_StartDrawScene();
-    }
-#endif
-  } else {
-    if (flashing_hom)
-    { // killough 2/10/98: add flashing red HOM indicators
-      unsigned char color=(gametic % 20) < 9 ? 0xb0 : 0;
-      V_FillRect(0, viewwindowx, viewwindowy, viewwidth, viewheight, color);
-      R_DrawViewBorder();
-    }
-  }
-
-  // check for new console commands.
-#ifdef HAVE_NET
-  NetUpdate ();
-#endif
-
-#ifdef GL_DOOM
-  if (V_GetMode() == VID_MODEGL) {
-    {
-      angle_t a1 = gld_FrustumAngle();
-      gld_clipper_Clear();
-      gld_clipper_SafeAddClipRangeRealAngles(viewangle + a1, viewangle - a1);
-      gld_FrustrumSetup();
-    }
-  }
-#endif
-
-  // The head node is the last node output.
-  R_RenderBSPNode (numnodes-1);
-
-#ifdef HAVE_NET
-  NetUpdate ();
-#endif
-
-  if (V_GetMode() != VID_MODEGL)
+    DSDA_ADD_CONTEXT(sf_draw_planes);
     R_DrawPlanes();
+    DSDA_REMOVE_CONTEXT(sf_draw_planes);
+  }
 
+  DSDA_ADD_CONTEXT(sf_reset_column_buffer);
   R_ResetColumnBuffer();
+  DSDA_REMOVE_CONTEXT(sf_reset_column_buffer);
 
-  // Check for new console commands.
-#ifdef HAVE_NET
-  NetUpdate ();
-#endif
+  FakeNetUpdate();
 
-  if (V_GetMode() != VID_MODEGL) {
+  if (V_IsSoftwareMode()) {
+    DSDA_ADD_CONTEXT(sf_draw_masked);
     R_DrawMasked ();
     R_ResetColumnBuffer();
+    DSDA_REMOVE_CONTEXT(sf_draw_masked);
   }
 
-  // Check for new console commands.
-#ifdef HAVE_NET
-  NetUpdate ();
-#endif
+  FakeNetUpdate();
 
-  if (V_GetMode() == VID_MODEGL && !automap) {
-#ifdef GL_DOOM
-    // proff 11/99: draw the scene
+  if (V_IsOpenGLMode() && !automap_solid) {
+    DSDA_ADD_CONTEXT(sf_draw_scene);
     gld_DrawScene(player);
-    // proff 11/99: finishing off
     gld_EndDrawScene();
-#endif
+    DSDA_REMOVE_CONTEXT(sf_draw_scene);
   }
 }

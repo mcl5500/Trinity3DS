@@ -1,3 +1,5 @@
+#include <stdlib.h>
+#include <time.h>
 #include "gl_wrapper.h"
 #include "gl_swizzle.h"
 #include <math.h>

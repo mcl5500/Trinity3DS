@@ -19,9 +19,7 @@
  *  - Ian Jackson <ian@chiark.greenend.org.uk>.
  * Still in the public domain.
  */
-#ifdef HAVE_CONFIG_H
 #include "config.h"
-#endif
 
 #include <string.h>             /* for memcpy() */
 #include <sys/types.h>          /* for stupid systems */
@@ -101,7 +99,7 @@ MD5Update(struct MD5Context *ctx, md5byte const *buf, unsigned len)
 }
 
 /*
- * Final wrapup - pad to 64-byte boundary with the bit pattern 
+ * Final wrapup - pad to 64-byte boundary with the bit pattern
  * 1 0* (64-bit count of bits processed, MSB-first)
  */
 void

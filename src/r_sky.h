@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -36,13 +36,6 @@
 
 #include "m_fixed.h"
 
-#ifdef __GNUG__
-#pragma interface
-#endif
-
-/* SKY, store the number for name. */
-#define SKYFLATNAME  "F_SKY1"
-
 /* The sky map is 256*128*4 maps. */
 #define ANGLETOSKYSHIFT         22
 
@@ -51,7 +44,6 @@ extern int skytexture;
 extern int skytexturemid;
 
 #define SKYSTRETCH_HEIGHT 228
-extern int r_stretchsky;
 extern int skystretch;
 extern fixed_t freelookviewheight;
 

@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -43,9 +43,11 @@
 
 #include "doomstat.h"
 #include "lprintf.h"
-#include "m_argv.h"
 #include "m_misc.h"
+#include "w_wad.h"
 #include "e6y.h"
+
+#include "dsda/args.h"
 
 int overflows_enabled = true;
 
@@ -60,9 +62,18 @@ const char *overflow_cfgname[OVERFLOW_MAX] =
   "overrun_missedbackside_emulate"
 };
 
+void ResetOverruns(void)
+{
+  overrun_list_t overflow;
+  for (overflow = 0; overflow < OVERFLOW_MAX; ++overflow)
+  {
+    overflows[overflow].happened = false;
+  }
+}
+
 static void ShowOverflowWarning(overrun_list_t overflow, int fatal, const char *params, ...)
 {
-  overflows[overflow].shit_happens = true;
+  overflows[overflow].happened = true;
 
   if (overflows[overflow].warn && !overflows[overflow].promted)
   {
@@ -72,15 +83,15 @@ static void ShowOverflowWarning(overrun_list_t overflow, int fatal, const char *
     static const char *name[OVERFLOW_MAX] = {
       "SPECHIT", "REJECT", "INTERCEPT", "PLYERINGAME", "DONUT", "MISSEDBACKSIDE"};
 
-    static const char str1[] =
+    static const char overflow_msg1[] =
       "Too big or not supported %s overflow has been detected. "
       "Desync or crash can occur soon "
       "or during playback with the vanilla engine in case you're recording demo.%s%s";
-    
-    static const char str2[] = 
+
+    static const char overflow_msg2[] =
       "%s overflow has been detected.%s%s";
 
-    static const char str3[] = 
+    static const char overflow_msg3[] =
       "%s overflow has been detected. "
       "The option responsible for emulation of this overflow is switched off "
       "hence desync or crash can occur soon "
@@ -88,12 +99,12 @@ static void ShowOverflowWarning(overrun_list_t overflow, int fatal, const char *
 
     overflows[overflow].promted = true;
 
-    sprintf(buffer,
-      (fatal ? str1 : (EMULATE(overflow) ? str2 : str3)), 
+    snprintf(buffer, sizeof(buffer),
+      (fatal ? overflow_msg1 : (EMULATE(overflow) ? overflow_msg2 : overflow_msg3)),
       name[overflow],
       "\nYou can change PrBoom behaviour for this overflow through in-game menu.",
       params);
-    
+
     va_start(argptr, params);
     I_vWarning(buffer, argptr);
     va_end(argptr);
@@ -116,6 +127,7 @@ static void InterceptsMemoryOverrun(int location, int value)
   int i, offset;
   int index;
   void *addr;
+  void *addr2;
 
   i = 0;
   offset = 0;
@@ -127,17 +139,18 @@ static void InterceptsMemoryOverrun(int location, int value)
     if (offset + intercepts_overrun[i].len > location)
     {
       addr = intercepts_overrun[i].addr;
+      addr2 = intercepts_overrun[i].addr2;
 
       // Write the value to the memory location.
       // 16-bit and 32-bit values are written differently.
 
       if (addr != NULL)
       {
-        if (intercepts_overrun[i].int16_array)
+        // 2 shorts
+        if (intercepts_overrun[i].addr2)
         {
-          index = (location - offset) / 2;
-          ((short *) addr)[index] = value & 0xffff;
-          ((short *) addr)[index + 1] = (value >> 16) & 0xffff;
+          *((short *) addr) = value & 0xffff;
+          *((short *) addr2) = (value >> 16) & 0xffff;
         }
         else
         {
@@ -156,7 +169,9 @@ static void InterceptsMemoryOverrun(int location, int value)
 
 void InterceptsOverrun(int num_intercepts, intercept_t *intercept)
 {
-  if (num_intercepts > MAXINTERCEPTS_ORIGINAL && demo_compatibility && PROCESS(OVERFLOW_INTERCEPT))
+  void P_MustRebuildBlockmap(void);
+
+  if (!hexen && num_intercepts > MAXINTERCEPTS_ORIGINAL && demo_compatibility && PROCESS(OVERFLOW_INTERCEPT))
   {
     ShowOverflowWarning(OVERFLOW_INTERCEPT, false, "");
 
@@ -168,12 +183,14 @@ void InterceptsOverrun(int num_intercepts, intercept_t *intercept)
       // the values from the intercept structure.
       //
       // Note: the ->d.{thing,line} member should really have its
-      // address translated into the correct address value for 
+      // address translated into the correct address value for
       // Vanilla Doom.
 
       InterceptsMemoryOverrun(location, intercept->frac);
       InterceptsMemoryOverrun(location + 4, intercept->isaline);
       InterceptsMemoryOverrun(location + 8, (int)(intptr_t) intercept->d.thing);
+
+      P_MustRebuildBlockmap();
     }
   }
 }
@@ -185,12 +202,12 @@ void InterceptsOverrun(int num_intercepts, intercept_t *intercept)
 
 int PlayeringameOverrun(const mapthing_t* mthing)
 {
-  if (mthing->type == 0 && PROCESS(OVERFLOW_PLYERINGAME))
+  if (mthing->type == 0 && PROCESS(OVERFLOW_PLAYERINGAME))
   {
     // playeringame[-1] == players[3].didsecret
-    ShowOverflowWarning(OVERFLOW_PLYERINGAME, (players + 3)->didsecret, "");
+    ShowOverflowWarning(OVERFLOW_PLAYERINGAME, (players + 3)->didsecret, "");
 
-    if (EMULATE(OVERFLOW_PLYERINGAME))
+    if (EMULATE(OVERFLOW_PLAYERINGAME))
     {
       return true;
     }
@@ -215,14 +232,14 @@ void SpechitOverrun(spechit_overrun_param_t *params)
 {
   int numspechit = *(params->numspechit);
 
-  if (demo_compatibility && numspechit > 8)
+  if (!hexen && demo_compatibility && numspechit > 8)
   {
     line_t **spechit = *(params->spechit);
 
     ShowOverflowWarning(OVERFLOW_SPECHIT,
-      numspechit > 
-        (compatibility_level == dosdoom_compatibility || 
-        compatibility_level == tasdoom_compatibility ? 10 : 14), 
+      numspechit >
+        (compatibility_level == dosdoom_compatibility ||
+        compatibility_level == tasdoom_compatibility ? 10 : 14),
       "\n\nThe list of LineID leading to overrun:\n%d, %d, %d, %d, %d, %d, %d, %d, %d.",
       spechit[0]->iLineID, spechit[1]->iLineID, spechit[2]->iLineID,
       spechit[3]->iLineID, spechit[4]->iLineID, spechit[5]->iLineID,
@@ -234,7 +251,7 @@ void SpechitOverrun(spechit_overrun_param_t *params)
 
       if (spechit_baseaddr == 0)
       {
-        int p;
+        dsda_arg_t *arg;
 
         // This is the first time we have had an overrun.  Work out
         // what base address we are going to use.
@@ -244,12 +261,10 @@ void SpechitOverrun(spechit_overrun_param_t *params)
         // Use the specified magic value when emulating spechit overruns.
         //
 
-        p = M_CheckParm("-spechit");
-        
-        if (p > 0)
+        arg = dsda_Arg(dsda_arg_spechit);
+        if (arg->found)
         {
-          //baseaddr = atoi(myargv[p+1]);
-          M_StrToInt(myargv[p+1], (int*)&spechit_baseaddr);
+          spechit_baseaddr = (unsigned int) arg->value.v_int;
         }
         else
         {
@@ -263,7 +278,7 @@ void SpechitOverrun(spechit_overrun_param_t *params)
 
       if (compatibility_level == dosdoom_compatibility || compatibility_level == tasdoom_compatibility)
       {
-        // There are no more desyncs in the following dosdoom demos: 
+        // There are no more desyncs in the following dosdoom demos:
         // flsofdth.wad\fod3uv.lmp - http://www.doomworld.com/sda/flsofdth.htm
         // hr.wad\hf181430.lmp - http://www.doomworld.com/tas/hf181430.zip
         // hr.wad\hr181329.lmp - http://www.doomworld.com/tas/hr181329.zip
@@ -271,17 +286,17 @@ void SpechitOverrun(spechit_overrun_param_t *params)
 
         switch(numspechit)
         {
-        case 9: 
+        case 9:
           *(params->tmfloorz) = addr;
           break;
         case 10:
           *(params->tmceilingz) = addr;
           break;
-          
+
         default:
-          fprintf(stderr, "SpechitOverrun: Warning: unable to emulate"
-                          "an overrun where numspechit=%i\n",
-                           numspechit);
+          lprintf(LO_ERROR, "SpechitOverrun: Warning: unable to emulate"
+                            " an overrun where numspechit=%i\n",
+                            numspechit);
           break;
         }
       }
@@ -289,7 +304,7 @@ void SpechitOverrun(spechit_overrun_param_t *params)
       {
         switch(numspechit)
         {
-        case 9: 
+        case 9:
         case 10:
         case 11:
         case 12:
@@ -300,6 +315,14 @@ void SpechitOverrun(spechit_overrun_param_t *params)
           break;
         case 14:
           *(params->crushchange) = addr;
+
+          // In vanilla doom, this field is interpreted as a boolean,
+          //   but it now stores the crushing damage itself.
+          // Since any nonzero value should yield doom's damage,
+          //   we can set this explicitly.
+          if (*params->crushchange)
+            *params->crushchange = 10;
+
           break;
 
         default:
@@ -320,42 +343,37 @@ void SpechitOverrun(spechit_overrun_param_t *params)
 // padding the reject table if it is too short
 // totallines must be the number returned by P_GroupLines()
 // an underflow will be padded with zeroes, or a doom.exe z_zone header
-// 
+//
 // e6y
 // reject overrun emulation code
 // It's emulated successfully if the size of overflow no more than 16 bytes.
 // No more desync on teeth-32.wad\teeth-32.lmp.
 // http://www.doomworld.com/vb/showthread.php?s=&threadid=35214
 
-void RejectOverrun(int rejectlump, const byte **rejectmatrix, int totallines)
+void RejectOverrun(unsigned int length, const byte **rejectmatrix, int totallines)
 {
-  unsigned int length, required;
+  unsigned int required;
   byte *newreject;
   unsigned char pad;
 
   required = (numsectors * numsectors + 7) / 8;
-  length = W_LumpLength(rejectlump);
 
   if (length < required)
   {
     // allocate a new block and copy the reject table into it; zero the rest
-    // PU_LEVEL => will be freed on level exit
-    newreject = Z_Malloc(required, PU_LEVEL, NULL);
-    *rejectmatrix = memmove(newreject, *rejectmatrix, length);
+    newreject = Z_MallocLevel(required);
+    *rejectmatrix = length ? memmove(newreject, *rejectmatrix, length) : newreject;
 
     // e6y
     // PrBoom 2.2.5 and 2.2.6 padded a short REJECT with 0xff
-    // This command line switch is needed for all potential demos 
+    // This command line switch is needed for all potential demos
     // recorded with these versions of PrBoom on maps with too short REJECT
     // I don't think there are any demos that will need it but yes that seems sensible
     pad = prboom_comp[PC_REJECT_PAD_WITH_FF].state ? 0xff : 0;
 
     memset(newreject + length, pad, required - length);
-    // unlock the original lump, it is no longer needed
-    W_UnlockLumpNum(rejectlump);
-    rejectlump = -1;
 
-    if (demo_compatibility && PROCESS(OVERFLOW_REJECT))
+    if (!hexen && demo_compatibility && PROCESS(OVERFLOW_REJECT))
     {
       ShowOverflowWarning(OVERFLOW_REJECT, (required - length > 16) || (length%4 != 0), "");
 
@@ -384,7 +402,8 @@ void RejectOverrun(int rejectlump, const byte **rejectmatrix, int totallines)
       }
     }
 
-    lprintf(LO_WARN, "P_LoadReject: REJECT too short (%u<%u) - padded\n", length, required);
+    if (length)
+      lprintf(LO_WARN, "P_LoadReject: REJECT too short (%u<%u) - padded\n", length, required);
   }
 }
 
@@ -421,24 +440,26 @@ static int GetMemoryValue(unsigned int offset, void *value, int size)
 
   if (firsttime)
   {
-    int p, i, val;
+    int i, val;
+    dsda_arg_t *arg;
 
     firsttime = false;
     i = 0;
 
-    if ((p = M_CheckParm("-setmem")) && (p < myargc-1))
+    arg = dsda_Arg(dsda_arg_setmem);
+    if (arg->found)
     {
-      if (!strcasecmp(myargv[p + 1], "dos622"))
+      if (!strcasecmp(arg->value.v_string_array[0], "dos622"))
         dos_mem_dump = mem_dump_dos622;
-      if (!strcasecmp(myargv[p + 1], "dos71"))
+      if (!strcasecmp(arg->value.v_string_array[0], "dos71"))
         dos_mem_dump = mem_dump_win98;
-      else if (!strcasecmp(myargv[p + 1], "dosbox"))
+      else if (!strcasecmp(arg->value.v_string_array[0], "dosbox"))
         dos_mem_dump = mem_dump_dosbox;
       else
       {
-        while (++p != myargc && *myargv[p] != '-' && i < DOS_MEM_DUMP_SIZE)
+        while (i < DOS_MEM_DUMP_SIZE)
         {
-          M_StrToInt(myargv[p], &val);
+          M_StrToInt(arg->value.v_string_array[i], &val);
           dos_mem_dump[i++] = (unsigned char)val;
         }
       }
@@ -481,7 +502,7 @@ int DonutOverrun(fixed_t *pfloorheight, short *pfloorpic)
       {
         GetMemoryValue(0, pfloorheight, 4);
         GetMemoryValue(8, pfloorpic, 2);
-        
+
         // bounds-check floorpic
         if ((*pfloorpic) <= 0 || (*pfloorpic) >= numflats)
         {

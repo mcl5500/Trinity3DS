@@ -1,4 +1,4 @@
-// Emacs style mode select   -*- C++ -*-
+// Emacs style mode select   -*- C -*-
 //-----------------------------------------------------------------------------
 //
 // Copyright(C) 1993-1996 Id Software, Inc.
@@ -54,9 +54,14 @@ MEMFILE *mem_fopen_read(const void *buf, size_t buflen)
 {
   MEMFILE *file;
 
-  file = Z_Malloc(sizeof(MEMFILE), PU_STATIC, 0);
+  file = Z_Malloc(sizeof(MEMFILE));
 
+  // The MEMFILE struct is overloaded for both read-only and write use cases
+  // This is required to interface with 3rd party libraries (I think)
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wcast-qual"
   file->buf = (unsigned char *) buf;
+  #pragma GCC diagnostic pop
   file->buflen = buflen;
   file->position = 0;
   file->mode = MODE_READ;
@@ -102,10 +107,10 @@ MEMFILE *mem_fopen_write(void)
 {
   MEMFILE *file;
 
-  file = Z_Malloc(sizeof(MEMFILE), PU_STATIC, 0);
+  file = Z_Malloc(sizeof(MEMFILE));
 
   file->alloced = 1024;
-  file->buf = Z_Malloc(file->alloced, PU_STATIC, 0);
+  file->buf = Z_Malloc(file->alloced);
   file->buflen = 0;
   file->position = 0;
   file->mode = MODE_WRITE;
@@ -133,7 +138,7 @@ size_t mem_fwrite(const void *ptr, size_t size, size_t nmemb, MEMFILE *stream)
   {
     unsigned char *newbuf;
 
-    newbuf = Z_Malloc(stream->alloced * 2, PU_STATIC, 0);
+    newbuf = Z_Malloc(stream->alloced * 2);
     memcpy(newbuf, stream->buf, stream->alloced);
     Z_Free(stream->buf);
     stream->buf = newbuf;
@@ -193,7 +198,7 @@ int mem_fseek(MEMFILE *stream, signed long position, mem_rel_t whence)
       return -1;
   }
 
-  if (newpos < stream->buflen)
+  if (newpos <= stream->buflen)
   {
     stream->position = newpos;
     return 0;

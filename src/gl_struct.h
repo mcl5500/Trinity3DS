@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -34,78 +34,60 @@
 #ifndef _GL_STRUCT_H
 #define _GL_STRUCT_H
 
-#ifdef GL_DOOM
-
 #ifdef __3DS__
 #include "3DS/gl_wrapper.h"
 #else
-#include <GL/gl.h>
-#include <GL/glext.h>
+#include <SDL_opengl.h>
 #endif
 
-#endif
-
-extern int nodesVersion;
-
-typedef enum {
-  filter_nearest,
-  filter_linear,
-  filter_nearest_mipmap_nearest,
-  filter_nearest_mipmap_linear,
-  filter_linear_mipmap_nearest,
-  filter_linear_mipmap_linear,
-
-  filter_count
-} filter_texture_mode_t;
+extern dboolean use_gl_nodes;
 
 typedef enum {
   skytype_auto,
   skytype_none,
   skytype_standard,
   skytype_skydome,
-  skytype_screen,
 
   skytype_count
 } skytype_t;
 
 #define MAX_GLGAMMA 32
-typedef enum
-{
-  gl_lightmode_glboom,
-  gl_lightmode_gzdoom,
-  gl_lightmode_fogbased,
 
-  gl_lightmode_last
-} gl_lightmode_t;
+enum bleedtype {
+  BLEED_NONE = 0x0,
+  BLEED_CEILING = 0x1,
+  BLEED_OCCLUDE = 0x2
+};
 
-extern int gl_skymode;
 extern int gl_drawskys;
-extern gl_lightmode_t gl_lightmode;
-extern gl_lightmode_t gl_lightmode_default;
-extern const char *gl_lightmodes[];
-extern int gl_light_ambient;
+extern dboolean gl_ui_lightmode_indexed;
+extern dboolean gl_automap_lightmode_indexed;
+extern dboolean gl_menu_lightmode_indexed;
 void gld_FlushTextures(void);
-void M_ChangeLightMode(void);
-
-//detail
-extern int gl_detail_maxdist;
-extern int gl_allow_detail_textures;
 
 void gld_InitVertexData();
 void gld_CleanVertexData();
 void gld_UpdateSplitData(sector_t *sector);
 
-extern int gl_boom_colormaps;
-extern int gl_boom_colormaps_default;
-
 void gld_Init(int width, int height);
 void gld_InitCommandLine(void);
-void gld_InitTextureParams(void);
 
-void gld_DrawNumPatch(int x, int y, int lump, int cm, enum patch_translation_e flags);
-void gld_DrawNumPatch_f(float x, float y, int lump, int cm, enum patch_translation_e flags);
+void gld_BeginUIDraw(void);
+void gld_EndUIDraw(void);
+void gld_BeginAutomapDraw(void);
+void gld_EndAutomapDraw(void);
+void gld_BeginMenuDraw(void);
+void gld_EndMenuDraw(void);
 
-void gld_FillFlat(int lump, int x, int y, int width, int height, enum patch_translation_e flags);
+void gld_DrawNumPatch(int x, int y, int lump, dboolean center, int cm, enum patch_translation_e flags);
+void gld_DrawNumPatch_f(float x, float y, int lump, dboolean center, int cm, enum patch_translation_e flags);
+
+void gld_FillRaw(int lump, int x, int y, int src_width, int src_height, int dst_width, int dst_height, enum patch_translation_e flags);
+#define gld_FillRawName(name, x, y, src_width, src_height, dst_width, dst_height, flags) \
+  gld_FillRaw(W_GetNumForName(name), (x), (y), (src_width), (src_height), (dst_width), (dst_height), (flags))
+
+#define gld_FillFlat(lump, x, y, width, height, flags) \
+  gld_FillRaw((firstflat+lump), (x), (y), 64, 64, (width), (height), (flags))
 #define gld_FillFlatName(flatname, x, y, width, height, flags) \
   gld_FillFlat(R_FlatNumForName(flatname), (x), (y), (width), (height), (flags))
 
@@ -117,7 +99,9 @@ void gld_DrawLine(int x0, int y0, int x1, int y1, int BaseColor);
 void gld_DrawLine_f(float x0, float y0, float x1, float y1, int BaseColor);
 void gld_DrawWeapon(int weaponlump, vissprite_t *vis, int lightlevel);
 void gld_FillBlock(int x, int y, int width, int height, int col);
+void gld_DrawShaded(int x, int y, int width, int height, int shade);
 void gld_SetPalette(int palette);
+unsigned char *gld_ReadScreen(void);
 
 void gld_CleanMemory(void);
 void gld_CleanStaticMemory(void);
@@ -131,11 +115,7 @@ void gld_AddWall(seg_t *seg);
 void gld_ProjectSprite(mobj_t* thing, int lightlevel);
 void gld_DrawScene(player_t *player);
 void gld_EndDrawScene(void);
-void gld_ProcessExtraAlpha(void);
 void gld_Finish();
-
-//blend animation from zdoomgl
-extern int gl_blend_animations;
 
 // wipe
 int gld_wipe_doMelt(int ticks, int *y_lookup);
@@ -143,88 +123,22 @@ int gld_wipe_exitMelt(int ticks);
 int gld_wipe_StartScreen(void);
 int gld_wipe_EndScreen(void);
 
-// hires
-extern int gl_hires_24bit_colormap;
-extern int gl_texture_external_hires;
-extern int gl_texture_internal_hires;
-extern int gl_hires_override_pwads;
-extern const char *gl_texture_hires_dir;
-int gld_PrecacheGUIPatches(void);
-
-//HQ resize
-typedef enum
-{
-  hq_scale_none,
-  hq_scale_2x,
-  hq_scale_3x,
-  hq_scale_4x,
-  
-  hq_scale_max
-} gl_hqresizemode_t;
-extern const char *gl_hqresizemodes[];
-extern int gl_texture_hqresize;
-extern int gl_texture_hqresize_textures;
-extern int gl_texture_hqresize_sprites;
-extern int gl_texture_hqresize_patches;
-
 //clipper
 dboolean gld_clipper_SafeCheckRange(angle_t startAngle, angle_t endAngle);
 void gld_clipper_SafeAddClipRange(angle_t startangle, angle_t endangle);
-void gld_clipper_SafeAddClipRangeRealAngles(angle_t startangle, angle_t endangle);
-void gld_clipper_Clear(void);
-angle_t gld_FrustumAngle(void);
-void gld_FrustrumSetup(void);
+void gld_FrustumSetup(void);
 dboolean gld_SphereInFrustum(float x, float y, float z, float radius);
 
 //missing flats (fake floors and ceilings)
+extern dboolean gl_use_stencil;
 sector_t* GetBestFake(sector_t *sector, int ceiling, int validcount);
-sector_t* GetBestBleedSector(sector_t* source, int ceiling);
-
-#ifdef GL_DOOM
-
-//shadows
-typedef struct shadow_params_s
-{
-  int enable;
-  int loaded;
-
-  GLuint tex_id;
-  int width;
-  int height;
-
-  int max_radius;
-  int max_dist;
-  float factor;
-  float bias;
-} simple_shadow_params_t;
-
-extern simple_shadow_params_t simple_shadows;
-extern int gl_shadows_maxdist;
-extern int gl_shadows_factor;
-
-#endif
+sector_t* GetBestBleedSector(sector_t* source, enum bleedtype type);
 
 void gld_DrawMapLines(void);
 
-//sprites
-typedef enum { spriteclip_const, spriteclip_always, spriteclip_smart } spriteclipmode_t;
-typedef enum { fuzz_darken, fuzz_shadow, fuzz_transparent, fuzz_ghostly, fuzz_last } spritefuzzmode_t;
-extern spritefuzzmode_t gl_thingspritefuzzmode;
-extern spritefuzzmode_t gl_weaponspritefuzzmode;
-extern const char *gl_spritefuzzmodes[];
-extern spriteclipmode_t gl_spriteclip;
-extern const char *gl_spriteclipmodes[];
-extern int gl_spriteclip_threshold;
-extern float gl_spriteclip_threshold_f;
-extern int gl_sprites_frustum_culling;
-extern int gl_sprite_offset_default;
-extern float gl_sprite_offset;
-extern int gl_sprite_blend;
-extern int gl_mask_sprite_threshold;
-
-//skybox
-int R_BoxSkyboxNumForName(const char *name);
-void R_SetBoxSkybox(int texture);
+//multisampling
+void gld_MultisamplingInit(void);
+void gld_MultisamplingSet(void);
 
 void gld_ProcessTexturedMap(void);
 void gld_ResetTexturedAutomap(void);
@@ -256,8 +170,6 @@ enum
   am_icon_count
 };
 
-#ifdef GL_DOOM
-
 typedef struct am_icon_s
 {
   GLuint tex_id;
@@ -266,12 +178,12 @@ typedef struct am_icon_s
 } am_icon_t;
 extern am_icon_t am_icons[];
 
-#endif
-
 void gld_InitMapPics(void);
 void gld_AddNiceThing(int type, float x, float y, float radius, float angle,
                      unsigned char r, unsigned char g, unsigned char b, unsigned char a);
 void gld_DrawNiceThings(int fx, int fy, int fw, int fh);
 void gld_ClearNiceThings(void);
+
+extern int gl_render_fov;
 
 #endif // _GL_STRUCT_H

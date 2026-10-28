@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -39,12 +39,13 @@
 #include "w_wad.h"
 #include "r_main.h"
 #include "r_draw.h"
-#include "r_filter.h"
 #include "v_video.h"
 #include "st_stuff.h"
 #include "g_game.h"
 #include "am_map.h"
 #include "lprintf.h"
+
+#include "dsda/stretch.h"
 
 //
 // All drawing to the view buffer is accomplished in this file.
@@ -57,10 +58,7 @@
 
 byte *viewimage;
 int  viewwidth;
-int  scaledviewwidth;
 int  viewheight;
-int  viewwindowx;
-int  viewwindowy;
 
 // Color tables for different players,
 //  translate a limited part to another
@@ -91,9 +89,7 @@ static int    temp_x = 0;
 static int    tempyl[4], tempyh[4];
 
 // e6y: resolution limitation is removed
-static byte           *byte_tempbuf;
-static unsigned short *short_tempbuf;
-static unsigned int   *int_tempbuf;
+static byte           *tempbuf;
 
 static int    startx = 0;
 static int    temptype = COL_NONE;
@@ -125,6 +121,10 @@ static int fuzzoffset[FUZZTABLE];
 
 static int fuzzpos = 0;
 
+// Fuzz cell size for scaled software fuzz
+static int fuzzcellsize;
+int fuzz_cutoff = false;
+
 // render pipelines
 #define RDC_STANDARD      1
 #define RDC_TRANSLUCENT   2
@@ -132,34 +132,29 @@ static int fuzzpos = 0;
 #define RDC_FUZZ          8
 // no color mapping
 #define RDC_NOCOLMAP     16
-// filter modes
-#define RDC_DITHERZ      32
-#define RDC_BILINEAR     64
-#define RDC_ROUNDED     128
 
-draw_vars_t drawvars = { 
-  NULL, // byte_topleft
-  NULL, // short_topleft
-  NULL, // int_topleft
-  0, // byte_pitch
-  0, // short_pitch
-  0, // int_pitch
-  RDRAW_FILTER_POINT, // filterwall
-  RDRAW_FILTER_POINT, // filterfloor
-  RDRAW_FILTER_POINT, // filtersprite
-  RDRAW_FILTER_POINT, // filterz
-  RDRAW_FILTER_POINT, // filterpatch
-
-  RDRAW_MASKEDCOLUMNEDGE_SQUARE, // sprite_edges
-  RDRAW_MASKEDCOLUMNEDGE_SQUARE, // patch_edges
-
-  // 49152 = FRACUNIT * 0.75
-  // 81920 = FRACUNIT * 1.25
-  49152 // mag_threshold
+draw_vars_t drawvars = {
+  NULL, // topleft
+  0, // pitch
 };
 
+dboolean R_FullView(void)
+{
+  return viewheight == SCREENHEIGHT;
+}
+
+dboolean R_PartialView(void)
+{
+  return viewheight != SCREENHEIGHT;
+}
+
+dboolean R_StatusBarVisible(void)
+{
+  return R_PartialView() || automap_solid;
+}
+
 //
-// Error functions that will abort if R_FlushColumns tries to flush 
+// Error functions that will abort if R_FlushColumns tries to flush
 // columns without a column type.
 //
 
@@ -213,66 +208,21 @@ void R_ResetColumnBuffer(void)
 }
 
 #define R_DRAWCOLUMN_PIPELINE RDC_STANDARD
-#define R_DRAWCOLUMN_PIPELINE_BITS 15
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWhole15
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHT15
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuad15
+#define R_FLUSHWHOLE_FUNCNAME R_FlushWhole
+#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHT
+#define R_FLUSHQUAD_FUNCNAME R_FlushQuad
 #include "r_drawflush.inl"
 
 #define R_DRAWCOLUMN_PIPELINE RDC_TRANSLUCENT
-#define R_DRAWCOLUMN_PIPELINE_BITS 15
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeTL15
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTTL15
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuadTL15
+#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeTL
+#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTTL
+#define R_FLUSHQUAD_FUNCNAME R_FlushQuadTL
 #include "r_drawflush.inl"
 
 #define R_DRAWCOLUMN_PIPELINE RDC_FUZZ
-#define R_DRAWCOLUMN_PIPELINE_BITS 15
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeFuzz15
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTFuzz15
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuadFuzz15
-#include "r_drawflush.inl"
-
-#define R_DRAWCOLUMN_PIPELINE RDC_STANDARD
-#define R_DRAWCOLUMN_PIPELINE_BITS 16
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWhole16
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHT16
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuad16
-#include "r_drawflush.inl"
-
-#define R_DRAWCOLUMN_PIPELINE RDC_TRANSLUCENT
-#define R_DRAWCOLUMN_PIPELINE_BITS 16
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeTL16
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTTL16
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuadTL16
-#include "r_drawflush.inl"
-
-#define R_DRAWCOLUMN_PIPELINE RDC_FUZZ
-#define R_DRAWCOLUMN_PIPELINE_BITS 16
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeFuzz16
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTFuzz16
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuadFuzz16
-#include "r_drawflush.inl"
-
-#define R_DRAWCOLUMN_PIPELINE RDC_STANDARD
-#define R_DRAWCOLUMN_PIPELINE_BITS 32
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWhole32
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHT32
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuad32
-#include "r_drawflush.inl"
-
-#define R_DRAWCOLUMN_PIPELINE RDC_TRANSLUCENT
-#define R_DRAWCOLUMN_PIPELINE_BITS 32
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeTL32
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTTL32
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuadTL32
-#include "r_drawflush.inl"
-
-#define R_DRAWCOLUMN_PIPELINE RDC_FUZZ
-#define R_DRAWCOLUMN_PIPELINE_BITS 32
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeFuzz32
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTFuzz32
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuadFuzz32
+#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeFuzz
+#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTFuzz
+#define R_FLUSHQUAD_FUNCNAME R_FlushQuadFuzz
 #include "r_drawflush.inl"
 
 //
@@ -292,25 +242,10 @@ byte *translationtables;
 #define R_DRAWCOLUMN_PIPELINE_TYPE RDC_PIPELINE_STANDARD
 #define R_DRAWCOLUMN_PIPELINE_BASE RDC_STANDARD
 
-#define R_DRAWCOLUMN_PIPELINE_BITS 15
-#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawColumn15 ## postfix
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWhole15
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHT15
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuad15
-#include "r_drawcolpipeline.inl"
-
-#define R_DRAWCOLUMN_PIPELINE_BITS 16
-#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawColumn16 ## postfix
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWhole16
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHT16
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuad16
-#include "r_drawcolpipeline.inl"
-
-#define R_DRAWCOLUMN_PIPELINE_BITS 32
-#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawColumn32 ## postfix
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWhole32
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHT32
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuad32
+#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawColumn ## postfix
+#define R_FLUSHWHOLE_FUNCNAME R_FlushWhole
+#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHT
+#define R_FLUSHQUAD_FUNCNAME R_FlushQuad
 #include "r_drawcolpipeline.inl"
 
 #undef R_DRAWCOLUMN_PIPELINE_BASE
@@ -331,25 +266,10 @@ byte *translationtables;
 #define R_DRAWCOLUMN_PIPELINE_TYPE RDC_PIPELINE_TRANSLUCENT
 #define R_DRAWCOLUMN_PIPELINE_BASE RDC_TRANSLUCENT
 
-#define R_DRAWCOLUMN_PIPELINE_BITS 15
-#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawTLColumn15 ## postfix
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeTL15
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTTL15
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuadTL15
-#include "r_drawcolpipeline.inl"
-
-#define R_DRAWCOLUMN_PIPELINE_BITS 16
-#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawTLColumn16 ## postfix
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeTL16
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTTL16
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuadTL16
-#include "r_drawcolpipeline.inl"
-
-#define R_DRAWCOLUMN_PIPELINE_BITS 32
-#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawTLColumn32 ## postfix
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeTL32
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTTL32
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuadTL32
+#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawTLColumn ## postfix
+#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeTL
+#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTTL
+#define R_FLUSHQUAD_FUNCNAME R_FlushQuadTL
 #include "r_drawcolpipeline.inl"
 
 #undef R_DRAWCOLUMN_PIPELINE_BASE
@@ -368,25 +288,10 @@ byte *translationtables;
 #define R_DRAWCOLUMN_PIPELINE_TYPE RDC_PIPELINE_TRANSLATED
 #define R_DRAWCOLUMN_PIPELINE_BASE RDC_TRANSLATED
 
-#define R_DRAWCOLUMN_PIPELINE_BITS 15
-#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawTranslatedColumn15 ## postfix
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWhole15
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHT15
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuad15
-#include "r_drawcolpipeline.inl"
-
-#define R_DRAWCOLUMN_PIPELINE_BITS 16
-#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawTranslatedColumn16 ## postfix
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWhole16
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHT16
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuad16
-#include "r_drawcolpipeline.inl"
-
-#define R_DRAWCOLUMN_PIPELINE_BITS 32
-#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawTranslatedColumn32 ## postfix
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWhole32
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHT32
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuad32
+#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawTranslatedColumn ## postfix
+#define R_FLUSHWHOLE_FUNCNAME R_FlushWhole
+#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHT
+#define R_FLUSHQUAD_FUNCNAME R_FlushQuad
 #include "r_drawcolpipeline.inl"
 
 #undef R_DRAWCOLUMN_PIPELINE_BASE
@@ -404,193 +309,52 @@ byte *translationtables;
 #define R_DRAWCOLUMN_PIPELINE_TYPE RDC_PIPELINE_FUZZ
 #define R_DRAWCOLUMN_PIPELINE_BASE RDC_FUZZ
 
-#define R_DRAWCOLUMN_PIPELINE_BITS 15
-#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawFuzzColumn15 ## postfix
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeFuzz15
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTFuzz15
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuadFuzz15
-#include "r_drawcolpipeline.inl"
-
-#define R_DRAWCOLUMN_PIPELINE_BITS 16
-#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawFuzzColumn16 ## postfix
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeFuzz16
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTFuzz16
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuadFuzz16
-#include "r_drawcolpipeline.inl"
-
-#define R_DRAWCOLUMN_PIPELINE_BITS 32
-#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawFuzzColumn32 ## postfix
-#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeFuzz32
-#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTFuzz32
-#define R_FLUSHQUAD_FUNCNAME R_FlushQuadFuzz32
+#define R_DRAWCOLUMN_FUNCNAME_COMPOSITE(postfix) R_DrawFuzzColumn ## postfix
+#define R_FLUSHWHOLE_FUNCNAME R_FlushWholeFuzz
+#define R_FLUSHHEADTAIL_FUNCNAME R_FlushHTFuzz
+#define R_FLUSHQUAD_FUNCNAME R_FlushQuadFuzz
 #include "r_drawcolpipeline.inl"
 
 #undef R_DRAWCOLUMN_PIPELINE_BASE
 #undef R_DRAWCOLUMN_PIPELINE_TYPE
 
-static R_DrawColumn_f drawcolumnfuncs[VID_MODEMAX][RDRAW_FILTER_MAXFILTERS][RDRAW_FILTER_MAXFILTERS][RDC_PIPELINE_MAXPIPELINES] = {
+static R_DrawColumn_f drawcolumnfuncs[RDRAW_FILTER_MAXFILTERS][RDC_PIPELINE_MAXPIPELINES] = {
   {
-    {
-      {NULL, NULL, NULL, NULL,},
-      {R_DrawColumn15_PointUV,
-       R_DrawTLColumn15_PointUV,
-       R_DrawTranslatedColumn15_PointUV,
-       R_DrawFuzzColumn15_PointUV,},
-      {R_DrawColumn15_LinearUV,
-       R_DrawTLColumn15_LinearUV,
-       R_DrawTranslatedColumn15_LinearUV,
-       R_DrawFuzzColumn15_LinearUV,},
-      {R_DrawColumn15_RoundedUV,
-       R_DrawTLColumn15_RoundedUV,
-       R_DrawTranslatedColumn15_RoundedUV,
-       R_DrawFuzzColumn15_RoundedUV,},
-    },
-    {
-      {NULL, NULL, NULL, NULL,},
-      {R_DrawColumn15_PointUV_PointZ,
-       R_DrawTLColumn15_PointUV_PointZ,
-       R_DrawTranslatedColumn15_PointUV_PointZ,
-       R_DrawFuzzColumn15_PointUV_PointZ,},
-      {R_DrawColumn15_LinearUV_PointZ,
-       R_DrawTLColumn15_LinearUV_PointZ,
-       R_DrawTranslatedColumn15_LinearUV_PointZ,
-       R_DrawFuzzColumn15_LinearUV_PointZ,},
-      {R_DrawColumn15_RoundedUV_PointZ,
-       R_DrawTLColumn15_RoundedUV_PointZ,
-       R_DrawTranslatedColumn15_RoundedUV_PointZ,
-       R_DrawFuzzColumn15_RoundedUV_PointZ,},
-    },
-    {
-      {NULL, NULL, NULL, NULL,},
-      {R_DrawColumn15_PointUV_LinearZ,
-       R_DrawTLColumn15_PointUV_LinearZ,
-       R_DrawTranslatedColumn15_PointUV_LinearZ,
-       R_DrawFuzzColumn15_PointUV_LinearZ,},
-      {R_DrawColumn15_LinearUV_LinearZ,
-       R_DrawTLColumn15_LinearUV_LinearZ,
-       R_DrawTranslatedColumn15_LinearUV_LinearZ,
-       R_DrawFuzzColumn15_LinearUV_LinearZ,},
-      {R_DrawColumn15_RoundedUV_LinearZ,
-       R_DrawTLColumn15_RoundedUV_LinearZ,
-       R_DrawTranslatedColumn15_RoundedUV_LinearZ,
-       R_DrawFuzzColumn15_RoundedUV_LinearZ,},
-    },
+    R_DrawColumn_PointUV,
+    R_DrawTLColumn_PointUV,
+    R_DrawTranslatedColumn_PointUV,
+    R_DrawFuzzColumn_PointUV,
   },
   {
-    {
-      {NULL, NULL, NULL, NULL,},
-      {R_DrawColumn16_PointUV,
-       R_DrawTLColumn16_PointUV,
-       R_DrawTranslatedColumn16_PointUV,
-       R_DrawFuzzColumn16_PointUV,},
-      {R_DrawColumn16_LinearUV,
-       R_DrawTLColumn16_LinearUV,
-       R_DrawTranslatedColumn16_LinearUV,
-       R_DrawFuzzColumn16_LinearUV,},
-      {R_DrawColumn16_RoundedUV,
-       R_DrawTLColumn16_RoundedUV,
-       R_DrawTranslatedColumn16_RoundedUV,
-       R_DrawFuzzColumn16_RoundedUV,},
-    },
-    {
-      {NULL, NULL, NULL, NULL,},
-      {R_DrawColumn16_PointUV_PointZ,
-       R_DrawTLColumn16_PointUV_PointZ,
-       R_DrawTranslatedColumn16_PointUV_PointZ,
-       R_DrawFuzzColumn16_PointUV_PointZ,},
-      {R_DrawColumn16_LinearUV_PointZ,
-       R_DrawTLColumn16_LinearUV_PointZ,
-       R_DrawTranslatedColumn16_LinearUV_PointZ,
-       R_DrawFuzzColumn16_LinearUV_PointZ,},
-      {R_DrawColumn16_RoundedUV_PointZ,
-       R_DrawTLColumn16_RoundedUV_PointZ,
-       R_DrawTranslatedColumn16_RoundedUV_PointZ,
-       R_DrawFuzzColumn16_RoundedUV_PointZ,},
-    },
-    {
-      {NULL, NULL, NULL, NULL,},
-      {R_DrawColumn16_PointUV_LinearZ,
-       R_DrawTLColumn16_PointUV_LinearZ,
-       R_DrawTranslatedColumn16_PointUV_LinearZ,
-       R_DrawFuzzColumn16_PointUV_LinearZ,},
-      {R_DrawColumn16_LinearUV_LinearZ,
-       R_DrawTLColumn16_LinearUV_LinearZ,
-       R_DrawTranslatedColumn16_LinearUV_LinearZ,
-       R_DrawFuzzColumn16_LinearUV_LinearZ,},
-      {R_DrawColumn16_RoundedUV_LinearZ,
-       R_DrawTLColumn16_RoundedUV_LinearZ,
-       R_DrawTranslatedColumn16_RoundedUV_LinearZ,
-       R_DrawFuzzColumn16_RoundedUV_LinearZ,},
-    },
-  },
-  {
-    {
-      {NULL, NULL, NULL, NULL,},
-      {R_DrawColumn32_PointUV,
-       R_DrawTLColumn32_PointUV,
-       R_DrawTranslatedColumn32_PointUV,
-       R_DrawFuzzColumn32_PointUV,},
-      {R_DrawColumn32_LinearUV,
-       R_DrawTLColumn32_LinearUV,
-       R_DrawTranslatedColumn32_LinearUV,
-       R_DrawFuzzColumn32_LinearUV,},
-      {R_DrawColumn32_RoundedUV,
-       R_DrawTLColumn32_RoundedUV,
-       R_DrawTranslatedColumn32_RoundedUV,
-       R_DrawFuzzColumn32_RoundedUV,},
-    },
-    {
-      {NULL, NULL, NULL, NULL,},
-      {R_DrawColumn32_PointUV_PointZ,
-       R_DrawTLColumn32_PointUV_PointZ,
-       R_DrawTranslatedColumn32_PointUV_PointZ,
-       R_DrawFuzzColumn32_PointUV_PointZ,},
-      {R_DrawColumn32_LinearUV_PointZ,
-       R_DrawTLColumn32_LinearUV_PointZ,
-       R_DrawTranslatedColumn32_LinearUV_PointZ,
-       R_DrawFuzzColumn32_LinearUV_PointZ,},
-      {R_DrawColumn32_RoundedUV_PointZ,
-       R_DrawTLColumn32_RoundedUV_PointZ,
-       R_DrawTranslatedColumn32_RoundedUV_PointZ,
-       R_DrawFuzzColumn32_RoundedUV_PointZ,},
-    },
-    {
-      {NULL, NULL, NULL, NULL,},
-      {R_DrawColumn32_PointUV_LinearZ,
-       R_DrawTLColumn32_PointUV_LinearZ,
-       R_DrawTranslatedColumn32_PointUV_LinearZ,
-       R_DrawFuzzColumn32_PointUV_LinearZ,},
-      {R_DrawColumn32_LinearUV_LinearZ,
-       R_DrawTLColumn32_LinearUV_LinearZ,
-       R_DrawTranslatedColumn32_LinearUV_LinearZ,
-       R_DrawFuzzColumn32_LinearUV_LinearZ,},
-      {R_DrawColumn32_RoundedUV_LinearZ,
-       R_DrawTLColumn32_RoundedUV_LinearZ,
-       R_DrawTranslatedColumn32_RoundedUV_LinearZ,
-       R_DrawFuzzColumn32_RoundedUV_LinearZ,},
-    },
+    R_DrawColumn_PointUV_PointZ,
+    R_DrawTLColumn_PointUV_PointZ,
+    R_DrawTranslatedColumn_PointUV_PointZ,
+    R_DrawFuzzColumn_PointUV_PointZ,
   },
 };
 
-R_DrawColumn_f R_GetDrawColumnFunc(enum column_pipeline_e type,
-                                   enum draw_filter_type_e filter,
-                                   enum draw_filter_type_e filterz) {
-  R_DrawColumn_f result = drawcolumnfuncs[V_GetMode()][filterz][filter][type];
+R_DrawColumn_f R_GetDrawColumnFunc(enum column_pipeline_e type, enum draw_filter_type_e filterz) {
+  R_DrawColumn_f result = drawcolumnfuncs[filterz][type];
   if (result == NULL)
-    I_Error("R_GetDrawColumnFunc: undefined function (%d, %d, %d)",
-            type, filter, filterz);
+    I_Error("R_GetDrawColumnFunc: undefined function (%d, %d)", type, filterz);
   return result;
 }
 
 void R_SetDefaultDrawColumnVars(draw_column_vars_t *dcvars) {
-  dcvars->x = dcvars->yl = dcvars->yh = dcvars->z = 0;
-  dcvars->iscale = dcvars->texturemid = dcvars->texheight = dcvars->texu = 0;
+  dcvars->x = dcvars->yl = dcvars->yh = 0;
+  dcvars->iscale = dcvars->texturemid = dcvars->texheight = 0;
   dcvars->source = dcvars->prevsource = dcvars->nextsource = NULL;
-  dcvars->colormap = dcvars->nextcolormap = colormaps[0];
+  dcvars->colormap = colormaps[0];
   dcvars->translation = NULL;
   dcvars->edgeslope = dcvars->drawingmasked = 0;
-  dcvars->edgetype = drawvars.sprite_edges;
   dcvars->flags = 0;
+
+  // [AR] mark weapon sprite
+  dcvars->isplayersprite = false;
+  dcvars->pspritepostheight = 0;
+
+  // heretic
+  dcvars->baseclip = -1;
 }
 
 //
@@ -601,42 +365,63 @@ void R_SetDefaultDrawColumnVars(draw_column_vars_t *dcvars) {
 // Could be read from a lump instead.
 //
 
-byte playernumtotrans[MAXPLAYERS];
+byte playernumtotrans[MAX_MAXPLAYERS];
+
+// HERETIC_TODO: player colors
+const byte player_colors[] = { 0x70, 0x60, 0x40, 0x20 };
 
 void R_InitTranslationTables (void)
 {
   int i, j;
 #define MAXTRANS 3
   byte transtocolour[MAXTRANS];
-  byte player_colors[] = {0x70, 0x60, 0x40, 0x20};
+
+  if (hexen)
+  {
+    int lumpnum = W_GetNumForName("trantbl0");
+    translationtables = Z_Malloc(256 * 3 * (g_maxplayers - 1));
+
+    for (i = 0; i < g_maxplayers; i++)
+      playernumtotrans[i] = i;
+
+    for (i = 0; i < 3 * (g_maxplayers - 1); i++)
+    {
+        const byte* transLump = W_LumpByNum(lumpnum + i);
+        memcpy(translationtables + i * 256, transLump, 256);
+    }
+
+    return;
+  }
 
   // killough 5/2/98:
   // Remove dependency of colormaps aligned on 256-byte boundary
 
   if (translationtables == NULL) // CPhipps - allow multiple calls
-    translationtables = Z_Malloc(256*MAXTRANS, PU_STATIC, 0);
+    translationtables = Z_Malloc(256*MAXTRANS);
 
   for (i=0; i<MAXTRANS; i++) transtocolour[i] = 255;
 
-  for (i=0; i<MAXPLAYERS; i++) {
+  for (i = 0; i < g_maxplayers; i++) {
     byte wantcolour = player_colors[i];
     playernumtotrans[i] = 0;
     if (wantcolour != 0x70) // Not green, would like translation
-      for (j=0; j<MAXTRANS; j++)
-  if (transtocolour[j] == 255) {
-    transtocolour[j] = wantcolour; playernumtotrans[i] = j+1; break;
-  }
+      for (j = 0; j < MAXTRANS; j++)
+        if (transtocolour[j] == 255) {
+          transtocolour[j] = wantcolour;
+          playernumtotrans[i] = j + 1;
+          break;
+        }
   }
 
   // translate just the 16 green colors
   for (i=0; i<256; i++)
     if (i >= 0x70 && i<= 0x7f)
-      {
-  // CPhipps - configurable player colours
-        translationtables[i] = colormaps[0][(i&0xf) + transtocolour[0]];
-        translationtables[i+256] = colormaps[0][(i&0xf) + transtocolour[1]];
-        translationtables[i+512] = colormaps[0][(i&0xf) + transtocolour[2]];
-      }
+    {
+      // CPhipps - configurable player colours
+      translationtables[i] = colormaps[0][(i&0xf) + transtocolour[0]];
+      translationtables[i+256] = colormaps[0][(i&0xf) + transtocolour[1]];
+      translationtables[i+512] = colormaps[0][(i&0xf) + transtocolour[2]];
+    }
     else  // Keep all other colors as is.
       translationtables[i]=translationtables[i+256]=translationtables[i+512]=i;
 }
@@ -654,203 +439,36 @@ void R_InitTranslationTables (void)
 //  and the inner loop has to step in texture space u and v.
 //
 
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan15_PointUV_PointZ
-#define R_DRAWSPAN_PIPELINE_BITS 15
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan15_PointUV_LinearZ
-#define R_DRAWSPAN_PIPELINE_BITS 15
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_DITHERZ)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan15_LinearUV_PointZ
-#define R_DRAWSPAN_PIPELINE_BITS 15
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_BILINEAR)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan15_LinearUV_LinearZ
-#define R_DRAWSPAN_PIPELINE_BITS 15
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_BILINEAR | RDC_DITHERZ)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan15_RoundedUV_PointZ
-#define R_DRAWSPAN_PIPELINE_BITS 15
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_ROUNDED)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan15_RoundedUV_LinearZ
-#define R_DRAWSPAN_PIPELINE_BITS 15
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_ROUNDED | RDC_DITHERZ)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan16_PointUV_PointZ
-#define R_DRAWSPAN_PIPELINE_BITS 16
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan16_PointUV_LinearZ
-#define R_DRAWSPAN_PIPELINE_BITS 16
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_DITHERZ)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan16_LinearUV_PointZ
-#define R_DRAWSPAN_PIPELINE_BITS 16
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_BILINEAR)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan16_LinearUV_LinearZ
-#define R_DRAWSPAN_PIPELINE_BITS 16
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_BILINEAR | RDC_DITHERZ)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan16_RoundedUV_PointZ
-#define R_DRAWSPAN_PIPELINE_BITS 16
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_ROUNDED)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan16_RoundedUV_LinearZ
-#define R_DRAWSPAN_PIPELINE_BITS 16
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_ROUNDED | RDC_DITHERZ)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan32_PointUV_PointZ
-#define R_DRAWSPAN_PIPELINE_BITS 32
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan32_PointUV_LinearZ
-#define R_DRAWSPAN_PIPELINE_BITS 32
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_DITHERZ)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan32_LinearUV_PointZ
-#define R_DRAWSPAN_PIPELINE_BITS 32
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_BILINEAR)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan32_LinearUV_LinearZ
-#define R_DRAWSPAN_PIPELINE_BITS 32
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_BILINEAR | RDC_DITHERZ)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan32_RoundedUV_PointZ
-#define R_DRAWSPAN_PIPELINE_BITS 32
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_ROUNDED)
-#include "r_drawspan.inl"
-
-#define R_DRAWSPAN_FUNCNAME R_DrawSpan32_RoundedUV_LinearZ
-#define R_DRAWSPAN_PIPELINE_BITS 32
-#define R_DRAWSPAN_PIPELINE (RDC_STANDARD | RDC_ROUNDED | RDC_DITHERZ)
-#include "r_drawspan.inl"
-
-static R_DrawSpan_f drawspanfuncs[VID_MODEMAX][RDRAW_FILTER_MAXFILTERS][RDRAW_FILTER_MAXFILTERS] = {
-  {
-    {
-      NULL,
-      NULL,
-      NULL,
-      NULL,
-    },
-    {
-      NULL,
-      R_DrawSpan15_PointUV_PointZ,
-      R_DrawSpan15_LinearUV_PointZ,
-      R_DrawSpan15_RoundedUV_PointZ,
-    },
-    {
-      NULL,
-      R_DrawSpan15_PointUV_LinearZ,
-      R_DrawSpan15_LinearUV_LinearZ,
-      R_DrawSpan15_RoundedUV_LinearZ,
-    },
-    {
-      NULL,
-      NULL,
-      NULL,
-      NULL,
-    },
-  },
-  {
-    {
-      NULL,
-      NULL,
-      NULL,
-      NULL,
-    },
-    {
-      NULL,
-      R_DrawSpan16_PointUV_PointZ,
-      R_DrawSpan16_LinearUV_PointZ,
-      R_DrawSpan16_RoundedUV_PointZ,
-    },
-    {
-      NULL,
-      R_DrawSpan16_PointUV_LinearZ,
-      R_DrawSpan16_LinearUV_LinearZ,
-      R_DrawSpan16_RoundedUV_LinearZ,
-    },
-    {
-      NULL,
-      NULL,
-      NULL,
-      NULL,
-    },
-  },
-  {
-    {
-      NULL,
-      NULL,
-      NULL,
-      NULL,
-    },
-    {
-      NULL,
-      R_DrawSpan32_PointUV_PointZ,
-      R_DrawSpan32_LinearUV_PointZ,
-      R_DrawSpan32_RoundedUV_PointZ,
-    },
-    {
-      NULL,
-      R_DrawSpan32_PointUV_LinearZ,
-      R_DrawSpan32_LinearUV_LinearZ,
-      R_DrawSpan32_RoundedUV_LinearZ,
-    },
-    {
-      NULL,
-      NULL,
-      NULL,
-      NULL,
-    },
-  },
-};
-
-R_DrawSpan_f R_GetDrawSpanFunc(enum draw_filter_type_e filter,
-                               enum draw_filter_type_e filterz) {
-  R_DrawSpan_f result = drawspanfuncs[V_GetMode()][filterz][filter];
-  if (result == NULL)
-    I_Error("R_GetDrawSpanFunc: undefined function (%d, %d)",
-            filter, filterz);
-  return result;
-}
-
 void R_DrawSpan(draw_span_vars_t *dsvars) {
-  R_GetDrawSpanFunc(drawvars.filterfloor, drawvars.filterz)(dsvars);
+  unsigned count = dsvars->x2 - dsvars->x1 + 1;
+  fixed_t xfrac = dsvars->xfrac;
+  fixed_t yfrac = dsvars->yfrac;
+  const fixed_t xstep = dsvars->xstep;
+  const fixed_t ystep = dsvars->ystep;
+  const byte *source = dsvars->source;
+  const byte *colormap = dsvars->colormap;
+  byte *dest = drawvars.topleft + dsvars->y*drawvars.pitch + dsvars->x1;
+
+  while (count) {
+    const fixed_t xtemp = (xfrac >> 16) & 63;
+    const fixed_t ytemp = (yfrac >> 10) & 4032;
+    const fixed_t spot = xtemp | ytemp;
+    xfrac += xstep;
+    yfrac += ystep;
+    *dest++ = colormap[source[spot]];
+    count--;
+  }
 }
 
 void R_InitBuffersRes(void)
 {
   extern byte *solidcol;
 
-  if (solidcol) free(solidcol);
-  if (byte_tempbuf) free(byte_tempbuf);
-  if (short_tempbuf) free(short_tempbuf);
-  if (int_tempbuf) free(int_tempbuf);
+  if (solidcol) Z_Free(solidcol);
+  if (tempbuf) Z_Free(tempbuf);
 
-  solidcol = calloc(1, SCREENWIDTH * sizeof(*solidcol));
-  byte_tempbuf = calloc(1, (SCREENHEIGHT * 4) * sizeof(*byte_tempbuf));
-  short_tempbuf = calloc(1, (SCREENHEIGHT * 4) * sizeof(*short_tempbuf));
-  int_tempbuf = calloc(1, (SCREENHEIGHT * 4) * sizeof(*int_tempbuf));
+  solidcol = Z_Calloc(1, SCREENWIDTH * sizeof(*solidcol));
+  tempbuf = Z_Calloc(1, (SCREENHEIGHT * 4) * sizeof(*tempbuf));
 
   temp_x = 0;
 }
@@ -865,31 +483,59 @@ void R_InitBuffersRes(void)
 
 void R_InitBuffer(int width, int height)
 {
-  int i=0;
-  // Handle resize,
-  //  e.g. smaller view windows
-  //  with border and/or status bar.
+  int i;
 
-  viewwindowx = (SCREENWIDTH-width) >> 1;
+  drawvars.topleft = screens[0].data;
+  drawvars.pitch = screens[0].pitch;
 
-  // Same with base row offset.
+  for (i=0; i<FUZZTABLE; i++)
+    fuzzoffset[i] = fuzzoffset_org[i]*screens[0].pitch;
+  
+  if (!tallscreen)
+    fuzzcellsize = (SCREENHEIGHT + 100) / 200;
+  else
+    fuzzcellsize = (SCREENWIDTH + 160) / 320;
+}
 
-  viewwindowy = width==SCREENWIDTH ? 0 : (SCREENHEIGHT-ST_SCALED_HEIGHT-height)>>1;
+//
+// R_FillBackColor
+// Fills the statusbar widescreen area
+// with a color
+//
 
-  drawvars.byte_topleft = screens[0].data + viewwindowy*screens[0].byte_pitch + viewwindowx;
-  drawvars.short_topleft = (unsigned short *)(screens[0].data) + viewwindowy*screens[0].short_pitch + viewwindowx;
-  drawvars.int_topleft = (unsigned int *)(screens[0].data) + viewwindowy*screens[0].int_pitch + viewwindowx;
-  drawvars.byte_pitch = screens[0].byte_pitch;
-  drawvars.short_pitch = screens[0].short_pitch;
-  drawvars.int_pitch = screens[0].int_pitch;
+void R_FillBackColor (void)
+{
+  extern patchnum_t stbarbg;
+  static byte col;
+  static byte col_top;
+  static int prevlump = -1;
+  const int stbar_top = SCREENHEIGHT - ST_SCALED_HEIGHT;
+  const int ST_SCALED_BORDER = brdr_b.height * patches_scaley/2;
+  int lump = stbarbg.lumpnum;
 
-  if ((V_GetMode() == VID_MODE15) || (V_GetMode() == VID_MODE16)) {
-    for (i=0; i<FUZZTABLE; i++)
-      fuzzoffset[i] = fuzzoffset_org[i]*screens[0].short_pitch;
-  } else if (V_GetMode() == VID_MODE32) {
-    for (i=0; i<FUZZTABLE; i++)
-      fuzzoffset[i] = fuzzoffset_org[i]*screens[0].int_pitch;
+  if (prevlump != lump)
+  {
+    const unsigned char *playpal = V_GetPlaypal();
+    SDL_Color stbar_color = V_GetPatchColor(lump);
+    int r = stbar_color.r;
+    int g = stbar_color.g;
+    int b = stbar_color.b;
+
+    // Convert to palette and tune down saturation
+    col = V_BestColor(playpal, r/3, g/3, b/3);
+    col_top = V_BestColor(playpal, r/2, g/2, b/2);
+
+    // If colors are the same, brighten top
+    if (col_top == col)
+      col_top = V_BestColor(playpal, r, g, b);
+
+    prevlump = lump;
   }
+
+  V_BeginMenuDraw();
+  V_FillRect(1, 0, stbar_top, SCREENWIDTH, ST_SCALED_BORDER, col_top);
+  V_FillRect(1, 0, stbar_top + ST_SCALED_BORDER, SCREENWIDTH, ST_SCALED_HEIGHT - ST_SCALED_BORDER, col);
+  V_EndMenuDraw();
 }
 
 //
@@ -902,85 +548,60 @@ void R_InitBuffer(int width, int height)
 
 void R_FillBackScreen (void)
 {
-  int automap = ((automapmode & am_active) && !(automapmode & am_overlay));
+  int automap = automap_solid;
 
   if (grnrock.lumpnum == 0)
     return;
 
+  V_BeginUIDraw();
+
   // e6y: wide-res
   if (ratio_multiplier != ratio_scale || wide_offsety)
   {
-    extern int screenblocks;
     int only_stbar;
 
-#ifdef GL_DOOM
-    if (V_GetMode() == VID_MODEGL)
-    {
-      only_stbar = (automap ? screenblocks >= 10 : screenblocks == 10);
-    }
-    else
-#endif
-    {
-      only_stbar = screenblocks >= 10;
-    }
+    only_stbar = V_IsSoftwareMode() || automap || R_PartialView();
 
     if (only_stbar && ST_SCALED_OFFSETX > 0)
     {
       int stbar_top = SCREENHEIGHT - ST_SCALED_HEIGHT;
+      int stbar_solid_bg = dsda_IntConfig(dsda_config_sts_solid_bg_color);
 
-      V_FillFlat(grnrock.lumpnum, 1,
-        0, stbar_top, ST_SCALED_OFFSETX, ST_SCALED_HEIGHT, VPT_NONE);
-      V_FillFlat(grnrock.lumpnum, 1,
-        SCREENWIDTH - ST_SCALED_OFFSETX, stbar_top, ST_SCALED_OFFSETX, ST_SCALED_HEIGHT, VPT_NONE);
-      
-      // line between view and status bar
-      V_FillPatch(brdr_b.lumpnum, 1, 0, stbar_top, ST_SCALED_OFFSETX, brdr_b.height, VPT_NONE);
-      V_FillPatch(brdr_b.lumpnum, 1, SCREENWIDTH - ST_SCALED_OFFSETX, stbar_top, ST_SCALED_OFFSETX, brdr_b.height, VPT_NONE);
+      if (stbar_solid_bg)
+      {
+        R_FillBackColor();
+        V_EndUIDraw();
+        return;
+      }
 
-      return;
+      if (V_IsOpenGLMode()) // OpenGL has no way to adjust y-offset independent from height
+        V_FillFlat(grnrock.lumpnum, 1, 0, 0, SCREENWIDTH, SCREENHEIGHT, VPT_STRETCH);
+      else
+        V_FillFlat(grnrock.lumpnum, 1, 0, stbar_top, SCREENWIDTH, ST_SCALED_HEIGHT, VPT_STRETCH);
+
+      // heretic_note: I think this looks bad, so I'm skipping it...
+      if (!heretic)
+      {
+        // line between view and status bar
+        V_FillPatch(brdr_b.lumpnum, 1, 0, stbar_top, ST_SCALED_OFFSETX, brdr_b.height, VPT_NONE);
+        V_FillPatch(brdr_b.lumpnum, 1, SCREENWIDTH - ST_SCALED_OFFSETX, stbar_top, ST_SCALED_OFFSETX, brdr_b.height, VPT_NONE);
+      }
     }
   }
 
-  if (scaledviewwidth == SCREENWIDTH)
-    return;
-
-  V_FillFlat(grnrock.lumpnum, 1, 0, 0, SCREENWIDTH, SCREENHEIGHT, VPT_NONE);
-
-  // line between view and status bar
-  if ((ratio_multiplier != ratio_scale || wide_offsety) &&
-      (automap || scaledviewwidth == SCREENWIDTH))
-  {
-    V_FillPatch(brdr_b.lumpnum, 1, 0, SCREENHEIGHT - ST_SCALED_HEIGHT, SCREENWIDTH, brdr_b.height, VPT_NONE);
-  }
-
-  V_FillPatch(brdr_t.lumpnum, 1, viewwindowx, viewwindowy-8, scaledviewwidth, brdr_t.height, VPT_NONE);
-
-  V_FillPatch(brdr_b.lumpnum, 1, viewwindowx, viewwindowy+viewheight, scaledviewwidth, brdr_b.height, VPT_NONE);
-
-  V_FillPatch(brdr_l.lumpnum, 1, viewwindowx-8, viewwindowy, brdr_l.width, viewheight, VPT_NONE);
-
-  V_FillPatch(brdr_r.lumpnum, 1, viewwindowx+scaledviewwidth, viewwindowy, brdr_r.width, viewheight, VPT_NONE);
-
-  // Draw beveled edge.
-  V_DrawNumPatch(viewwindowx-8,viewwindowy-8,1,brdr_tl.lumpnum, CR_DEFAULT, VPT_NONE);
-
-  V_DrawNumPatch(viewwindowx+scaledviewwidth,viewwindowy-8,1,brdr_tr.lumpnum, CR_DEFAULT, VPT_NONE);
-
-  V_DrawNumPatch(viewwindowx-8,viewwindowy+viewheight,1,brdr_bl.lumpnum, CR_DEFAULT, VPT_NONE);
-
-  V_DrawNumPatch(viewwindowx+scaledviewwidth,viewwindowy+viewheight,1,brdr_br.lumpnum, CR_DEFAULT, VPT_NONE);
+  V_EndUIDraw();
 }
 
 //
 // Copy a screen buffer.
 //
 
-void R_VideoErase(int x, int y, int count)
+static void R_CopyScreenBufferSection(int x, int y, int count)
 {
-  if (V_GetMode() != VID_MODEGL)
-    memcpy(screens[0].data+y*screens[0].byte_pitch+x*V_GetPixelDepth(),
-           screens[1].data+y*screens[1].byte_pitch+x*V_GetPixelDepth(),
-           count*V_GetPixelDepth());   // LFB copy.
+  if (V_IsSoftwareMode())
+    memcpy(screens[0].data+y*screens[0].pitch+x,
+           screens[1].data+y*screens[1].pitch+x,
+           count);   // LFB copy.
 }
 
 //
@@ -991,44 +612,44 @@ void R_VideoErase(int x, int y, int count)
 
 void R_DrawViewBorder(void)
 {
-  int top, side, i;
+  int i;
 
-  if (V_GetMode() == VID_MODEGL) {
+  if (V_IsOpenGLMode()) {
     // proff 11/99: we don't have a backscreen in OpenGL from where we can copy this
     R_FillBackScreen();
     return;
   }
 
   // e6y: wide-res
-  if ((ratio_multiplier != ratio_scale || wide_offsety) &&
-      ST_SCALED_OFFSETX > 0 &&
-     ((SCREENHEIGHT != viewheight) ||
-     ((automapmode & am_active) && ! (automapmode & am_overlay))))
+  if ((ratio_multiplier != ratio_scale || wide_offsety) && R_StatusBarVisible())
   {
-    for (i = (SCREENHEIGHT - ST_SCALED_HEIGHT); i < SCREENHEIGHT; i++)
+    for (i = SCREENHEIGHT - ST_SCALED_HEIGHT; i < SCREENHEIGHT; i++)
     {
-      R_VideoErase (0, i, ST_SCALED_OFFSETX);
-      R_VideoErase (SCREENWIDTH - ST_SCALED_OFFSETX, i, ST_SCALED_OFFSETX);
+      R_CopyScreenBufferSection(0, i, ST_SCALED_OFFSETX);
+      R_CopyScreenBufferSection(SCREENWIDTH - ST_SCALED_OFFSETX, i, ST_SCALED_OFFSETX);
     }
   }
+}
 
-  if ( viewheight >= ( SCREENHEIGHT - ST_SCALED_HEIGHT ))
-    return; // if high-res, don't go any further!
+void R_SetFuzzPos(int fp)
+{
+  fuzzpos = fp;
+}
 
-  top = ((SCREENHEIGHT-ST_SCALED_HEIGHT)-viewheight)/2;
-  side = (SCREENWIDTH-scaledviewwidth)/2;
+int R_GetFuzzPos()
+{
+  return fuzzpos;
+}
 
-  // copy top
-  for (i = 0; i < top; i++)
-    R_VideoErase (0, i, SCREENWIDTH);
+void R_ResetFuzzCol(int height)
+{
+  R_ResetColumnBuffer();
 
-  // copy sides
-  for (i = top; i < (top+viewheight); i++) {
-    R_VideoErase (0, i, side);
-    R_VideoErase (viewwidth+side, i, side);
-  }
+  fuzzpos = (fuzzpos + (height / fuzzcellsize)) % FUZZTABLE;
+}
 
-  // copy bottom
-  for (i = top+viewheight; i < (SCREENHEIGHT - ST_SCALED_HEIGHT); i++)
-    R_VideoErase (0, i, SCREENWIDTH);
+void R_CheckFuzzCol(int x, int height)
+{
+  if (!(x % fuzzcellsize))
+    R_ResetFuzzCol(height);
 }

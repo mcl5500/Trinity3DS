@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -45,7 +45,7 @@ typedef struct overrun_param_s
   int footer;
   int footer_emulate;
   int promted;
-  int shit_happens;
+  int happened;
 } overrun_param_t;
 
 typedef enum overrun_list_s
@@ -53,7 +53,7 @@ typedef enum overrun_list_s
   OVERFLOW_SPECHIT,
   OVERFLOW_REJECT,
   OVERFLOW_INTERCEPT,
-  OVERFLOW_PLYERINGAME,
+  OVERFLOW_PLAYERINGAME,
   OVERFLOW_DONUT,
   OVERFLOW_MISSEDBACKSIDE,
 
@@ -83,7 +83,7 @@ typedef struct
 {
     int len;
     void *addr;
-    dboolean int16_array;
+    void *addr2;
 } intercepts_overrun_t;
 
 extern intercepts_overrun_t intercepts_overrun[];
@@ -113,7 +113,7 @@ typedef struct spechit_overrun_param_s
   fixed_t *tmfloorz;
   fixed_t *tmceilingz;
 
-  dboolean *crushchange;
+  int      *crushchange;
   dboolean *nofit;
 } spechit_overrun_param_t;
 
@@ -125,7 +125,7 @@ void SpechitOverrun(spechit_overrun_param_t *params);
 // reject overrun emulation
 //
 
-void RejectOverrun(int rejectlump, const byte **rejectmatrix, int totallines);
+void RejectOverrun(unsigned int length, const byte **rejectmatrix, int totallines);
 
 //
 // donut overrun emulation (linedef action 9)

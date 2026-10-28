@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -44,26 +44,16 @@
 #include "p_enemy.h"
 #include "p_pspr.h"
 
-#ifdef __GNUG__
-#pragma implementation "info.h"
-#endif
 #include "info.h"
 
-void A_BetaSkullAttack(); // killough 10/98: beta lost souls attacked different
-void A_Stop();
+void A_BetaSkullAttack(mobj_t *actor); // killough 10/98: beta lost souls attacked different
+void A_Stop(mobj_t *actor);
 
 // ********************************************************************
 // Sprite names
 // ********************************************************************
-// This is the list of sprite 4-character prefixes.  They are searched
-// through, with a NULL entry terminating the list.  In DOOM originally
-// this NULL entry was missing, and coincidentally the next thing in
-// memory was the dummy state_t[] entry that started with zero bytes.
-// killough 1/17/98: add an explicit NULL entry.
-// NUMSPRITES is an enum from info.h where all these are listed
-// as SPR_xxxx
 
-const char *sprnames[NUMSPRITES+1] = {
+const char *doom_sprnames[] = {
   "TROO","SHTG","PUNG","PISG","PISF","SHTF","SHT2","CHGG","CHGF","MISG",
   "MISF","SAWG","PLSG","PLSF","BFGG","BFGF","BLUD","PUFF","BAL1","BAL2",
   "PLSS","PLSE","MISL","BFS1","BFE1","BFE2","TFOG","IFOG","PLAY","POSS",
@@ -97,8 +87,6 @@ const char *sprnames[NUMSPRITES+1] = {
   "SP70", "SP71", "SP72", "SP73", "SP74", "SP75", "SP76", "SP77", "SP78", "SP79",
   "SP80", "SP81", "SP82", "SP83", "SP84", "SP85", "SP86", "SP87", "SP88", "SP89",
   "SP90", "SP91", "SP92", "SP93", "SP94", "SP95", "SP96", "SP97", "SP98", "SP99",
-
-  NULL
 };
 
 // ********************************************************************
@@ -120,7 +108,7 @@ const char *sprnames[NUMSPRITES+1] = {
 // parts where frame rewiring is done for more details and the
 // extended way a BEX file can handle this.
 
-state_t states[NUMSTATES] = {
+state_t doom_states[DOOM_NUMSTATES] = {
   {SPR_TROO,0,-1,NULL,S_NULL,0,0},  // S_NULL
   {SPR_SHTG,4,0,A_Light0,S_NULL,0,0}, // S_LIGHTDONE
   {SPR_PUNG,0,1,A_WeaponReady,S_PUNCH,0,0}, // S_PUNCH
@@ -1139,7 +1127,7 @@ state_t states[NUMSTATES] = {
 
   OLDBFG_8FRAMES(0)
   OLDBFG_8FRAMES(8)
-  OLDBFG_8FRAMES(16) 
+  OLDBFG_8FRAMES(16)
   OLDBFG_8FRAMES(24)
   OLDBFG_8FRAMES(32)
 
@@ -1168,7 +1156,7 @@ state_t states[NUMSTATES] = {
   {SPR_BON3,0,6,NULL,S_BON3},           // S_BON3  // killough 7/11/98:
   {SPR_BON4,0,6,NULL,S_BON4},           // S_BON4  // beta bonus items
 
-  // killough 10/98: beta lost souls attacked from a distance, 
+  // killough 10/98: beta lost souls attacked from a distance,
   // animated with colors, and stayed in the air when killed.
   // This is an approximation, but I'm sure it can be improved.
 
@@ -1203,17 +1191,6 @@ state_t states[NUMSTATES] = {
 
   // killough 10/98: mushroom effect
   {SPR_MISL,32769,8,A_Mushroom,S_EXPLODE2},  // S_MUSHROOM
-
-  {SPR_PLAY,14,5,NULL,S_PLAY_GDIE2,0,0},        // S_PLAY_GDIE1
-  {SPR_PLAY,15,5,A_SkullPop,S_PLAY_GDIE3,0,0},  // S_PLAY_GDIE2
-  {SPR_PLAY,16,5,A_Fall,S_PLAY_GDIE4,0,0},      // S_PLAY_GDIE3
-  {SPR_PLAY,17,5,NULL,S_PLAY_GDIE5,0,0},        // S_PLAY_GDIE4
-  {SPR_PLAY,18,5,NULL,S_PLAY_GDIE6,0,0},        // S_PLAY_GDIE5
-  {SPR_PLAY,19,5,NULL,S_PLAY_GDIE7,0,0},        // S_PLAY_GDIE6
-  {SPR_PLAY,20,5,NULL,S_PLAY_GDIE8,0,0},        // S_PLAY_GDIE7
-  {SPR_PLAY,21,5,NULL,S_PLAY_GDIE9,0,0},        // S_PLAY_GDIE8
-  {SPR_PLAY,22,-1,NULL,S_NULL,0,0},             // S_PLAY_GDIE9
-
 };
 
 // ********************************************************************
@@ -1240,7 +1217,7 @@ state_t states[NUMSTATES] = {
 //
 // This goes on for the next 3000+ lines...
 
-mobjinfo_t mobjinfo[NUMMOBJTYPES] = {
+doom_mobjinfo_t doom_mobjinfo[DOOM_NUMMOBJTYPES] = {
   {   // MT_PLAYER
     -1,   // doomednum
     S_PLAY,   // spawnstate
@@ -4910,7 +4887,7 @@ mobjinfo_t mobjinfo[NUMMOBJTYPES] = {
     MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY|MF_BOUNCES, // flags
     S_NULL          // raisestate
   },
-  
+
   // killough 7/11/98: this is the second of two plasma fireballs in the beta
   {   // MT_PLASMA2
     -1,             // doomednum
@@ -4940,8 +4917,6 @@ mobjinfo_t mobjinfo[NUMMOBJTYPES] = {
 
   // killough 7/11/98: this is the evil sceptre in the beta version
   {   // MT_SCEPTRE
-    // COMPAT: MBF sets doomednum to -1 if not in "beta emulation" mode,
-    //         causing MT_SCEPTRE map things to not getting spawned at all
     2016,           // doomednum
     S_BON3,         // spawnstate
     1000,           // spawnhealth
@@ -4969,8 +4944,6 @@ mobjinfo_t mobjinfo[NUMMOBJTYPES] = {
 
   // killough 7/11/98: this is the unholy bible in the beta version
   {   // MT_BIBLE
-    // COMPAT: MBF sets doomednum to -1 if not in "beta emulation" mode,
-    //         causing MT_BIBLE map things to not getting spawned at all
     2017,           // doomednum
     S_BON4,         // spawnstate
     1000,           // spawnhealth
@@ -5021,32 +4994,6 @@ mobjinfo_t mobjinfo[NUMMOBJTYPES] = {
     0,              // damage
     sfx_None,       // activesound
     MF_NOBLOCKMAP,  // flags
-    S_NULL          // raisestate
-  },
-
-  {   // MT_GIBDTH
-    -1,             // doomednum
-    S_TNT1,         // spawnstate
-    1000,           // spawnhealth
-    S_NULL,         // seestate
-    sfx_None,       // seesound
-    8,              // reactiontime
-    sfx_None,       // attacksound
-    S_NULL,         // painstate
-    0,              // painchance
-    sfx_None,       // painsound
-    S_NULL,         // meleestate
-    S_NULL,         // missilestate
-    S_NULL,         // deathstate
-    S_NULL,         // xdeathstate
-    sfx_None,       // deathsound
-    0,              // speed
-    4*FRACUNIT,     // radius
-    4*FRACUNIT,     // height
-    100,            // mass
-    0,              // damage
-    sfx_None,       // activesound
-    MF_NOBLOCKMAP|MF_DROPOFF, // flags
     S_NULL          // raisestate
   },
 

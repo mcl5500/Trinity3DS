@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -41,7 +41,7 @@
 #endif
 
 // killough 4/25/98: Make gcc extensions mean nothing on other compilers
-#ifndef __GNUC__
+#if !defined(__GNUC__) && !defined(__clang__)
 #define __attribute__(x)
 #endif
 
@@ -54,13 +54,7 @@
 #include <ctype.h>
 #include <limits.h>
 
-// this should go here, not in makefile/configure.ac -- josh
-#ifndef O_BINARY
-#define O_BINARY 0
-#endif
-
 #include "m_swap.h"
-#include "version.h"
 #include "doomtype.h"
 
 extern dboolean bfgedition;
@@ -82,10 +76,15 @@ typedef enum {
   pack_tnt,     // TNT mission pack
   pack_plut,    // Plutonia pack
   pack_nerve,   // No Rest For The Living
-  hacx,         // HACX - Twitch 'n Kill
-  chex,         // Chex Quest
+  tc_hacx,      // HACX - Twitch 'n Kill
+  tc_chex,      // Chex Quest
+  tc_chex3v,    // Chex Quest 3: Vanilla/Modding Edition
+  tc_rekkr,     // REKKR
+  tc_freedoom,  // Freedoom
   none
 } GameMission_t;
+
+extern dboolean tc_game;
 
 // Identify language to use, software localization.
 typedef enum {
@@ -115,6 +114,10 @@ typedef enum {
 // SCREENWIDTH and SCREENHEIGHT define the visible size
 extern int SCREENWIDTH;
 extern int SCREENHEIGHT;
+// ACTUALHEIGHT is the actual height of the resolution
+// If the resolution is 200p or 400p, aspect ratio correction
+// should be applied, making this value 240 or 480
+extern int ACTUALHEIGHT;
 // SCREENPITCH is the size of one line in the buffer and
 // can be bigger than the SCREENWIDTH depending on the size
 // of one pixel (8, 16 or 32 bit) and the padding at the
@@ -127,7 +130,13 @@ extern int WIDE_SCREENHEIGHT;
 extern int SCREEN_320x200;
 
 // The maximum number of players, multiplayer/networking.
-#define MAXPLAYERS       4
+#define MAX_MAXPLAYERS   8
+
+// killough 2/28/98: A ridiculously large number
+// of players, the most you'll ever need in a demo
+// or savegame. This is used to prevent problems, in
+// case more players in a game are supported later.
+#define FUTURE_MAXPLAYERS 32
 
 // phares 5/14/98:
 // DOOM Editor Numbers (aka doomednum in mobj_t)
@@ -144,6 +153,7 @@ extern int SCREEN_320x200;
 // at the intermission screen, the game final animation, or a demo.
 
 typedef enum {
+  GS_DEFAULT = -1,
   GS_LEVEL,
   GS_INTERMISSION,
   GS_FINALE,
@@ -156,27 +166,39 @@ typedef enum {
 // These are Thing flags
 
 // Skill flags.
-#define MTF_EASY                1
-#define MTF_NORMAL              2
-#define MTF_HARD                4
+#define MTF_EASY        0x0001
+#define MTF_NORMAL      0x0002
+#define MTF_HARD        0x0004
 // Deaf monsters/do not react to sound.
-#define MTF_AMBUSH              8
+#define MTF_AMBUSH      0x0008
 
 /* killough 11/98 */
-#define MTF_NOTSINGLE          16
-#define MTF_NOTDM              32
-#define MTF_NOTCOOP            64
-#define MTF_FRIEND            128
-#define MTF_RESERVED          256
+#define MTF_NOTSINGLE   0x0010
+#define MTF_NOTDM       0x0020
+#define MTF_NOTCOOP     0x0040
+#define MTF_FRIEND      0x0080
+#define MTF_RESERVED    0x0100
 
-typedef enum {
-  sk_none=-1, //jff 3/24/98 create unpicked skill setting
-  sk_baby=0,
-  sk_easy,
-  sk_medium,
-  sk_hard,
-  sk_nightmare
-} skill_t;
+// hexen
+#define MTF_DORMANT     0x0010
+#define MTF_FIGHTER     0x0020
+#define MTF_CLERIC      0x0040
+#define MTF_MAGE        0x0080
+#define MTF_GSINGLE     0x0100
+#define MTF_GCOOP       0x0200
+#define MTF_GDEATHMATCH 0x0400
+
+// zdoom
+#define MTF_TRANSLUCENT 0x0800
+#define MTF_INVISIBLE   0x1000
+#define MTF_FRIENDLY    0x2000
+#define MTF_STANDSTILL  0x4000
+#define MTF_COUNTSECRET 0x8000
+#define MTF_SKILL1  0x00010000
+#define MTF_SKILL2  0x00020000
+#define MTF_SKILL3  0x00040000
+#define MTF_SKILL4  0x00080000
+#define MTF_SKILL5  0x00100000
 
 //
 // Key cards.
@@ -189,6 +211,25 @@ typedef enum {
   it_blueskull,
   it_yellowskull,
   it_redskull,
+  DOOM_NUMCARDS,
+
+  // heretic
+  key_blue = 0,
+  key_yellow,
+  key_green,
+
+  // hexen
+  key_1 = 0,
+  key_2,
+  key_3,
+  key_4,
+  key_5,
+  key_6,
+  key_7,
+  key_8,
+  key_9,
+  key_a,
+  key_b,
   NUMCARDS
 } card_t;
 
@@ -205,8 +246,26 @@ typedef enum {
   wp_chainsaw,
   wp_supershotgun,
 
+  // heretic
+  wp_staff = 0,
+  wp_goldwand,
+  wp_crossbow,
+  wp_blaster,
+  wp_skullrod,
+  wp_phoenixrod,
+  wp_mace,
+  wp_gauntlets,
+  wp_beak,
+
   NUMWEAPONS,
-  wp_nochange              // No pending weapon change.
+  wp_nochange,             // No pending weapon change.
+
+  // hexen
+  wp_first = 0,
+  wp_second,
+  wp_third,
+  wp_fourth,
+  HEXEN_NUMWEAPONS
 } weapontype_t;
 
 // Ammunition types defined.
@@ -215,8 +274,26 @@ typedef enum {
   am_shell,   // Shotgun / double barreled shotgun.
   am_cell,    // Plasma rifle, BFG.
   am_misl,    // Missile launcher.
-  NUMAMMO,
-  am_noammo   // Unlimited for chainsaw / fist.
+  DOOM_NUMAMMO,
+
+  // heretic
+  am_goldwand = 0,
+  am_crossbow,
+  am_blaster,
+  am_skullrod,
+  am_phoenixrod,
+  am_mace,
+  HERETIC_NUMAMMO,
+
+  NUMAMMO = HERETIC_NUMAMMO,
+  am_noammo,   // fist, chainsaw, staff, gauntlets
+
+  // hexen
+  MANA_1 = 0,
+  MANA_2,
+  NUMMANA,
+  MANA_BOTH,
+  MANA_NONE = am_noammo
 } ammotype_t;
 
 // Power up artifacts.
@@ -227,15 +304,31 @@ typedef enum {
   pw_ironfeet,
   pw_allmap,
   pw_infrared,
+
+  // heretic
+  pw_weaponlevel2,
+  pw_flight,
+  pw_shield,
+  pw_health2,
+
+  // hexen
+  pw_speed,
+  pw_minotaur,
+
   NUMPOWERS
 } powertype_t;
 
 // Power up durations (how many seconds till expiration).
 typedef enum {
-  INVULNTICS  = (30*TICRATE),
-  INVISTICS   = (60*TICRATE),
-  INFRATICS   = (120*TICRATE),
-  IRONTICS    = (60*TICRATE)
+  INVULNTICS   = (30*TICRATE),
+  INVISTICS    = (60*TICRATE),
+  INFRATICS    = (120*TICRATE),
+  IRONTICS     = (60*TICRATE),
+  WPNLEV2TICS  = (40*TICRATE),
+  FLIGHTTICS   = (60*TICRATE),
+  SPEEDTICS    = (45*TICRATE),
+  MORPHTICS    = (40*TICRATE),
+  MAULATORTICS = (25*TICRATE)
 } powerduration_t;
 
 // DOOM keyboard definition.
@@ -313,24 +406,8 @@ typedef enum {
 #define KEYD_MOUSE3     (0x80 + 0x62)
 #define KEYD_MWHEELUP   (0x80 + 0x6b)
 #define KEYD_MWHEELDOWN (0x80 + 0x6c)
-
-// phares 4/19/98:
-// Defines Setup Screen groups that config variables appear in.
-// Used when resetting the defaults for every item in a Setup group.
-
-typedef enum {
-  ss_none,
-  ss_keys,
-  ss_weap,
-  ss_stat,
-  ss_auto,
-  ss_enem,
-  ss_mess,
-  ss_chat,
-  ss_gen,       /* killough 10/98 */
-  ss_comp,      /* killough 10/98 */
-  ss_max
-} ss_types;
+#define KEYD_MWHEELLEFT (0X80 + 0X6d)
+#define KEYD_MWHEELRIGHT (0X80 + 0X6e)
 
 // phares 3/20/98:
 //
@@ -342,5 +419,146 @@ typedef enum {
 #define ORIG_FRICTION          0xE800      // original value
 #define ORIG_FRICTION_FACTOR   2048        // original value
 #define FRICTION_FLY           0xeb00
+
+extern dboolean started_demo;
+
+extern dboolean raven;
+
+// heretic
+
+#define FRICTION_LOW 0xf900
+#define TELEFOGHEIGHT (32*FRACUNIT)
+#define ANG1_X          0x01000000
+
+#define FOOTCLIPSIZE 10*FRACUNIT
+
+// Any floor type >= FLOOR_LIQUID will floorclip sprites (hexen)
+typedef enum {
+  FLOOR_SOLID,
+  FLOOR_ICE,
+  FLOOR_LIQUID,
+  FLOOR_WATER,
+  FLOOR_LAVA,
+  FLOOR_SLUDGE
+} floortype_t;
+
+#define USE_GWND_AMMO_1 1
+#define USE_GWND_AMMO_2 1
+#define USE_CBOW_AMMO_1 1
+#define USE_CBOW_AMMO_2 1
+#define USE_BLSR_AMMO_1 1
+#define USE_BLSR_AMMO_2 5
+#define USE_SKRD_AMMO_1 1
+#define USE_SKRD_AMMO_2 5
+#define USE_PHRD_AMMO_1 1
+#define USE_PHRD_AMMO_2 1
+#define USE_MACE_AMMO_1 1
+#define USE_MACE_AMMO_2 5
+
+#define TOCENTER -8
+
+#define BLINKTHRESHOLD (4*32)
+
+// TODO_HEXEN: BLINKTHRESHOLD is (4*35)
+
+extern dboolean heretic;
+
+//hexen
+
+// The top 3 bits of the artifact field in the ticcmd_t struct are used
+//              as additional flags
+#define AFLAG_MASK    0x3F
+#define AFLAG_SUICIDE 0x40
+#define AFLAG_JUMP    0x80
+
+typedef enum
+{
+  ARMOR_ARMOR,
+  ARMOR_SHIELD,
+  ARMOR_HELMET,
+  ARMOR_AMULET,
+  NUMARMOR
+} armortype_t;
+
+typedef enum
+{
+  PCLASS_NULL,
+  PCLASS_FIGHTER,
+  PCLASS_CLERIC,
+  PCLASS_MAGE,
+  PCLASS_PIG,
+  NUMCLASSES
+} pclass_t;
+
+typedef ammotype_t manatype_t;
+
+#define MAX_MANA 200
+
+#define WPIECE1 1
+#define WPIECE2 2
+#define WPIECE3 4
+
+enum
+{
+  SEQ_PLATFORM,
+  SEQ_PLATFORM_HEAVY,         // same script as a normal platform
+  SEQ_PLATFORM_METAL,
+  SEQ_PLATFORM_CREAK,         // same script as a normal platform
+  SEQ_PLATFORM_SILENCE,
+  SEQ_PLATFORM_LAVA,
+  SEQ_PLATFORM_WATER,
+  SEQ_PLATFORM_ICE,
+  SEQ_PLATFORM_EARTH,
+  SEQ_PLATFORM_METAL2,
+  SEQ_DOOR_STONE,
+  SEQ_DOOR_HEAVY,
+  SEQ_DOOR_METAL,
+  SEQ_DOOR_CREAK,
+  SEQ_DOOR_SILENCE,
+  SEQ_DOOR_LAVA,
+  SEQ_DOOR_WATER,
+  SEQ_DOOR_ICE,
+  SEQ_DOOR_EARTH,
+  SEQ_DOOR_METAL2,
+  SEQ_ESOUND_WIND,
+  SEQ_NUMSEQ
+};
+
+typedef enum
+{
+  SEQTYPE_STONE,
+  SEQTYPE_HEAVY,
+  SEQTYPE_METAL,
+  SEQTYPE_CREAK,
+  SEQTYPE_SILENCE,
+  SEQTYPE_LAVA,
+  SEQTYPE_WATER,
+  SEQTYPE_ICE,
+  SEQTYPE_EARTH,
+  SEQTYPE_METAL2,
+  SEQTYPE_NUMSEQ
+} seqtype_t;
+
+#define MAX_INTRMSN_MESSAGE_SIZE 1024
+
+// Puzzle artifacts
+
+#define TXT_ARTIPUZZSKULL      "YORICK'S SKULL"
+#define TXT_ARTIPUZZGEMBIG     "HEART OF D'SPARIL"
+#define TXT_ARTIPUZZGEMRED     "RUBY PLANET"
+#define TXT_ARTIPUZZGEMGREEN1  "EMERALD PLANET"
+#define TXT_ARTIPUZZGEMGREEN2  "EMERALD PLANET"
+#define TXT_ARTIPUZZGEMBLUE1   "SAPPHIRE PLANET"
+#define TXT_ARTIPUZZGEMBLUE2   "SAPPHIRE PLANET"
+#define TXT_ARTIPUZZBOOK1      "DAEMON CODEX"
+#define TXT_ARTIPUZZBOOK2      "LIBER OSCURA"
+#define TXT_ARTIPUZZSKULL2     "FLAME MASK"
+#define TXT_ARTIPUZZFWEAPON    "GLAIVE SEAL"
+#define TXT_ARTIPUZZCWEAPON    "HOLY RELIC"
+#define TXT_ARTIPUZZMWEAPON    "SIGIL OF THE MAGUS"
+#define TXT_ARTIPUZZGEAR       "CLOCK GEAR"
+#define TXT_USEPUZZLEFAILED    "YOU CANNOT USE THIS HERE"
+
+extern dboolean hexen;
 
 #endif          // __DOOMDEF__

@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -39,16 +39,10 @@
 #include "config.h"
 #endif
 
-#ifndef __BYTEBOOL__
-#define __BYTEBOOL__
-/* Fixed to use builtin bool type with C++. */
-#ifdef __cplusplus
-typedef bool dboolean;
-#else
-typedef enum {false, true} dboolean;
-#endif
+#include <stdbool.h>
+typedef int dboolean;
+
 typedef unsigned char byte;
-#endif
 
 //e6y
 #ifndef MAX
@@ -61,24 +55,12 @@ typedef unsigned char byte;
 #define BETWEEN(l,u,x) ((l)>(x)?(l):(x)>(u)?(u):(x))
 #endif
 
+#include <inttypes.h>
 #include <limits.h>
 
-/* cph - Wrapper for the long long type, as Win32 used a different name.
- * Except I don't know what to test as it's compiler specific
- * Proff - I fixed it */
-#ifndef _MSC_VER
-typedef signed long long int_64_t;
-typedef unsigned long long uint_64_t;
-// define compiled-specific long-long contstant notation here
-#define LONGLONG(num)   (uint_64_t)num ## ll
-#else
-typedef __int64 int_64_t;
-typedef unsigned __int64 uint_64_t;
-// define compiled-specific long-long contstant notation here
-#define LONGLONG(num) (uint_64_t)num
+#ifdef _MSC_VER
 #define strcasecmp _stricmp
 #define strncasecmp _strnicmp
-#define S_ISDIR(m)  (((m) & S_IFMT) == S_IFDIR)
 #endif
 
 #ifndef PATH_MAX
@@ -99,9 +81,19 @@ typedef unsigned __int64 uint_64_t;
 #define NORETURN
 #endif
 
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+  #define NORETURNC11 _Noreturn
+#else
+  #define NORETURNC11
+#endif
+
 // Definition of PACKEDATTR from Chocolate Doom
 #ifdef __GNUC__
-  #define PACKEDATTR __attribute__((packed))
+  #if defined(_WIN32) && !defined(__clang__)
+    #define PACKEDATTR __attribute__((packed,gcc_struct))
+  #else
+    #define PACKEDATTR __attribute__((packed))
+  #endif
 #else
   #define PACKEDATTR
 #endif
@@ -118,7 +110,6 @@ typedef unsigned __int64 uint_64_t;
   #define INLINE inline        /* use standard inline */
 #endif
 
-/* cph - move compatibility levels here so we can use them in d_server.c */
 typedef enum {
   doom_12_compatibility,   /* Doom v1.2 */
   doom_1666_compatibility, /* Doom v1.666 */
@@ -138,10 +129,14 @@ typedef enum {
   prboom_4_compatibility,                /* PrBoom 2.3.x */
   prboom_5_compatibility,                /* PrBoom 2.4.0 */
   prboom_6_compatibility,                /* Latest PrBoom */
+  placeholder_18_compatibility,
+  placeholder_19_compatibility,
+  placeholder_20_compatibility,
+  mbf21_compatibility,                   /* MBF21 */
   MAX_COMPATIBILITY_LEVEL,               /* Must be last entry */
   /* Aliases follow */
   boom_compatibility = boom_201_compatibility, /* Alias used by G_Compatibility */
-  best_compatibility = prboom_6_compatibility,
+  best_compatibility = mbf21_compatibility
 } complevel_t_e;
 typedef int complevel_t;
 
@@ -161,11 +156,25 @@ enum patch_translation_e {
   VPT_ALIGN_RIGHT_BOTTOM = 9,
   VPT_ALIGN_MAX          = 10,
   VPT_STRETCH            = 16, // Stretch to compensate for high-res
+  VPT_EX_TEXT            = 32,
 
   VPT_NONE    = 128, // Normal
   VPT_FLIP    = 256, // Flip image horizontally
   VPT_TRANS   = 512, // Translate image via a translation table
   VPT_NOOFFSET = 1024,
+  VPT_STRETCH_REAL       = 2048, // [XA] VPT_STRETCH in gld_fillRect means "tile", rather than "stretch"... these flags probably need a rename.
 };
+
+extern int global_patch_top_offset;
+
+#define BOTTOM_ALIGNMENT(x) ((x) == VPT_ALIGN_BOTTOM || \
+                             (x) == VPT_ALIGN_LEFT_BOTTOM || \
+                             (x) == VPT_ALIGN_RIGHT_BOTTOM)
+
+#define TOP_ALIGNMENT(x) ((x) == VPT_ALIGN_TOP || \
+                          (x) == VPT_ALIGN_LEFT_TOP || \
+                          (x) == VPT_ALIGN_RIGHT_TOP)
+
+#define arrlen(array) (sizeof(array) / sizeof(*array))
 
 #endif

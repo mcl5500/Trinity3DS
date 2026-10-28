@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -35,6 +35,7 @@
 #include "doomstat.h"
 #include "m_random.h"
 #include "w_wad.h"
+#include "f_finale.h"
 #include "g_game.h"
 #include "r_main.h"
 #include "v_video.h"
@@ -45,9 +46,15 @@
 #include "r_draw.h"
 #include "hu_stuff.h"
 
+#include "dsda/exhud.h"
+#include "dsda/font.h"
+#include "dsda/mapinfo.h"
+
+#include "heretic/in_lude.h"
+#include "hexen/in_lude.h"
+
 // Ty 03/17/98: flag that new par times have been loaded in d_deh
 extern dboolean deh_pars;
-extern dboolean um_pars;
 
 //
 // Data needed to add patches to full screen intermission pics.
@@ -130,7 +137,6 @@ typedef struct
 
 //
 // Animation.
-// There is another anim_t used in p_spec.
 //
 typedef struct
 {
@@ -173,7 +179,7 @@ typedef struct
 
   // used by RANDOM and LEVEL when animating
   int   state;
-} anim_t;
+} wi_anim_t;
 
 
 static point_t lnodes[NUMEPISODES][NUMMAPS] =
@@ -224,7 +230,7 @@ static point_t lnodes[NUMEPISODES][NUMMAPS] =
 // Using patches saves a lot of space,
 //  as they replace 320x200 full screen frames.
 //
-static anim_t epsd0animinfo[] =
+static wi_anim_t epsd0animinfo[] =
 {
   { ANIM_ALWAYS, TICRATE/3, 3, { 224, 104 } },
   { ANIM_ALWAYS, TICRATE/3, 3, { 184, 160 } },
@@ -238,7 +244,7 @@ static anim_t epsd0animinfo[] =
   { ANIM_ALWAYS, TICRATE/3, 3, { 64, 24 } }
 };
 
-static anim_t epsd1animinfo[] =
+static wi_anim_t epsd1animinfo[] =
 {
   { ANIM_LEVEL,  TICRATE/3, 1, { 128, 136 }, 1 },
   { ANIM_LEVEL,  TICRATE/3, 1, { 128, 136 }, 2 },
@@ -251,7 +257,7 @@ static anim_t epsd1animinfo[] =
   { ANIM_LEVEL,  TICRATE/3, 1, { 128, 136 }, 8 }
 };
 
-static anim_t epsd2animinfo[] =
+static wi_anim_t epsd2animinfo[] =
 {
   { ANIM_ALWAYS, TICRATE/3, 3, { 104, 168 } },
   { ANIM_ALWAYS, TICRATE/3, 3, { 40, 136 } },
@@ -263,12 +269,12 @@ static anim_t epsd2animinfo[] =
 
 static int NUMANIMS[NUMEPISODES] =
 {
-  sizeof(epsd0animinfo)/sizeof(anim_t),
-  sizeof(epsd1animinfo)/sizeof(anim_t),
-  sizeof(epsd2animinfo)/sizeof(anim_t)
+  sizeof(epsd0animinfo)/sizeof(wi_anim_t),
+  sizeof(epsd1animinfo)/sizeof(wi_anim_t),
+  sizeof(epsd2animinfo)/sizeof(wi_anim_t)
 };
 
-static anim_t *anims[NUMEPISODES] =
+static wi_anim_t *anims[NUMEPISODES] =
 {
   epsd0animinfo,
   epsd1animinfo,
@@ -378,10 +384,10 @@ static const char total[] = {"WIMSTT"};
 static const char star[] = {"STFST01"};
 static const char bstar[] = {"STFDEAD0"};
 
-// "red P[1..MAXPLAYERS]"
+// "red P[1..g_maxplayers]"
 static const char facebackp[] = {"STPB0"};
 
-static const char *exitpic, *enterpic;
+const char *exitpic, *enterpic;
 
 //
 // CODE
@@ -401,10 +407,46 @@ static void WI_endNetgameStats(void);
 void WI_levelNameLump(int epis, int map, char* buf)
 {
   if (gamemode == commercial) {
-    sprintf(buf, "CWILV%2.2d", map);
+    snprintf(buf, 9, "CWILV%2.2d", map);
   } else {
-    sprintf(buf, "WILV%d%d", epis, map);
+    snprintf(buf, 9, "WILV%d%d", epis, map);
   }
+}
+
+static int WI_killPercent(int i)
+{
+  return wbs->maxkills ? (plrs[i].skills * 100) / wbs->maxkills
+                       : MAX(1, plrs[i].skills) * 100;
+}
+
+static int WI_killLimit(int i)
+{
+  return wbs->maxkills ? (plrs[i].skills * 100) / wbs->maxkills
+                       : (plrs[i].skills * 100);
+
+}
+
+static int WI_itemPercent(int i)
+{
+  return wbs->maxitems ? (plrs[i].sitems * 100) / wbs->maxitems : 100;
+}
+
+static int WI_itemLimit(int i)
+{
+  return wbs->maxitems ? (plrs[i].sitems * 100) / wbs->maxitems
+                       : (plrs[i].sitems * 100);
+
+}
+
+static int WI_secretPercent(int i)
+{
+  return wbs->maxsecret ? (plrs[i].ssecret * 100) / wbs->maxsecret : 100;
+}
+
+static int WI_secretLimit(int i)
+{
+  return wbs->maxsecret ? (plrs[i].ssecret * 100) / wbs->maxsecret
+                        : compatibility_level < lxdoom_1_compatibility ? 0 : 100;
 }
 
 // ====================================================================
@@ -422,69 +464,54 @@ static void WI_slamBackground(void)
   else if (gamemode == commercial || wbs->epsd < 0 || (gamemode == retail && wbs->epsd >= 3))
     strcpy(name, "INTERPIC");
   else
-    sprintf(name, "WIMAP%d", wbs->epsd);
+    snprintf(name, sizeof(name), "WIMAP%d", wbs->epsd);
 
   // e6y: wide-res
-  V_FillBorder(-1, 0);
+  V_ClearBorder();
 
   // background
-  V_DrawNamePatch(0, 0, FB, name, CR_DEFAULT, VPT_STRETCH);
-}
-
-
-// ====================================================================
-// WI_Responder
-// Purpose: Draw animations on intermission background screen
-// Args:    ev    -- event pointer, not actually used here.
-// Returns: False -- dummy routine
-//
-// The ticker is used to detect keys
-//  because of timing issues in netgames.
-dboolean WI_Responder(event_t* ev)
-{
-  return false;
+  V_DrawNamePatchFS(0, 0, FB, name, CR_DEFAULT, VPT_STRETCH);
 }
 
 #define SPACEWIDTH 4
-extern patchnum_t hu_font[HU_FONTSIZE];
 
 static void WI_DrawString(int cx, int cy, const char* ch)
 {
-	int   w;
-	int   c;
-	const char *cc = ch;
-	int width = 0;
+  int   w;
+  int   c;
+  const char *cc = ch;
+  int width = 0;
 
-	// center the text.
-	while (*cc) {
-		c = *cc++;         // get next char
-		c = toupper(c) - HU_FONTSTART;
-		if (c < 0 || c> HU_FONTSIZE)
-		{
-			width += SPACEWIDTH;    // space
-			continue;
-		}
-		width += hu_font[c].width;
-	}
-	cx -= width / 2;
-	if (cx < 0) cx = 0;
+  // center the text.
+  while (*cc) {
+    c = *cc++;         // get next char
+    c = toupper(c) - HU_FONTSTART;
+    if (c < 0 || c> HU_FONTSIZE)
+    {
+      width += SPACEWIDTH;    // space
+      continue;
+    }
+    width += hud_font.font[c].width;
+  }
+  cx -= width / 2;
+  if (cx < 0) cx = 0;
 
 
-	while (*ch) {
-		c = *ch++;         // get next char
-		c = toupper(c) - HU_FONTSTART;
-		if (c < 0 || c> HU_FONTSIZE)
-		{
-			cx += SPACEWIDTH;    // space
-			continue;
-		}
-		w = hu_font[c].width;
-		if (cx + w > 320)
-			break;
+  while (*ch) {
+    c = *ch++;         // get next char
+    c = toupper(c) - HU_FONTSTART;
+    if (c < 0 || c> HU_FONTSIZE)
+    {
+      cx += SPACEWIDTH;    // space
+      continue;
+    }
+    w = hud_font.font[c].width;
+    if (cx + w > 320)
+      break;
 
-		V_DrawNumPatch(cx, cy, 0, hu_font[c].lumpnum, CR_GRAY, VPT_STRETCH | VPT_TRANS);
-		cx += w;
-	}
+    V_DrawNumPatch(cx, cy, 0, hud_font.font[c].lumpnum, CR_GRAY, VPT_STRETCH | VPT_TRANS);
+    cx += w;
+  }
 }
 
 // ====================================================================
@@ -493,37 +520,52 @@ static void WI_DrawString(int cx, int cy, const char* ch)
 // Args:    none
 // Returns: void
 //
+const char *lf_levelname;
+const char *lf_levelpic;
+const char *lf_author;
+
 void WI_drawLF(void)
 {
   int y = WI_TITLEY;
   char lname[9];
 
-  if (wbs->lastmapinfo != NULL && wbs->lastmapinfo->levelname != NULL && wbs->lastmapinfo->levelpic[0] == 0)
+  dsda_PrepareFinished();
+
+  if (lf_levelname)
   {
-	  // The level defines a new name but no texture for the name.
-	  WI_DrawString(160, y, wbs->lastmapinfo->levelname);
-	  y += (5 * hu_font['A' - HU_FONTSTART].height / 4);
+    // The level defines a new name but no texture for the name.
+    WI_DrawString(160, y, lf_levelname);
+
+    y += (5 * hud_font.height / 4);
   }
   else
   {
-	  // draw <LevelName>
-	  /* cph - get the graphic lump name and use it */
-	  if (wbs->lastmapinfo != NULL && wbs->lastmapinfo->levelpic[0]) strcpy(lname, wbs->lastmapinfo->levelpic);
-	  else WI_levelNameLump(wbs->epsd, wbs->last, lname);
+    // draw <LevelName>
+    /* cph - get the graphic lump name and use it */
+    if (lf_levelpic)
+      strcpy(lname, lf_levelpic);
+    else
+      WI_levelNameLump(wbs->epsd, wbs->last, lname);
 
-	  if (W_CheckNumForName(lname) == -1)
-	    return;
+    if (!W_LumpNameExists(lname))
+      return;
 
-	  // CPhipps - patch drawing updated
-	  V_DrawNamePatch((320 - V_NamePatchWidth(lname)) / 2, y,
-		  FB, lname, CR_DEFAULT, VPT_STRETCH);
+    // CPhipps - patch drawing updated
+    V_DrawNamePatchFS((320 - V_NamePatchWidth(lname)) / 2, y,
+      FB, lname, CR_DEFAULT, VPT_STRETCH);
 
-	  // draw "Finished!"
-	  y += (5 * V_NamePatchHeight(lname)) / 4;
+    y += (5 * V_NamePatchHeight(lname)) / 4;
   }
 
+  if (lf_author)
+  {
+    WI_DrawString(160, y, lf_author);
+
+    y += (5 * hud_font.height / 4);
+  }
 
   // CPhipps - patch drawing updated
+  // draw "Finished!"
   V_DrawNamePatch((320 - V_NamePatchWidth(finished))/2, y,
      FB, finished, CR_DEFAULT, VPT_STRETCH);
 }
@@ -535,40 +577,60 @@ void WI_drawLF(void)
 // Args:    none
 // Returns: void
 //
+const char *el_levelname;
+const char *el_levelpic;
+const char *el_author;
+
 void WI_drawEL(void)
 {
-	int y = WI_TITLEY;
-	char lname[9];
+  int y = WI_TITLEY;
+  char lname[9];
 
-	// draw "Entering"
-	// CPhipps - patch drawing updated
-	V_DrawNamePatch((320 - V_NamePatchWidth(entering)) / 2,
-		y, FB, entering, CR_DEFAULT, VPT_STRETCH);
+  // draw "Entering"
+  // CPhipps - patch drawing updated
+  V_DrawNamePatch((320 - V_NamePatchWidth(entering)) / 2,
+    y, FB, entering, CR_DEFAULT, VPT_STRETCH);
 
+  y += (5 * V_NamePatchHeight(entering)) / 4;
 
-	if (wbs->nextmapinfo != NULL && wbs->nextmapinfo->levelname != NULL && wbs->nextmapinfo->levelpic[0] == 0)
-	{
-		y += (5 * V_NamePatchHeight(entering)) / 4;
+  dsda_PrepareEntering();
 
-		// The level defines a new name but no texture for the name.
-		WI_DrawString(160, y, wbs->nextmapinfo->levelname);
-	}
-	else
-	{
-		/* cph - get the graphic lump name */
-		if (wbs->nextmapinfo != NULL && wbs->nextmapinfo->levelpic[0]) strcpy(lname, wbs->nextmapinfo->levelpic);
-		else WI_levelNameLump(wbs->nextep, wbs->next, lname);
+  if (el_levelname)
+  {
+    // The level defines a new name but no texture for the name.
+    WI_DrawString(160, y, el_levelname);
 
-		if (W_CheckNumForName(lname) == -1)
-		  return;
+    y += (5 * hud_font.height / 4);
+  }
+  else
+  {
+    /* cph - get the graphic lump name */
+    if (el_levelpic)
+      strcpy(lname, el_levelpic);
+    else
+      WI_levelNameLump(wbs->nextep, wbs->next, lname);
 
-		// draw level
-		y += (5 * V_NamePatchHeight(lname)) / 4;
+    if (!W_LumpNameExists(lname))
+      return;
 
-		// CPhipps - patch drawing updated
-		V_DrawNamePatch((320 - V_NamePatchWidth(lname)) / 2, y, FB,
-			lname, CR_DEFAULT, VPT_STRETCH);
-	}
+    // fullscreen cwilv graphic
+    if (V_NamePatchHeight(lname) == 200)
+      y = WI_TITLEY;
+
+    // CPhipps - patch drawing updated
+    // draw level
+    V_DrawNamePatchFS((320 - V_NamePatchWidth(lname)) / 2, y, FB,
+      lname, CR_DEFAULT, VPT_STRETCH);
+
+    y += (5 * V_NamePatchHeight(lname)) / 4;
+  }
+
+  if (el_author)
+  {
+    WI_DrawString(160, y, el_author);
+
+    y += (5 * hud_font.height / 4);
+  }
 }
 
 /* ====================================================================
@@ -593,13 +655,12 @@ WI_drawOnLnode  // draw stuff at a location by episode/map#
     int            top;
     int            right;
     int            bottom;
-    const rpatch_t* patch = R_CachePatchName(c[i]);
+    const rpatch_t* patch = R_PatchByName(c[i]);
 
     left = lnodes[wbs->epsd][n].x - patch->leftoffset;
     top = lnodes[wbs->epsd][n].y - patch->topoffset;
     right = left + patch->width;
     bottom = top + patch->height;
-    R_UnlockPatchName(c[i]);
 
     if (left >= 0
        && right < 320
@@ -638,7 +699,7 @@ WI_drawOnLnode  // draw stuff at a location by episode/map#
 void WI_initAnimatedBack(int entering)
 {
   int   i;
-  anim_t* a;
+  wi_anim_t* a;
 
   if (exitpic) return;
   if (enterpic && entering) return;
@@ -655,7 +716,11 @@ void WI_initAnimatedBack(int entering)
     a = &anims[wbs->epsd][i];
 
     // init variables
-    a->ctr = -1;
+    // [crispy] Do not reset animation timers upon switching to "Entering" state
+    // via WI_initShowNextLoc. Fixes notable blinking of Tower of Babel drawing
+    // and the rest of animations from being restarted.
+    if (!entering)
+      a->ctr = -1;
 
     // specify the next time to draw it
     if (a->type == ANIM_ALWAYS)
@@ -679,7 +744,7 @@ void WI_initAnimatedBack(int entering)
 void WI_updateAnimatedBack(void)
 {
   int   i;
-  anim_t* a;
+  wi_anim_t* a;
 
   if (exitpic) return;
   if (enterpic && state != StatCount) return;
@@ -739,7 +804,7 @@ void WI_updateAnimatedBack(void)
 void WI_drawAnimatedBack(void)
 {
   int     i;
-  anim_t*   a;
+  wi_anim_t*   a;
 
   if (exitpic) return;
   if (enterpic && state != StatCount) return;
@@ -749,6 +814,14 @@ void WI_drawAnimatedBack(void)
 
   if (wbs->epsd < 0 || wbs->epsd > 2)
     return;
+
+  // [crispy] show Fortress of Mystery if it has been completed
+  if (wbs->epsd == 1 && wbs->didsecret)
+  {
+    a = &anims[1][7];
+
+    V_DrawNumPatch(a->loc.x, a->loc.y, FB, a->p[2].lumpnum, CR_DEFAULT, VPT_STRETCH);
+  }
 
   for (i=0 ; i<NUMANIMS[wbs->epsd] ; i++)
   {
@@ -886,6 +959,8 @@ static void WI_drawTime(int x, int y, int t)
 //
 void WI_End(void)
 {
+  if (heretic) return;
+
   if (deathmatch)
     WI_endDeathmatchStats();
   else if (netgame)
@@ -894,6 +969,15 @@ void WI_End(void)
     WI_endStats();
 }
 
+#define WI_LONGER_NOW_ENTERING (allow_incompatibility && gamemode == commercial && !netgame)
+
+void WI_wait(void)
+{
+  if (WI_LONGER_NOW_ENTERING && !F_ShowCast())
+      cnt = TICRATE + 10;
+  else
+      cnt = 10;
+}
 
 // ====================================================================
 // WI_initNoState
@@ -905,7 +989,7 @@ void WI_initNoState(void)
 {
   state = NoState;
   acceleratestage = 0;
-  cnt = 10;
+  WI_wait();
 }
 
 
@@ -930,15 +1014,24 @@ static void WI_drawTimeStats(int cnt_time, int cnt_total_time, int cnt_par)
   // killough 2/22/98: skip drawing par times on pwads
   // Ty 03/17/98: unless pars changed with deh patch
 
-  if (!(modifiedgame && !deh_pars && !um_pars)
-          || (gamemission == pack_nerve && singleplayer))
+  if (
+    !(modifiedgame && !wbs->modified_partime)
+    || (gamemission == pack_nerve && allow_incompatibility)
+  )
   {
-    if (wbs->epsd < 4 || um_pars)
+    if (wbs->epsd < 4 || wbs->modified_partime)
     {
+      int display_count;
+
+      display_count =
+        wbs->fake_partime && cnt_par >= 0 ? wbs->fake_partime / TICRATE : cnt_par;
+
       V_DrawNamePatch(320/2 + SP_TIMEX, SP_TIMEY, FB, par, CR_DEFAULT, VPT_STRETCH);
-      WI_drawTime(320 - SP_TIMEX, SP_TIMEY, cnt_par);
+      WI_drawTime(320 - SP_TIMEX, SP_TIMEY, display_count);
     }
   }
+
+  dsda_DrawExIntermission();
 }
 
 // ====================================================================
@@ -949,10 +1042,9 @@ static void WI_drawTimeStats(int cnt_time, int cnt_total_time, int cnt_par)
 //
 void WI_updateNoState(void)
 {
-
   WI_updateAnimatedBack();
 
-  if (!--cnt)
+  if (!--cnt || (WI_LONGER_NOW_ENTERING && acceleratestage))
     G_WorldDone();
 }
 
@@ -967,48 +1059,50 @@ static dboolean    snl_pointeron = false;
 //
 void WI_initShowNextLoc(void)
 {
-	if (gamemapinfo != NULL)
-	{
-		if (gamemapinfo->endpic[0])
-		{
-			G_WorldDone();
-			return;
-		}
-		state = ShowNextLoc;
+  int behaviour;
 
-		// episode change
-		if (wbs->epsd != wbs->nextep)
-		{
-			void WI_loadData(void);
+  dsda_ShowNextLocBehaviour(&behaviour);
 
-			wbs->epsd = wbs->nextep;
-			wbs->last = wbs->next - 1;
-			WI_loadData();
-		}
-	}
-	else if ((gamemode != commercial) && (gamemap == 8)) {
-		G_WorldDone();
-		return;
-	}
-	else
-		state = ShowNextLoc;
+  if (behaviour & WI_SHOW_NEXT_DONE)
+  {
+    G_WorldDone();
+    return;
+  }
 
-	acceleratestage = 0;
+  if (behaviour & WI_SHOW_NEXT_LOC)
+  {
+    state = ShowNextLoc;
+  }
 
-	// e6y: That was pretty easy - only a HEX editor and luck
-	// There is no more desync on ddt-tas.zip\e4tux231.lmp
-	// --------- tasdoom.idb ---------
-	// .text:00031194 loc_31194:      ; CODE XREF: WI_updateStats+3A9j
-	// .text:00031194                 mov     ds:state, 1
-	// .text:0003119E                 mov     ds:acceleratestage, 0
-	// .text:000311A8                 mov     ds:cnt, 3Ch
-	// nowhere no hide
-	if (compatibility_level == tasdoom_compatibility)
-		cnt = 60;
-	else
-		cnt = SHOWNEXTLOCDELAY * TICRATE;
+  if (behaviour & WI_SHOW_NEXT_EPISODAL)
+  {
+    // episode change possible
+    if (wbs->epsd != wbs->nextep)
+    {
+      void WI_loadData(void);
 
-	WI_initAnimatedBack(true);
+      wbs->epsd = wbs->nextep;
+      wbs->last = wbs->next - 1;
+      WI_loadData();
+    }
+  }
+
+  acceleratestage = 0;
+
+  // e6y: That was pretty easy - only a HEX editor and luck
+  // There is no more desync on ddt-tas.zip\e4tux231.lmp
+  // --------- tasdoom.idb ---------
+  // .text:00031194 loc_31194:      ; CODE XREF: WI_updateStats+3A9j
+  // .text:00031194                 mov     ds:state, 1
+  // .text:0003119E                 mov     ds:acceleratestage, 0
+  // .text:000311A8                 mov     ds:cnt, 3Ch
+  // nowhere no hide
+  if (compatibility_level == tasdoom_compatibility)
+    cnt = 60;
+  else
+    cnt = SHOWNEXTLOCDELAY * TICRATE;
+
+  WI_initAnimatedBack(true);
 }
 
 
@@ -1040,9 +1134,7 @@ void WI_drawShowNextLoc(void)
   int   i;
   int   last;
 
-  if (gamemapinfo != NULL &&
-      gamemapinfo->endpic[0] &&
-      strcmp(gamemapinfo->endpic, "-") != 0)
+  if (dsda_SkipDrawShowNextLoc())
   {
     return;
   }
@@ -1055,8 +1147,8 @@ void WI_drawShowNextLoc(void)
   // custom interpic.
   if (exitpic || (enterpic && state != StatCount))
   {
-	  WI_drawEL();
-	  return;
+    WI_drawEL();
+    return;
   }
 
   if ( gamemode != commercial)
@@ -1082,12 +1174,11 @@ void WI_drawShowNextLoc(void)
       WI_drawOnLnode(wbs->next, yah);
   }
 
-  if (gamemission == pack_nerve && singleplayer && wbs->last == 7)
+  if (gamemission == pack_nerve && allow_incompatibility && wbs->last == 7)
     return; // MAP08 end game
 
   // draws which level you are entering..
-  if ( (gamemode != commercial)
-     || wbs->next != 30)  // check for MAP30 end game
+  if ( (gamemode != commercial) || (gamemap != 30) )  // allows for MAP31 entering screen, if not MAP30
   WI_drawEL();
 }
 
@@ -1115,7 +1206,7 @@ int WI_fragSum(int playernum)
   int   i;
   int   frags = 0;
 
-  for (i=0 ; i<MAXPLAYERS ; i++)
+  for (i = 0; i < g_maxplayers; i++)
   {
     if (playeringame[i]  // is this player playing?
        && i!=playernum) // and it's not the player we're calculating
@@ -1148,8 +1239,8 @@ void WI_initDeathmatchStats(void)
   int   i; // looping variables
 
   // CPhipps - allocate data structures needed
-  dm_frags  = calloc(MAXPLAYERS, sizeof(*dm_frags));
-  dm_totals = calloc(MAXPLAYERS, sizeof(*dm_totals));
+  dm_frags  = Z_Calloc(g_maxplayers, sizeof(*dm_frags));
+  dm_totals = Z_Calloc(g_maxplayers, sizeof(*dm_totals));
 
   state = StatCount;  // We're doing stats
   acceleratestage = 0;
@@ -1157,12 +1248,12 @@ void WI_initDeathmatchStats(void)
 
   cnt_pause = TICRATE;
 
-  for (i=0 ; i<MAXPLAYERS ; i++)
+  for (i = 0 ;i < g_maxplayers; i++)
   {
     if (playeringame[i])
     {
       // CPhipps - allocate frags line
-      dm_frags[i] = calloc(MAXPLAYERS, sizeof(**dm_frags)); // set all counts to zero
+      dm_frags[i] = Z_Calloc(g_maxplayers, sizeof(**dm_frags)); // set all counts to zero
 
       dm_totals[i] = 0;
     }
@@ -1180,10 +1271,10 @@ void WI_initDeathmatchStats(void)
 void WI_endDeathmatchStats(void)
 {
   int i;
-  for (i=0; i<MAXPLAYERS; i++)
-    free(dm_frags[i]);
+  for (i = 0; i < g_maxplayers; i++)
+    Z_Free(dm_frags[i]);
 
-  free(dm_frags); free(dm_totals);
+  Z_Free(dm_frags); Z_Free(dm_totals);
 }
 
 // ====================================================================
@@ -1207,11 +1298,11 @@ void WI_updateDeathmatchStats(void)
   {
     acceleratestage = 0;
 
-    for (i=0 ; i<MAXPLAYERS ; i++)
+    for (i = 0; i < g_maxplayers; i++)
     {
       if (playeringame[i])
       {
-        for (j=0 ; j<MAXPLAYERS ; j++)
+        for (j = 0; j < g_maxplayers; j++)
           if (playeringame[j])
             dm_frags[i][j] = plrs[i].frags[j];
 
@@ -1219,8 +1310,7 @@ void WI_updateDeathmatchStats(void)
       }
     }
 
-
-    S_StartSound(0, sfx_barexp);  // bang
+    S_StartOptionalSound(g_sfx_inttot, sfx_barexp, false);
     dm_state = 4;  // we're done with all 4 (or all we have to do)
   }
 
@@ -1228,15 +1318,15 @@ void WI_updateDeathmatchStats(void)
   if (dm_state == 2)
   {
     if (!(bcnt&3))
-      S_StartSound(0, sfx_pistol);  // noise while counting
+      S_StartOptionalSound(g_sfx_inttic, sfx_pistol, false); // noise while counting
 
     stillticking = false;
 
-    for (i=0 ; i<MAXPLAYERS ; i++)
+    for (i = 0; i < g_maxplayers; i++)
     {
       if (playeringame[i])
       {
-        for (j=0 ; j<MAXPLAYERS ; j++)
+        for (j = 0; j < g_maxplayers; j++)
         {
           if (playeringame[j]
              && dm_frags[i][j] != plrs[i].frags[j])
@@ -1267,7 +1357,7 @@ void WI_updateDeathmatchStats(void)
 
     if (!stillticking)
     {
-      S_StartSound(0, sfx_barexp);
+      S_StartOptionalSound(g_sfx_inttot, sfx_barexp, false);
       dm_state++;
     }
   }
@@ -1275,7 +1365,7 @@ void WI_updateDeathmatchStats(void)
   {
     if (acceleratestage)
     {
-      S_StartSound(0, sfx_slop);
+      S_StartOptionalSound(g_sfx_intdms, sfx_slop, false);
 
       if ( gamemode == commercial)
         WI_initNoState();
@@ -1310,10 +1400,7 @@ void WI_drawDeathmatchStats(void)
   int   y;
   int   w;
 
-  int   lh; // line height
   int   halfface = V_NamePatchWidth(facebackp)/2;
-
-  lh = WI_SPACINGY;
 
   WI_slamBackground();
 
@@ -1332,7 +1419,7 @@ void WI_drawDeathmatchStats(void)
   x = DM_MATRIXX + DM_SPACINGX;
   y = DM_MATRIXY;
 
-  for (i=0 ; i<MAXPLAYERS ; i++)
+  for (i = 0; i < g_maxplayers; i++)
   {
     if (playeringame[i]) {
       //int trans = playernumtotrans[i];
@@ -1359,13 +1446,13 @@ void WI_drawDeathmatchStats(void)
   y = DM_MATRIXY+10;
   w = num[0].width;
 
-  for (i=0 ; i<MAXPLAYERS ; i++)
+  for (i = 0; i < g_maxplayers; i++)
   {
     x = DM_MATRIXX + DM_SPACINGX;
 
     if (playeringame[i])
     {
-      for (j=0 ; j<MAXPLAYERS ; j++)
+      for (j = 0; j < g_maxplayers; j++)
       {
         if (playeringame[j])
           WI_drawNum(x+w, y, dm_frags[i][j], 2);
@@ -1383,23 +1470,6 @@ void WI_drawDeathmatchStats(void)
 // Note: The term "Netgame" means a coop game
 //
 
-// e6y
-// 'short' => 'int' for cnt_kills, cnt_items and cnt_secret
-//
-// Original sources use 'int' type for cnt_kills instead of 'short'
-// I don't know who have made change of type, but this change
-// leads to desynch  if 'kills' percentage is more than 32767.
-// Actually PrBoom will be in an infinite cycle at calculation of
-// percentage if the player will not press <Use> for acceleration, because
-// the condition (cnt_kills[0] >= (plrs[me].skills * 100) / wbs->maxkills)
-// will be always false in this case.
-//
-// If you will kill 800 monsters on MAP30 on Ultra-Violence skill and 
-// will not press <Use>, vanilla will count up to 80000%, but PrBoom
-// will be in infinite cycle of counting:
-// (0, 1, 2, ..., 32766, 32767, -32768, -32767, ..., -1, 0, 1, ...)
-// Negative numbers will not be displayed.
-
 static int *cnt_kills;
 static int *cnt_items;
 static int *cnt_secret;
@@ -1415,10 +1485,10 @@ static int    ng_state;
 //
 static void WI_endNetgameStats(void)
 {
-  free(cnt_frags); cnt_frags = NULL;
-  free(cnt_secret); cnt_secret = NULL;
-  free(cnt_items); cnt_items = NULL;
-  free(cnt_kills); cnt_kills = NULL;
+  Z_Free(cnt_frags); cnt_frags = NULL;
+  Z_Free(cnt_secret); cnt_secret = NULL;
+  Z_Free(cnt_items); cnt_items = NULL;
+  Z_Free(cnt_kills); cnt_kills = NULL;
 }
 
 // ====================================================================
@@ -1438,12 +1508,12 @@ void WI_initNetgameStats(void)
   cnt_pause = TICRATE;
 
   // CPhipps - allocate these dynamically, blank with calloc
-  cnt_kills = calloc(MAXPLAYERS, sizeof(*cnt_kills));
-  cnt_items = calloc(MAXPLAYERS, sizeof(*cnt_items));
-  cnt_secret= calloc(MAXPLAYERS, sizeof(*cnt_secret));
-  cnt_frags = calloc(MAXPLAYERS, sizeof(*cnt_frags));
+  cnt_kills = Z_Calloc(g_maxplayers, sizeof(*cnt_kills));
+  cnt_items = Z_Calloc(g_maxplayers, sizeof(*cnt_items));
+  cnt_secret= Z_Calloc(g_maxplayers, sizeof(*cnt_secret));
+  cnt_frags = Z_Calloc(g_maxplayers, sizeof(*cnt_frags));
 
-  for (i=0 ; i<MAXPLAYERS ; i++)
+  for (i = 0; i < g_maxplayers; i++)
     if (playeringame[i])
       dofrags += WI_fragSum(i);
 
@@ -1473,111 +1543,107 @@ void WI_updateNetgameStats(void)
   {
     acceleratestage = 0;
 
-    for (i=0 ; i<MAXPLAYERS ; i++)
+    for (i = 0; i < g_maxplayers; i++)
     {
       if (!playeringame[i])
         continue;
 
-      cnt_kills[i] = (plrs[i].skills * 100) / wbs->maxkills;
-      cnt_items[i] = (plrs[i].sitems * 100) / wbs->maxitems;
+      cnt_kills[i] = WI_killPercent(i);
+      cnt_items[i] = WI_itemPercent(i);
+      cnt_secret[i] = WI_secretPercent(i);
 
-      // killough 2/22/98: Make secrets = 100% if maxsecret = 0:
-      cnt_secret[i] = wbs->maxsecret ?
-                      (plrs[i].ssecret * 100) / wbs->maxsecret : 100;
       if (dofrags)
         cnt_frags[i] = WI_fragSum(i);  // we had frags
     }
-    S_StartSound(0, sfx_barexp);  // bang
+    S_StartOptionalSound(g_sfx_inttot, sfx_barexp, false);
     ng_state = 10;
   }
 
   if (ng_state == 2)
   {
     if (!(bcnt&3))
-      S_StartSound(0, sfx_pistol);  // pop
+      S_StartOptionalSound(g_sfx_inttic, sfx_pistol, false);
 
     stillticking = false;
 
-    for (i=0 ; i<MAXPLAYERS ; i++)
+    for (i = 0; i < g_maxplayers; i++)
     {
       if (!playeringame[i])
         continue;
 
       cnt_kills[i] += 2;
 
-      if (cnt_kills[i] >= (plrs[i].skills * 100) / wbs->maxkills)
-        cnt_kills[i] = (plrs[i].skills * 100) / wbs->maxkills;
+      if (cnt_kills[i] >= WI_killLimit(i))
+        cnt_kills[i] = WI_killPercent(i);
       else
         stillticking = true; // still got stuff to tally
     }
 
     if (!stillticking)
     {
-      S_StartSound(0, sfx_barexp);
+      S_StartOptionalSound(g_sfx_inttot, sfx_barexp, false);
       ng_state++;
     }
   }
   else if (ng_state == 4)
   {
     if (!(bcnt&3))
-      S_StartSound(0, sfx_pistol);
+      S_StartOptionalSound(g_sfx_inttic, sfx_pistol, false);
 
     stillticking = false;
 
-    for (i=0 ; i<MAXPLAYERS ; i++)
+    for (i = 0; i < g_maxplayers; i++)
     {
       if (!playeringame[i])
         continue;
 
       cnt_items[i] += 2;
-      if (cnt_items[i] >= (plrs[i].sitems * 100) / wbs->maxitems)
-        cnt_items[i] = (plrs[i].sitems * 100) / wbs->maxitems;
+      if (cnt_items[i] >= WI_itemLimit(i))
+        cnt_items[i] = WI_itemPercent(i);
       else
         stillticking = true;
     }
 
     if (!stillticking)
     {
-      S_StartSound(0, sfx_barexp);
+      S_StartOptionalSound(g_sfx_inttot, sfx_barexp, false);
       ng_state++;
     }
   }
   else if (ng_state == 6)
   {
     if (!(bcnt&3))
-      S_StartSound(0, sfx_pistol);
+      S_StartOptionalSound(g_sfx_inttic, sfx_pistol, false);
 
     stillticking = false;
 
-    for (i=0 ; i<MAXPLAYERS ; i++)
+    for (i = 0; i < g_maxplayers; i++)
     {
       if (!playeringame[i])
         continue;
 
       cnt_secret[i] += 2;
 
-      // killough 2/22/98: Make secrets = 100% if maxsecret = 0:
-
-      if (cnt_secret[i] >= (wbs->maxsecret ? (plrs[i].ssecret * 100) / wbs->maxsecret : compatibility_level < lxdoom_1_compatibility ? 0 : 100))
-        cnt_secret[i] = wbs->maxsecret ? (plrs[i].ssecret * 100) / wbs->maxsecret : 100;
+      if (cnt_secret[i] >= WI_secretLimit(i))
+        cnt_secret[i] = WI_secretPercent(i);
       else
         stillticking = true;
     }
 
     if (!stillticking)
     {
-      S_StartSound(0, sfx_barexp);
+      S_StartOptionalSound(g_sfx_inttot, sfx_barexp, false);
       ng_state += 1 + 2*!dofrags;
     }
   }
   else if (ng_state == 8)
   {
     if (!(bcnt&3))
-      S_StartSound(0, sfx_pistol);
+      S_StartOptionalSound(g_sfx_inttic, sfx_pistol, false);
 
     stillticking = false;
 
-    for (i=0 ; i<MAXPLAYERS ; i++)
+    for (i = 0; i < g_maxplayers; i++)
     {
       if (!playeringame[i])
         continue;
@@ -1592,7 +1658,7 @@ void WI_updateNetgameStats(void)
 
     if (!stillticking)
     {
-      S_StartSound(0, sfx_pldeth);
+      S_StartOptionalSound(g_sfx_intnet, sfx_pldeth, false);
       ng_state++;
     }
   }
@@ -1600,7 +1666,7 @@ void WI_updateNetgameStats(void)
   {
     if (acceleratestage)
     {
-      S_StartSound(0, sfx_sgcock);
+      S_StartOptionalSound(g_sfx_intnex, sfx_sgcock, false);
       if ( gamemode == commercial )
         WI_initNoState();
       else
@@ -1658,7 +1724,7 @@ void WI_drawNetgameStats(void)
   // draw stats
   y = NG_STATSY + V_NamePatchHeight(kills);
 
-  for (i=0 ; i<MAXPLAYERS ; i++)
+  for (i = 0; i < g_maxplayers; i++)
   {
     //int trans = playernumtotrans[i];
     if (!playeringame[i])
@@ -1711,9 +1777,9 @@ void WI_initStats(void)
   sp_state = 1;
 
   // CPhipps - allocate (awful code, I know, but saves changing it all) and initialise
-  *(cnt_kills = malloc(sizeof(*cnt_kills))) =
-  *(cnt_items = malloc(sizeof(*cnt_items))) =
-  *(cnt_secret= malloc(sizeof(*cnt_secret))) = -1;
+  *(cnt_kills = Z_Malloc(sizeof(*cnt_kills))) =
+  *(cnt_items = Z_Malloc(sizeof(*cnt_items))) =
+  *(cnt_secret= Z_Malloc(sizeof(*cnt_secret))) = -1;
   cnt_time = cnt_par = cnt_total_time = -1;
   cnt_pause = TICRATE;
 
@@ -1736,17 +1802,14 @@ void WI_updateStats(void)
   if (acceleratestage && sp_state != 10)
   {
     acceleratestage = 0;
-    cnt_kills[0] = (plrs[me].skills * 100) / wbs->maxkills;
-    cnt_items[0] = (plrs[me].sitems * 100) / wbs->maxitems;
-
-    // killough 2/22/98: Make secrets = 100% if maxsecret = 0:
-    cnt_secret[0] = (wbs->maxsecret ?
-      (plrs[me].ssecret * 100) / wbs->maxsecret : 100);
+    cnt_kills[0] = WI_killPercent(me);
+    cnt_items[0] = WI_itemPercent(me);
+    cnt_secret[0] = WI_secretPercent(me);
 
     cnt_total_time = wbs->totaltimes / TICRATE;
     cnt_time = plrs[me].stime / TICRATE;
     cnt_par = wbs->partime / TICRATE;
-    S_StartSound(0, sfx_barexp);
+    S_StartOptionalSound(g_sfx_inttot, sfx_barexp, false);
     sp_state = 10;
   }
 
@@ -1755,12 +1818,12 @@ void WI_updateStats(void)
     cnt_kills[0] += 2;
 
     if (!(bcnt&3))
-      S_StartSound(0, sfx_pistol);
+      S_StartOptionalSound(g_sfx_inttic, sfx_pistol, false);
 
-    if (cnt_kills[0] >= (plrs[me].skills * 100) / wbs->maxkills)
+    if (cnt_kills[0] >= WI_killLimit(me))
     {
-      cnt_kills[0] = (plrs[me].skills * 100) / wbs->maxkills;
-      S_StartSound(0, sfx_barexp);
+      cnt_kills[0] = WI_killPercent(me);
+      S_StartOptionalSound(g_sfx_inttot, sfx_barexp, false);
       sp_state++;
     }
   }
@@ -1769,12 +1832,12 @@ void WI_updateStats(void)
     cnt_items[0] += 2;
 
     if (!(bcnt&3))
-      S_StartSound(0, sfx_pistol);
+      S_StartOptionalSound(g_sfx_inttic, sfx_pistol, false);
 
-    if (cnt_items[0] >= (plrs[me].sitems * 100) / wbs->maxitems)
+    if (cnt_items[0] >= WI_itemLimit(me))
     {
-      cnt_items[0] = (plrs[me].sitems * 100) / wbs->maxitems;
-      S_StartSound(0, sfx_barexp);
+      cnt_items[0] = WI_itemPercent(me);
+      S_StartOptionalSound(g_sfx_inttot, sfx_barexp, false);
       sp_state++;
     }
   }
@@ -1783,23 +1846,19 @@ void WI_updateStats(void)
     cnt_secret[0] += 2;
 
     if (!(bcnt&3))
-      S_StartSound(0, sfx_pistol);
+      S_StartOptionalSound(g_sfx_inttic, sfx_pistol, false);
 
-    // killough 2/22/98: Make secrets = 100% if maxsecret = 0:
-    if ((!wbs->maxsecret && compatibility_level < lxdoom_1_compatibility) ||
-	cnt_secret[0] >= (wbs->maxsecret ?
-      (plrs[me].ssecret * 100) / wbs->maxsecret : 100))
+    if (cnt_secret[0] >= WI_secretLimit(me))
     {
-      cnt_secret[0] = (wbs->maxsecret ?
-        (plrs[me].ssecret * 100) / wbs->maxsecret : 100);
-      S_StartSound(0, sfx_barexp);
+      cnt_secret[0] = WI_secretPercent(me);
+      S_StartOptionalSound(g_sfx_inttot, sfx_barexp, false);
       sp_state++;
     }
   }
   else if (sp_state == 8)
   {
     if (!(bcnt&3) && play_early_explosion) //e6y: do not play count sound after explosion sound
-      S_StartSound(0, sfx_pistol);
+      S_StartOptionalSound(g_sfx_inttic, sfx_pistol, false);
 
     cnt_time += 3;
 
@@ -1825,7 +1884,7 @@ void WI_updateStats(void)
         if (compatibility_level < lxdoom_1_compatibility)
           cnt_total_time = wbs->totaltimes / TICRATE;
 
-        S_StartSound(0, sfx_barexp);
+        S_StartOptionalSound(g_sfx_inttot, sfx_barexp, false);
         play_early_explosion = false; // do not play it twice or more
       }
     }
@@ -1841,7 +1900,7 @@ void WI_updateStats(void)
           cnt_total_time = wbs->totaltimes / TICRATE;
 
         if (!modifiedgame) //e6y: do not play explosion sound if it was already played
-          S_StartSound(0, sfx_barexp);
+          S_StartOptionalSound(g_sfx_inttot, sfx_barexp, false);
         sp_state++;
       }
     }
@@ -1850,7 +1909,7 @@ void WI_updateStats(void)
   {
     if (acceleratestage)
     {
-      S_StartSound(0, sfx_sgcock);
+      S_StartOptionalSound(g_sfx_intnex, sfx_sgcock, false);
 
       if (gamemode == commercial)
         WI_initNoState();
@@ -1920,7 +1979,7 @@ void WI_checkForAccelerate(void)
   player_t  *player;
 
   // check for button presses to skip delays
-  for (i=0, player = players ; i<MAXPLAYERS ; i++, player++)
+  for (i = 0, player = players; i < g_maxplayers; i++, player++)
   {
     if (playeringame[i])
     {
@@ -1954,16 +2013,27 @@ void WI_checkForAccelerate(void)
 //
 void WI_Ticker(void)
 {
+  if (heretic) return IN_Ticker();
+  if (hexen) return Hexen_IN_Ticker();
+
   // counter for general background animation
   bcnt++;
 
   if (bcnt == 1)
   {
-    // intermission music
-    if ( gamemode == commercial )
-      S_ChangeMusic(mus_dm2int, true);
+    int mnum;
+    int muslump;
+
+    dsda_IntermissionMusic(&mnum, &muslump);
+
+    if (muslump >= 0)
+    {
+      S_ChangeMusInfoMusic(muslump, true);
+    }
     else
-      S_ChangeMusic(mus_inter, true);
+    {
+      S_ChangeMusic(mnum, true);
+    }
   }
 
   WI_checkForAccelerate();
@@ -2003,7 +2073,7 @@ void WI_loadData(void)
   int   i;
   int   j;
   char  name[9];  // limited to 8 characters
-  anim_t* a;
+  wi_anim_t* a;
 
   if (gamemode != commercial)
   {
@@ -2024,7 +2094,10 @@ void WI_loadData(void)
           else
           {
             // HACK ALERT!
-            a->p[i] = anims[1][4].p[i];
+            if ( gamemap == 8 )
+              a->p[i] = anims[1][6].p[i]; // if map is E2M8, use E2M7 data
+            else
+              a->p[i] = anims[1][4].p[i]; // E2M5 data (for E2M9)
           }
         }
       }
@@ -2034,7 +2107,7 @@ void WI_loadData(void)
   for (i=0;i<10;i++)
   {
     // numbers 0-9
-    sprintf(name, "WINUM%d", i);
+    snprintf(name, sizeof(name), "WINUM%d", i);
     R_SetPatchNum(&num[i], name);
   }
 }
@@ -2049,6 +2122,9 @@ void WI_loadData(void)
 //
 void WI_Drawer (void)
 {
+  if (heretic) return IN_Drawer();
+  if (hexen) return Hexen_IN_Drawer();
+
   switch (state)
   {
     case StatCount:
@@ -2096,8 +2172,8 @@ void WI_initVariables(wbstartstruct_t* wbstartstruct)
     RNGCHECK(wbs->last, 0, 8);
     RNGCHECK(wbs->next, 0, 8);
   }
-  RNGCHECK(wbs->pnum, 0, MAXPLAYERS);
-  RNGCHECK(wbs->pnum, 0, MAXPLAYERS);
+  RNGCHECK(wbs->pnum, 0, g_maxplayers);
+  RNGCHECK(wbs->pnum, 0, g_maxplayers);
 #endif
 
   acceleratestage = 0;
@@ -2105,12 +2181,6 @@ void WI_initVariables(wbstartstruct_t* wbstartstruct)
   firstrefresh = 1;
   me = wbs->pnum;
   plrs = wbs->plyr;
-
-  if (!wbs->maxkills)
-    wbs->maxkills = 1;  // probably only useful in MAP30
-
-  if (!wbs->maxitems)
-    wbs->maxitems = 1;
 
   if ( gamemode != retail )
     if (wbs->epsd > 2)
@@ -2127,11 +2197,14 @@ void WI_initVariables(wbstartstruct_t* wbstartstruct)
 //
 void WI_Start(wbstartstruct_t* wbstartstruct)
 {
+  exitpic = dsda_ExitPic();
+  enterpic = dsda_EnterPic();
+  
+  if (heretic) return IN_Start(wbstartstruct);
+  if (hexen) return Hexen_IN_Start(wbstartstruct);
+
   WI_initVariables(wbstartstruct);
   WI_loadData();
-
-  exitpic = (wbs->lastmapinfo && wbs->lastmapinfo->exitpic[0]) ? wbs->lastmapinfo->exitpic : NULL;
-  enterpic = (wbs->nextmapinfo && wbs->nextmapinfo->enterpic[0]) ? wbs->nextmapinfo->enterpic : NULL;
 
   if (deathmatch)
     WI_initDeathmatchStats();

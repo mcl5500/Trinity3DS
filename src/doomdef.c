@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -33,10 +33,6 @@
  *-----------------------------------------------------------------------------
  */
 
-#ifdef __GNUG__
-#pragma implementation "doomdef.h"
-#endif
-
 #include "doomdef.h"
 
 // Location for any defines turned variables.
@@ -45,6 +41,7 @@
 // proff 08/17/98: Changed for high-res
 int SCREENWIDTH=320;
 int SCREENHEIGHT=200;
+int ACTUALHEIGHT=240;
 int SCREENPITCH=320;
 
 // e6y: wide-res

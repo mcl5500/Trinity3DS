@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -37,29 +37,21 @@
 #include <stdarg.h>
 
 #include "hu_lib.h"
-#include "r_demo.h"
 
-#define HU_HUDADDX (HU_HUDX)
-#define HU_HUDADDY (HU_HUDY+(-1)*HU_GAPY)
-#define HU_CENTERMSGX (320/2)
-#define HU_CENTERMSGY ((200-ST_HEIGHT)/2 - 1 - LittleShort(hu_font[0].height))
-
-#define HU_HUDADDX_D (HU_HUDX_LL)
-#define HU_HUDADDY_D (HU_HUDY_LL+(-1)*HU_GAPY)
-
-#define STSTR_SECRETFOUND   "A secret is revealed!"
+#define GL_COMBINE_ARB                    0x8570
+#define GL_RGB_SCALE_ARB                  0x8573
 
 #define FOV_CORRECTION_FACTOR (1.13776f)
 #define FOV90 (90)
 
 typedef struct camera_s
 {
-  long x;
-  long y;
-  long z;
-  long PrevX;
-  long PrevY;
-  long PrevZ;
+  fixed_t x;
+  fixed_t y;
+  fixed_t z;
+  fixed_t PrevX;
+  fixed_t PrevY;
+  fixed_t PrevZ;
   angle_t angle;
   angle_t pitch;
   angle_t PrevAngle;
@@ -69,80 +61,24 @@ typedef struct camera_s
 
 extern dboolean wasWiped;
 
-extern int totalleveltimes;
-
 extern int secretfound;
-extern int demo_skiptics;
 extern int demo_tics_count;
-extern int demo_curr_tic;
 extern int demo_playerscount;
 extern char demo_len_st[80];
 
-extern dboolean doSkip;
-extern dboolean demo_stoponnext;
-extern dboolean demo_stoponend;
-
-extern int key_speed_up;
-extern int key_speed_down;
-extern int key_speed_default;
-extern int speed_step;
-extern int key_level_restart;
-extern int key_nextlevel;
-extern int key_demo_jointogame;
-extern int key_demo_endlevel;
-extern int key_demo_skip;
-extern int key_walkcamera;
-extern int key_showalive;
-
-extern int hudadd_gamespeed;
-extern int hudadd_leveltime;
-extern int hudadd_demotime;
-extern int hudadd_secretarea;
-extern int hudadd_smarttotals;
-extern int hudadd_demoprogressbar;
-extern int hudadd_timests;
-extern int hudadd_crosshair;
-extern int hudadd_crosshair_scale;
-extern int hudadd_crosshair_color;
-extern int hudadd_crosshair_health;
-extern int hudadd_crosshair_target;
-extern int hudadd_crosshair_target_color;
-extern int hudadd_crosshair_lock_target;
-extern int movement_strafe50;
-extern int movement_shorttics;
-extern int movement_mouselook;
-extern int movement_mousenovert;
-extern int movement_mouseinvert;
-extern int movement_maxviewpitch;
-extern int movement_mousestrafedivisor;
 extern int mouse_handler;
-extern int mouse_doubleclick_as_use;
-extern int mouse_carrytics;
-extern int render_paperitems;
-extern int render_wipescreen;
-extern int mouse_acceleration;
-extern int demo_overwriteexisting;
-extern int quickstart_window_ms;
 
-extern int render_fov;
-extern int render_aspect;
-extern float render_ratio;
-extern float render_fovratio;
-extern float render_fovy;
-extern float render_multiplier;
+extern int gl_render_fov;
+extern float gl_render_ratio;
+extern float gl_render_fovratio;
+extern float gl_render_fovy;
+extern float gl_render_multiplier;
 void M_ChangeAspectRatio(void);
 void M_ChangeStretch(void);
-
-extern int showendoom;
-
-extern int palette_ondamage;
-extern int palette_onbonus;
-extern int palette_onpowers;
 
 extern camera_t walkcamera;
 
 extern int PitchSign;
-extern int mouseSensitivity_mlook;
 extern angle_t viewpitch;
 extern float skyscale;
 extern float screen_skybox_zplane;
@@ -152,17 +88,9 @@ extern float skyUpAngle;
 extern float skyUpShift;
 extern float skyXShift;
 extern float skyYShift;
-extern dboolean mlook_or_fov;
-
-extern hu_textline_t  w_hudadd;
-extern hu_textline_t  w_centermsg;
-extern hu_textline_t  w_precache;
-extern char hud_add[80];
-extern char hud_centermsg[80];
-
-void e6y_assert(const char *format, ...);
 
 void ParamsMatchingCheck();
+void e6y_HandleSkip(void);
 void e6y_InitCommandLine(void);
 
 void P_WalkTicker ();
@@ -171,47 +99,34 @@ void P_ResetWalkcam(void);
 
 extern dboolean sound_inited_once;
 void e6y_I_uSleep(unsigned long usecs);
-void G_SkipDemoStart(void);
 void G_SkipDemoStop(void);
 void G_SkipDemoStartCheck(void);
 void G_SkipDemoCheck(void);
 int G_ReloadLevel(void);
-int G_GotoNextLevel(int *e, int *m);
+int G_GotoNextLevel(void);
+int G_GotoPrevLevel(void);
 
-void M_ChangeMouseLook(void);
-void M_ChangeMaxViewPitch(void);
-void M_ChangeMouseInvert(void);
+void M_ChangeSkyMode(void);
 
 void M_ChangeFOV(void);
 
-#ifdef GL_DOOM
-void M_ChangeSpriteClip(void);
-void M_ChangeAllowBoomColormaps(void);
-void M_ChangeTextureUseHires(void);
-void M_ChangeAllowFog(void);
-#endif
 void M_ChangeSpeed(void);
+void M_ChangeScreenMultipleFactor(void);
 void M_ChangeInterlacedScanning(void);
 void M_MouseMLook(int choice);
 void M_MouseAccel(int choice);
 void CheckPitch(signed int *pitch);
-void I_Init2(void);
 
-dboolean GetMouseLook(void);
 dboolean HaveMouseLook(void);
 
 extern float viewPitch;
-extern dboolean transparentpresent;
-
-void R_ClearClipSegs (void);
-void R_RenderBSPNode(int bspnum);
 
 typedef struct prboom_comp_s
 {
   unsigned int minver;
   unsigned int maxver;
   dboolean state;
-  const char *cmd;
+  int arg_id;
 } prboom_comp_t;
 
 enum
@@ -245,7 +160,7 @@ enum
 
 extern prboom_comp_t prboom_comp[];
 
-int StepwiseSum(int value, int direction, int step, int minval, int maxval, int defval);
+int StepwiseSum(int value, int direction, int minval, int maxval, int defval);
 
 enum
 {
@@ -266,39 +181,38 @@ typedef struct timetable_s
 {
   char map[16];
 
-  int kill[MAXPLAYERS];
-  int item[MAXPLAYERS];
-  int secret[MAXPLAYERS];
-  
+  int kill[MAX_MAXPLAYERS];
+  int item[MAX_MAXPLAYERS];
+  int secret[MAX_MAXPLAYERS];
+
   int stat[TT_MAX];
 } timetable_t;
 
+#ifdef _WIN32
+const char* WINError(void);
+#endif
+
 extern int stats_level;
 extern int stroller;
+
 void e6y_G_DoCompleted(void);
 void e6y_WriteStats(void);
 
+void e6y_G_DoTeleportNewMap(void);
 void e6y_G_DoWorldDone(void);
 
 void I_ProcessWin32Mouse(void);
 void I_StartWin32Mouse(void);
 void I_EndWin32Mouse(void);
 int AccelerateMouse(int val);
-void MouseAccelChanging(void);
+int AccelerateAnalog(float val);
+void AccelChanging(void);
 
 extern int mlooky;
-extern int realtic_clock_rate;
 
 void e6y_G_Compatibility(void);
 
-extern dboolean zerotag_manual;
-
-dboolean ProcessNoTagLines(line_t* line, sector_t **sec, int *secnum);
-
-char* PathFindFileName(const char* pPath);
-void NormalizeSlashes2(char *str);
-unsigned int AfxGetFileName(const char* lpszPathName, char* lpszTitle, unsigned int nMax);
-void AbbreviateName(char* lpszCanon, int cchMax, int bAtLeastName);
+const char* PathFindFileName(const char* pPath);
 
 //extern int viewMaxY;
 
@@ -309,9 +223,13 @@ extern int levelstarttic;
 extern int force_singletics_to;
 
 int HU_DrawDemoProgress(int force);
+dboolean HU_MouseOnDemoProgressBar(int *x);
+
+#ifdef _WIN32
+int GetFullPath(const char* FileName, const char* ext, char *Buffer, size_t BufferLength);
+#endif
 
 void I_vWarning(const char *message, va_list argList);
-void I_Warning(const char *message, ...);
 
 #define PRB_MB_OK                       0x00000000
 #define PRB_MB_OKCANCEL                 0x00000001
@@ -330,7 +248,5 @@ void I_Warning(const char *message, ...);
 #define PRB_IDYES               6
 #define PRB_IDNO                7
 int I_MessageBox(const char* text, unsigned int type);
-
-dboolean SmoothEdges(unsigned char * buffer,int w, int h);
 
 #endif

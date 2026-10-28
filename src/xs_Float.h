@@ -15,9 +15,7 @@
 #ifndef _xs_FLOAT_H_
 #define _xs_FLOAT_H_
 
-#ifdef HAVE_CONFIG_H
 #include "config.h"
-#endif
 
 // ====================================================================================================================
 //  Defines

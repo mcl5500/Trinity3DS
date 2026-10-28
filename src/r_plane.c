@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -61,12 +61,25 @@
 #include "v_video.h"
 #include "lprintf.h"
 
-#define MAXVISPLANES 128    /* must be a power of 2 */
+#include "dsda/map_format.h"
+#include "dsda/render_stats.h"
+#include "dsda/configuration.h"
+
+int Sky1Texture;
+int Sky2Texture;
+fixed_t Sky1ColumnOffset;
+fixed_t Sky2ColumnOffset;
+dboolean DoubleSky;
+
+#define MAXVISPLANES 256    /* must be a power of 2 */
 
 static visplane_t *visplanes[MAXVISPLANES];   // killough
 static visplane_t *freetail;                  // killough
 static visplane_t **freehead = &freetail;     // killough
 visplane_t *floorplane, *ceilingplane;
+
+// [FG] linear horizontal sky scrolling
+static angle_t *xtoskyangle;
 
 // killough -- hash function for visplanes
 // Empirically verified to be fairly uniform:
@@ -95,14 +108,9 @@ static int *spanstart = NULL;                // killough 2/8/98
 // texture mapping
 //
 
-static const lighttable_t **planezlight;
-static fixed_t planeheight;
-
 // killough 2/8/98: make variables static
 
-static fixed_t basexscale, baseyscale;
 static fixed_t *cachedheight = NULL;
-static fixed_t xoffs,yoffs;    // killough 2/28/98: flat offsets
 
 // e6y: resolution limitation is removed
 fixed_t *yslope = NULL;
@@ -110,29 +118,31 @@ fixed_t *distscale = NULL;
 
 void R_InitPlanesRes(void)
 {
-  if (floorclip) free(floorclip);
-  if (ceilingclip) free(ceilingclip);
-  if (spanstart) free(spanstart);
+  if (floorclip) Z_Free(floorclip);
+  if (ceilingclip) Z_Free(ceilingclip);
+  if (spanstart) Z_Free(spanstart);
 
-  if (cachedheight) free(cachedheight);
+  if (cachedheight) Z_Free(cachedheight);
 
-  if (yslope) free(yslope);
-  if (distscale) free(distscale);
+  if (yslope) Z_Free(yslope);
+  if (distscale) Z_Free(distscale);
 
-  floorclip = calloc(1, SCREENWIDTH * sizeof(*floorclip));
-  ceilingclip = calloc(1, SCREENWIDTH * sizeof(*ceilingclip));
-  spanstart = calloc(1, SCREENHEIGHT * sizeof(*spanstart));
+  floorclip = Z_Calloc(1, SCREENWIDTH * sizeof(*floorclip));
+  ceilingclip = Z_Calloc(1, SCREENWIDTH * sizeof(*ceilingclip));
+  spanstart = Z_Calloc(1, SCREENHEIGHT * sizeof(*spanstart));
 
-  cachedheight = calloc(1, SCREENHEIGHT * sizeof(*cachedheight));
+  cachedheight = Z_Calloc(1, SCREENHEIGHT * sizeof(*cachedheight));
 
-  yslope = calloc(1, SCREENHEIGHT * sizeof(*yslope));
-  distscale = calloc(1, SCREENWIDTH * sizeof(*distscale));
+  yslope = Z_Calloc(1, SCREENHEIGHT * sizeof(*yslope));
+  distscale = Z_Calloc(1, SCREENWIDTH * sizeof(*distscale));
+
+  xtoskyangle = dsda_IntConfig(dsda_config_render_linearsky) ? linearskyangle : xtoviewangle;
 }
 
 void R_InitVisplanesRes(void)
 {
   int i;
-  
+
   freetail = NULL;
   freehead = &freetail;
 
@@ -150,25 +160,19 @@ void R_InitPlanes (void)
 {
 }
 
+// Refresh "Linear Sky"
+void dsda_RefreshLinearSky (void)
+{
+  xtoskyangle = dsda_IntConfig(dsda_config_render_linearsky) ? linearskyangle : xtoviewangle;
+}
+
 //
 // R_MapPlane
-//
-// Uses global vars:
-//  planeheight
-//  dsvars.source
-//  basexscale
-//  baseyscale
-//  viewx
-//  viewy
-//  xoffs
-//  yoffs
-//
-// BASIC PRIMITIVE
 //
 
 static void R_MapPlane(int y, int x1, int x2, draw_span_vars_t *dsvars)
 {
-  int_64_t den;
+  int64_t den;
   fixed_t distance;
   unsigned index;
 
@@ -188,40 +192,40 @@ static void R_MapPlane(int y, int x1, int x2, draw_span_vars_t *dsvars)
   // See cchest2.wad/map02/room with sector #265
   if (centery == y)
     return;
-  den = (int_64_t)FRACUNIT * FRACUNIT * D_abs(centery - y);
-  distance = FixedMul (planeheight, yslope[y]);
-  
-  dsvars->xstep = (fixed_t)((int_64_t)viewsin * planeheight * viewfocratio / den);
-  dsvars->ystep = (fixed_t)((int_64_t)viewcos * planeheight * viewfocratio / den);
+  den = (int64_t)FRACUNIT * FRACUNIT * D_abs(centery - y);
+  distance = FixedMul(dsvars->planeheight, yslope[y]);
+
+  dsvars->xstep = (fixed_t)((int64_t)dsvars->sine * dsvars->planeheight * viewfocratio / den);
+  dsvars->ystep = (fixed_t)((int64_t)dsvars->cosine * dsvars->planeheight * viewfocratio / den);
 
   // killough 2/28/98: Add offsets
-  dsvars->xfrac =  viewx + xoffs + FixedMul(viewcos, distance) + (x1 - centerx) * dsvars->xstep;
-  dsvars->yfrac = -viewy + yoffs - FixedMul(viewsin, distance) + (x1 - centerx) * dsvars->ystep;
-  
-  if (drawvars.filterfloor == RDRAW_FILTER_LINEAR) {
-    dsvars->xfrac -= (FRACUNIT>>1);
-    dsvars->yfrac -= (FRACUNIT>>1);
-  }
+  dsvars->xfrac = dsvars->xoffs + FixedMul(dsvars->cosine, distance) + (x1 - centerx) * dsvars->xstep;
+  dsvars->yfrac = dsvars->yoffs - FixedMul(dsvars->sine, distance) + (x1 - centerx) * dsvars->ystep;
+
+  dsvars->xstep = FixedMul(dsvars->xstep, dsvars->xscale);
+  dsvars->ystep = FixedMul(dsvars->ystep, dsvars->yscale);
+
+  dsvars->xfrac = FixedMul(dsvars->xfrac, dsvars->xscale);
+  dsvars->yfrac = FixedMul(dsvars->yfrac, dsvars->yscale);
 
   if (!(dsvars->colormap = fixedcolormap))
-    {
-      dsvars->z = distance;
-      index = distance >> LIGHTZSHIFT;
-      if (index >= MAXLIGHTZ )
-        index = MAXLIGHTZ-1;
-      dsvars->colormap = planezlight[index];
-      dsvars->nextcolormap = planezlight[index+1 >= MAXLIGHTZ ? MAXLIGHTZ-1 : index+1];
-    }
+  {
+    dsvars->z = distance;
+    index = distance >> LIGHTZSHIFT;
+    if (index >= MAXLIGHTZ )
+      index = MAXLIGHTZ-1;
+    dsvars->colormap = dsvars->planezlight[index];
+  }
   else
-   {
-      dsvars->z = 0;
-   }
+  {
+    dsvars->z = 0;
+  }
 
   dsvars->y = y;
   dsvars->x1 = x1;
   dsvars->x2 = x2;
 
-  if (V_GetMode() != VID_MODEGL)
+  if (V_IsSoftwareMode())
     R_DrawSpan(dsvars);
 }
 
@@ -246,10 +250,6 @@ void R_ClearPlanes(void)
 
   // texture calculation
   memset (cachedheight, 0, SCREENHEIGHT * sizeof(*cachedheight));
-
-  // scale will be unit scale at SCREENWIDTH/2 distance
-  basexscale = FixedDiv (viewsin,projection);
-  baseyscale = FixedDiv (viewcos,projection);
 }
 
 // New function, by Lee Killough
@@ -260,7 +260,7 @@ static visplane_t *new_visplane(unsigned hash)
   if (!check)
   {
     // e6y: resolution limitation is removed
-    check = calloc(1, sizeof(*check) + sizeof(*check->top) * (SCREENWIDTH * 2));
+    check = Z_Calloc(1, sizeof(*check) + sizeof(*check->top) * (SCREENWIDTH * 2));
     check->bottom = &check->top[SCREENWIDTH + 2];
   }
   else
@@ -285,8 +285,12 @@ visplane_t *R_DupPlane(const visplane_t *pl, int start, int stop)
       new_pl->height = pl->height;
       new_pl->picnum = pl->picnum;
       new_pl->lightlevel = pl->lightlevel;
+      new_pl->special = pl->special;
       new_pl->xoffs = pl->xoffs;           // killough 2/28/98
       new_pl->yoffs = pl->yoffs;
+      new_pl->rotation = pl->rotation;
+      new_pl->xscale = pl->xscale;
+      new_pl->yscale = pl->yscale;
       new_pl->minx = start;
       new_pl->maxx = stop;
       for (i = 0; i != SCREENWIDTH; i++)
@@ -298,11 +302,16 @@ visplane_t *R_DupPlane(const visplane_t *pl, int start, int stop)
 //
 // killough 2/28/98: Add offsets
 
-visplane_t *R_FindPlane(fixed_t height, int picnum, int lightlevel,
-                        fixed_t xoffs, fixed_t yoffs)
+visplane_t *R_FindPlane(fixed_t height, int picnum, int lightlevel, int special,
+                        fixed_t xoffs, fixed_t yoffs, angle_t rotation, fixed_t xscale, fixed_t yscale)
 {
   visplane_t *check;
   unsigned hash;                      // killough
+
+  if (map_format.hexen && special < 150)
+  {
+    special = 0;
+  }
 
   if (picnum == skyflatnum || picnum & PL_SKYFLAT)
     height = lightlevel = 0;         // killough 7/19/98: most skies map together
@@ -314,8 +323,12 @@ visplane_t *R_FindPlane(fixed_t height, int picnum, int lightlevel,
     if (height == check->height &&
         picnum == check->picnum &&
         lightlevel == check->lightlevel &&
+        special == check->special &&
         xoffs == check->xoffs &&      // killough 2/28/98: Add offset checks
-        yoffs == check->yoffs)
+        yoffs == check->yoffs &&
+        rotation == check->rotation &&
+        xscale == check->xscale &&
+        yscale == check->yscale)
       return check;
 
   check = new_visplane(hash);         // killough
@@ -323,11 +336,14 @@ visplane_t *R_FindPlane(fixed_t height, int picnum, int lightlevel,
   check->height = height;
   check->picnum = picnum;
   check->lightlevel = lightlevel;
+  check->special = special;
   check->xoffs = xoffs;               // killough 2/28/98: Save offsets
   check->yoffs = yoffs;
-#ifdef GL_DOOM
-  if (V_GetMode() != VID_MODEGL)
-#endif
+  check->rotation = rotation;
+  check->xscale = xscale;
+  check->yscale = yscale;
+
+  if (V_IsSoftwareMode())
   {
     int i;
     check->minx = viewwidth; // Was SCREENWIDTH -- killough 11/98
@@ -385,17 +401,132 @@ static void R_MakeSpans(int x, unsigned int t1, unsigned int b1,
     spanstart[b2--] = x;
 }
 
+// heretic has a hack: sky textures are defined with 128 height, but the patches are 200
+// heretic textures with only one patch point their columns to the original patch data
+// when drawing skies, it used this to "overrun" into the lower patch pixels
+const rpatch_t *R_HackedSkyPatch(texture_t *texture)
+{
+  if (heretic && texture->patchcount == 1)
+  {
+    const rpatch_t *patch;
+
+    patch = (const rpatch_t*) R_PatchByNum(texture->patches[0].patch);
+
+    if (patch->height == 200)
+    {
+      return patch;
+    }
+  }
+
+  return NULL;
+}
+
 // New function, by Lee Killough
 
 static void R_DoDrawPlane(visplane_t *pl)
 {
   register int x;
   draw_column_vars_t dcvars;
-  R_DrawColumn_f colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_STANDARD, drawvars.filterwall, drawvars.filterz);
+  R_DrawColumn_f colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_STANDARD, RDRAW_FILTER_POINT);
 
   R_SetDefaultDrawColumnVars(&dcvars);
 
   if (pl->minx <= pl->maxx) {
+    // hexen_note: Skies
+    // if (pl->picnum == skyflatnum)
+    // {                       // Sky flat
+    //     #define SKYTEXTUREMIDSHIFTED 200
+    //
+    //     byte *source;
+    //     byte *source2;
+    //     int offset;
+    //     int skyTexture;
+    //     int offset2;
+    //     int skyTexture2;
+    //
+    //     if (DoubleSky)
+    //     {                   // Render 2 layers, sky 1 in front
+    //         offset = Sky1ColumnOffset >> 16;
+    //         skyTexture = texturetranslation[Sky1Texture];
+    //         offset2 = Sky2ColumnOffset >> 16;
+    //         skyTexture2 = texturetranslation[Sky2Texture];
+    //         for (x = pl->minx; x <= pl->maxx; x++)
+    //         {
+    //             dc_yl = pl->top[x];
+    //             dc_yh = pl->bottom[x];
+    //             if (dc_yl <= dc_yh)
+    //             {
+    //                 count = dc_yh - dc_yl;
+    //                 if (count < 0)
+    //                 {
+    //                     return;
+    //                 }
+    //                 angle = (viewangle + xtoviewangle[x])
+    //                     >> ANGLETOSKYSHIFT;
+    //                 source = R_GetColumn(skyTexture, angle + offset);
+    //                 source2 = R_GetColumn(skyTexture2, angle + offset2);
+    //                 dest = ylookup[dc_yl] + columnofs[x];
+    //                 frac = SKYTEXTUREMIDSHIFTED * FRACUNIT + (dc_yl - centery) * fracstep;
+    //                 do
+    //                 {
+    //                     if (source[frac >> FRACBITS])
+    //                     {
+    //                         *dest = source[frac >> FRACBITS];
+    //                         frac += fracstep;
+    //                     }
+    //                     else
+    //                     {
+    //                         *dest = source2[frac >> FRACBITS];
+    //                         frac += fracstep;
+    //                     }
+    //                     dest += SCREENWIDTH;
+    //                 }
+    //                 while (count--);
+    //             }
+    //         }
+    //         continue;       // Next visplane
+    //     }
+    //     else
+    //     {                   // Render single layer
+    //         if (pl->special == 200)
+    //         {               // Use sky 2
+    //             offset = Sky2ColumnOffset >> 16;
+    //             skyTexture = texturetranslation[Sky2Texture];
+    //         }
+    //         else
+    //         {               // Use sky 1
+    //             offset = Sky1ColumnOffset >> 16;
+    //             skyTexture = texturetranslation[Sky1Texture];
+    //         }
+    //         for (x = pl->minx; x <= pl->maxx; x++)
+    //         {
+    //             dc_yl = pl->top[x];
+    //             dc_yh = pl->bottom[x];
+    //             if (dc_yl <= dc_yh)
+    //             {
+    //                 count = dc_yh - dc_yl;
+    //                 if (count < 0)
+    //                 {
+    //                     return;
+    //                 }
+    //                 angle = (viewangle + xtoviewangle[x])
+    //                     >> ANGLETOSKYSHIFT;
+    //                 source = R_GetColumn(skyTexture, angle + offset);
+    //                 dest = ylookup[dc_yl] + columnofs[x];
+    //                 frac = SKYTEXTUREMIDSHIFTED * FRACUNIT + (dc_yl - centery) * fracstep;
+    //                 do
+    //                 {
+    //                     *dest = source[frac >> FRACBITS];
+    //                     dest += SCREENWIDTH;
+    //                     frac += fracstep;
+    //                 }
+    //                 while (count--);
+    //             }
+    //         }
+    //         continue;       // Next visplane
+    //     }
+    // }
+
     if (pl->picnum == skyflatnum || pl->picnum & PL_SKYFLAT) { // sky flat
       int texture;
       const rpatch_t *tex_patch;
@@ -408,10 +539,10 @@ static void R_DoDrawPlane(visplane_t *pl)
 
       an = viewangle;
 
-      if (pl->picnum & PL_SKYFLAT)
+      if (pl->picnum & PL_SKYFLAT_LINE)
       {
         // Sky Linedef
-        const line_t *l = &lines[pl->picnum & ~PL_SKYFLAT];
+        const line_t *l = &lines[pl->picnum & ~PL_SKYFLAT_LINE];
 
         // Sky transferred from first sidedef
         const side_t *s = *l->sidenum + sides;
@@ -441,13 +572,19 @@ static void R_DoDrawPlane(visplane_t *pl)
         if (skystretch)
         {
           int skyheight = textureheight[texture]>>FRACBITS;
-          dcvars.texturemid = (int)((int_64_t)dcvars.texturemid * skyheight / SKYSTRETCH_HEIGHT);
+          dcvars.texturemid = (int)((int64_t)dcvars.texturemid * skyheight / SKYSTRETCH_HEIGHT);
         }
+      }
+      else if (pl->picnum & PL_SKYFLAT_SECTOR)
+      {
+        dcvars.texturemid = skytexturemid;
+        texture = pl->picnum & ~PL_SKYFLAT_SECTOR;
+        flip = 0;
       }
       else
       {    // Normal Doom sky, only one allowed per level
         dcvars.texturemid = skytexturemid;    // Default y-offset
-        texture = skytexture;             // Default texture
+        texture = texturetranslation[skytexture]; // Default texture
         flip = 0;                         // Doom flips it
       }
 
@@ -458,42 +595,165 @@ static void R_DoDrawPlane(visplane_t *pl)
       if (comp[comp_skymap] || !(dcvars.colormap = fixedcolormap))
         dcvars.colormap = fullcolormap;          // killough 3/20/98
 
-      dcvars.nextcolormap = dcvars.colormap; // for filtering -- POPE
-
       //dcvars.texturemid = skytexturemid;
       dcvars.texheight = textureheight[texture]>>FRACBITS; // killough
-      
+
       // proff 09/21/98: Changed for high-res
-      
+
       // e6y
       // disable sky texture scaling if status bar is used
       // old code: dcvars.iscale = FRACUNIT*200/viewheight;
       dcvars.iscale = skyiscale;
 
-      tex_patch = R_CacheTextureCompositePatchNum(texture);
+      {
+        const rpatch_t *patch;
 
-  // killough 10/98: Use sky scrolling offset, and possibly flip picture
-        for (x = pl->minx; (dcvars.x = x) <= pl->maxx; x++)
-          if ((dcvars.yl = pl->top[x]) != SHRT_MAX && dcvars.yl <= (dcvars.yh = pl->bottom[x])) // dropoff overflow
+        patch = R_HackedSkyPatch(textures[texture]);
+
+        if (patch)
+        {
+          dcvars.texheight = patch->height;
+          dcvars.texturemid = 200 << FRACBITS;
+          dcvars.iscale = (200 << FRACBITS) / SCREENHEIGHT;
+
+          for (x = pl->minx; (dcvars.x = x) <= pl->maxx; x++)
+            if ((dcvars.yl = pl->top[x]) != SHRT_MAX && dcvars.yl <= (dcvars.yh = pl->bottom[x])) // dropoff overflow
             {
-              dcvars.source = R_GetTextureColumn(tex_patch, ((an + xtoviewangle[x])^flip) >> ANGLETOSKYSHIFT);
-              dcvars.prevsource = R_GetTextureColumn(tex_patch, ((an + xtoviewangle[x-1])^flip) >> ANGLETOSKYSHIFT);
-              dcvars.nextsource = R_GetTextureColumn(tex_patch, ((an + xtoviewangle[x+1])^flip) >> ANGLETOSKYSHIFT);
+              dcvars.source = R_GetPatchColumn(patch, (an + xtoskyangle[x]) >> ANGLETOSKYSHIFT)->pixels;
+              dcvars.prevsource = R_GetPatchColumn(patch, (an + xtoskyangle[x-1]) >> ANGLETOSKYSHIFT)->pixels;
+              dcvars.nextsource = R_GetPatchColumn(patch, (an + xtoskyangle[x+1]) >> ANGLETOSKYSHIFT)->pixels;
               colfunc(&dcvars);
             }
 
-      R_UnlockTextureCompositePatchNum(texture);
+          return;
+        }
+      }
 
-    } else {     // regular flat
+      tex_patch = R_TextureCompositePatchByNum(texture);
+
+      // killough 10/98: Use sky scrolling offset, and possibly flip picture
+      for (x = pl->minx; (dcvars.x = x) <= pl->maxx; x++)
+        if ((dcvars.yl = pl->top[x]) != SHRT_MAX && dcvars.yl <= (dcvars.yh = pl->bottom[x])) // dropoff overflow
+        {
+          dcvars.source = R_GetTextureColumn(tex_patch, ((an + xtoskyangle[x])^flip) >> ANGLETOSKYSHIFT);
+          dcvars.prevsource = R_GetTextureColumn(tex_patch, ((an + xtoskyangle[x-1])^flip) >> ANGLETOSKYSHIFT);
+          dcvars.nextsource = R_GetTextureColumn(tex_patch, ((an + xtoskyangle[x+1])^flip) >> ANGLETOSKYSHIFT);
+          colfunc(&dcvars);
+        }
+    }
+    else {     // regular flat
 
       int stop, light;
       draw_span_vars_t dsvars;
 
-      dsvars.source = W_CacheLumpNum(firstflat + flattranslation[pl->picnum]);
+      dsvars.source = W_LumpByNum(firstflat + flattranslation[pl->picnum]);
+      dsvars.xoffs = pl->xoffs;
+      dsvars.yoffs = pl->yoffs;
+      dsvars.xscale = pl->xscale;
+      dsvars.yscale = pl->yscale;
 
-      xoffs = pl->xoffs;  // killough 2/28/98: Add offsets
-      yoffs = pl->yoffs;
-      planeheight = D_abs(pl->height-viewz);
+      if (pl->rotation)
+      {
+        fixed_t rotation_cos, rotation_sin;
+
+        rotation_cos = finecosine[pl->rotation >> ANGLETOFINESHIFT];
+        rotation_sin = finesine[pl->rotation >> ANGLETOFINESHIFT];
+
+        dsvars.xoffs += FixedMul(rotation_cos, viewx) - FixedMul(rotation_sin, viewy);
+        dsvars.yoffs -= FixedMul(rotation_sin, viewx) + FixedMul(rotation_cos, viewy);
+        dsvars.sine = finesine[(viewangle + pl->rotation) >> ANGLETOFINESHIFT];
+        dsvars.cosine = finecosine[(viewangle + pl->rotation) >> ANGLETOFINESHIFT];
+      }
+      else
+      {
+        dsvars.xoffs += viewx;
+        dsvars.yoffs -= viewy;
+        dsvars.sine = viewsin;
+        dsvars.cosine = viewcos;
+      }
+
+      if (map_format.hexen)
+      {
+        int scrollOffset = leveltime >> 1 & 63;
+
+        switch (pl->special)
+        {                       // Handle scrolling flats
+          case 201:
+          case 202:
+          case 203:          // Scroll_North_xxx
+            dsvars.source = dsvars.source + ((scrollOffset
+                                       << (pl->special - 201) & 63) << 6);
+            break;
+          case 204:
+          case 205:
+          case 206:          // Scroll_East_xxx
+            dsvars.source = dsvars.source + ((63 - scrollOffset)
+                                      << (pl->special - 204) & 63);
+            break;
+          case 207:
+          case 208:
+          case 209:          // Scroll_South_xxx
+            dsvars.source = dsvars.source + (((63 - scrollOffset)
+                                       << (pl->special - 207) & 63) << 6);
+            break;
+          case 210:
+          case 211:
+          case 212:          // Scroll_West_xxx
+            dsvars.source = dsvars.source + (scrollOffset
+                                      << (pl->special - 210) & 63);
+            break;
+          case 213:
+          case 214:
+          case 215:          // Scroll_NorthWest_xxx
+            dsvars.source = dsvars.source + (scrollOffset
+                                      << (pl->special - 213) & 63) +
+                ((scrollOffset << (pl->special - 213) & 63) << 6);
+            break;
+          case 216:
+          case 217:
+          case 218:          // Scroll_NorthEast_xxx
+            dsvars.source = dsvars.source + ((63 - scrollOffset)
+                                      << (pl->special - 216) & 63) +
+                ((scrollOffset << (pl->special - 216) & 63) << 6);
+            break;
+          case 219:
+          case 220:
+          case 221:          // Scroll_SouthEast_xxx
+            dsvars.source = dsvars.source + ((63 - scrollOffset)
+                                      << (pl->special - 219) & 63) +
+                (((63 - scrollOffset) << (pl->special - 219) & 63) << 6);
+            break;
+          case 222:
+          case 223:
+          case 224:          // Scroll_SouthWest_xxx
+            dsvars.source = dsvars.source + (scrollOffset
+                                      << (pl->special - 222) & 63) +
+                (((63 - scrollOffset) << (pl->special - 222) & 63) << 6);
+            break;
+          default:
+            break;
+        }
+      }
+      else if (heretic)
+      {
+        switch (pl->special)
+        {
+          case 20:
+          case 21:
+          case 22:
+          case 23:
+          case 24:           // Scroll_East
+            dsvars.source = dsvars.source +
+              ((63 - ((leveltime >> 1) & 63)) << (pl->special - 20) & 63);
+            break;
+          case 4:            // Scroll_EastLavaDamage
+            dsvars.source = dsvars.source +
+              (((63 - ((leveltime >> 1) & 63)) << 3) & 63);
+            break;
+        }
+      }
+
+      dsvars.planeheight = D_abs(pl->height-viewz);
 
       // SoM 10/19/02: deep water colormap fix
       if(fixedcolormap)
@@ -508,14 +768,12 @@ static void R_DoDrawPlane(visplane_t *pl)
         light = 0;
 
       stop = pl->maxx + 1;
-      planezlight = zlight[light];
+      dsvars.planezlight = zlight[light];
       pl->top[pl->minx-1] = pl->top[stop] = SHRT_MAX; // dropoff overflow
 
       for (x = pl->minx ; x <= stop ; x++)
          R_MakeSpans(x,pl->top[x-1],pl->bottom[x-1],
                      pl->top[x],pl->bottom[x], &dsvars);
-
-      W_UnlockLumpNum(firstflat + flattranslation[pl->picnum]);
     }
   }
 }
@@ -530,6 +788,10 @@ void R_DrawPlanes (void)
   visplane_t *pl;
   int i;
   for (i=0;i<MAXVISPLANES;i++)
-    for (pl=visplanes[i]; pl; pl=pl->next, rendered_visplanes++)
+    for (pl=visplanes[i]; pl; pl=pl->next)
+    {
+      dsda_RecordVisPlane();
+
       R_DoDrawPlane(pl);
+    }
 }

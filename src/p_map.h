@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -41,17 +41,38 @@
 #define MELEERANGE      (64*FRACUNIT)
 #define MISSILERANGE    (32*64*FRACUNIT)
 
+// a couple of explicit constants for non-melee things that used to use MELEERANGE
+#define WAKEUPRANGE     (64*FRACUNIT)
+#define SNEAKRANGE      (128*FRACUNIT)
+
 // MAXRADIUS is for precalculated sector block boxes the spider demon
 // is larger, but we do not have any moving sectors nearby
 #define MAXRADIUS       (32*FRACUNIT)
+
+//e6y
+#define STAIRS_UNINITIALIZED_CRUSH_FIELD_VALUE -2
+
+#define BF_DAMAGESOURCE 0x01
+#define BF_HORIZONTAL   0x02
+
+typedef struct
+{
+  mobj_t *source;
+  mobj_t *spot;
+  int damage;
+  int distance;
+  int flags;
+} bomb_t;
 
 // killough 3/15/98: add fourth argument to P_TryMove
 dboolean P_TryMove(mobj_t *thing, fixed_t x, fixed_t y, dboolean dropoff);
 
 // killough 8/9/98: extra argument for telefragging
 dboolean P_TeleportMove(mobj_t *thing, fixed_t x, fixed_t y,dboolean boss);
+void    P_UnqualifiedMove(mobj_t *thing, fixed_t x, fixed_t y);
 void    P_SlideMove(mobj_t *mo);
 dboolean P_CheckSight(mobj_t *t1, mobj_t *t2);
+dboolean P_CheckFov(mobj_t *t1, mobj_t *t2, angle_t fov);
 void    P_UseLines(player_t *player);
 
 typedef dboolean (*CrossSubsectorFunc)(int num);
@@ -61,16 +82,25 @@ dboolean P_CrossSubsector_Boom(int num);
 dboolean P_CrossSubsector_PrBoom(int num);
 
 // killough 8/2/98: add 'mask' argument to prevent friends autoaiming at others
-fixed_t P_AimLineAttack(mobj_t *t1,angle_t angle,fixed_t distance, uint_64_t mask);
+fixed_t P_AimLineAttack(mobj_t *t1,angle_t angle,fixed_t distance, uint64_t mask);
 
 void    P_LineAttack(mobj_t *t1, angle_t angle, fixed_t distance,
                      fixed_t slope, int damage );
-void    P_RadiusAttack(mobj_t *spot, mobj_t *source, int damage);
+void P_RadiusAttack(mobj_t *spot, mobj_t *source, int damage, int distance, int flags);
 dboolean P_CheckPosition(mobj_t *thing, fixed_t x, fixed_t y);
 
+typedef struct
+{
+  msecnode_t *node;
+  sector_t *sector;
+} mobj_in_sector_t;
+
+void P_InitSectorSearch(mobj_in_sector_t *data, sector_t *sector);
+mobj_t *P_FindMobjInSector(mobj_in_sector_t *data);
+
 //jff 3/19/98 P_CheckSector(): new routine to replace P_ChangeSector()
-dboolean P_ChangeSector(sector_t* sector,dboolean crunch);
-dboolean P_CheckSector(sector_t *sector, dboolean crunch);
+dboolean P_ChangeSector(sector_t *sector, int crunch);
+dboolean P_CheckSector(sector_t *sector, int crunch);
 void    P_DelSeclist(msecnode_t*);                          // phares 3/16/98
 void    P_FreeSecNodeList(void);                            // sf
 void    P_CreateSecNodeList(mobj_t*,fixed_t,fixed_t);       // phares 3/14/98
@@ -96,5 +126,28 @@ extern mobj_t *crosshair_target;
 extern msecnode_t *sector_list;                             // phares 3/16/98
 extern fixed_t tmbbox[4];         // phares 3/20/98
 extern line_t *blockline;   // killough 8/11/98
+
+// heretic
+
+dboolean P_TestMobjLocation(mobj_t * mobj);
+mobj_t *P_CheckOnmobj(mobj_t * thing);
+void P_FakeZMovement(mobj_t * mo);
+
+void P_AppendSpecHit(line_t * ld);
+
+// hexen
+
+extern int tmfloorpic;
+extern mobj_t *BlockingMobj;
+
+void P_BounceWall(mobj_t * mo);
+dboolean P_UsePuzzleItem(player_t * player, int itemType);
+void PIT_ThrustSpike(mobj_t * actor);
+
+// zdoom
+
+dboolean P_MoveThing(mobj_t *thing, fixed_t x, fixed_t y, fixed_t z, dboolean fog);
+int P_SplashDamage(fixed_t dist);
+void P_AdjustZLimits(mobj_t *thing);
 
 #endif // __P_MAP__

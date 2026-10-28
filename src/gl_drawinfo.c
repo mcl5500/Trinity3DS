@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*- 
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -8,7 +8,7 @@
  *  id Software, Chi Hoang, Lee Killough, Jim Flynn, Rand Phares, Ty Halderman
  *  Copyright (C) 1999-2000 by
  *  Jess Haas, Nicolas Kalkhof, Colin Phipps, Florian Schulze
- *  
+ *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
  *  as published by the Free Software Foundation; either version 2
@@ -21,7 +21,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 
+ *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
  *  02111-1307, USA.
  *
  * DESCRIPTION:
@@ -38,8 +38,6 @@
 #include "gl_intern.h"
 #include "lprintf.h"
 
-#ifdef GL_DOOM
-
 GLDrawInfo gld_drawinfo;
 
 //
@@ -53,18 +51,18 @@ void gld_FreeDrawInfo(void)
   {
     if (gld_drawinfo.data[i].data)
     {
-      free(gld_drawinfo.data[i].data);
+      Z_Free(gld_drawinfo.data[i].data);
       gld_drawinfo.data[i].data = 0;
     }
   }
-  free(gld_drawinfo.data);
+  Z_Free(gld_drawinfo.data);
   gld_drawinfo.data = 0;
 
   for (i = 0; i < GLDIT_TYPES; i++)
   {
     if (gld_drawinfo.items[i])
     {
-      free(gld_drawinfo.items[i]);
+      Z_Free(gld_drawinfo.items[i]);
       gld_drawinfo.items[i] = 0;
     }
   }
@@ -99,11 +97,11 @@ void gld_ResetDrawInfo(void)
 static void gld_AddDrawRange(int size)
 {
   gld_drawinfo.maxsize++;
-  gld_drawinfo.data = realloc(gld_drawinfo.data, 
+  gld_drawinfo.data = Z_Realloc(gld_drawinfo.data,
     gld_drawinfo.maxsize * sizeof(gld_drawinfo.data[0]));
 
   gld_drawinfo.data[gld_drawinfo.size].maxsize = size;
-  gld_drawinfo.data[gld_drawinfo.size].data = malloc(size);
+  gld_drawinfo.data[gld_drawinfo.size].data = Z_Malloc(size);
   gld_drawinfo.data[gld_drawinfo.size].size = 0;
 }
 
@@ -159,7 +157,7 @@ void gld_AddDrawItem(GLDrawItemType itemtype, void *itemdata)
   if (gld_drawinfo.num_items[itemtype] >= gld_drawinfo.max_items[itemtype])
   {
     gld_drawinfo.max_items[itemtype] += 64;
-    gld_drawinfo.items[itemtype] = realloc(
+    gld_drawinfo.items[itemtype] = Z_Realloc(
       gld_drawinfo.items[itemtype],
       gld_drawinfo.max_items[itemtype] * sizeof(gld_drawinfo.items[0][0]));
   }
@@ -169,5 +167,3 @@ void gld_AddDrawItem(GLDrawItemType itemtype, void *itemdata)
 }
 #undef SIZEOF8
 #undef NEWSIZE
-
-#endif

@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -48,7 +48,8 @@
 #define FRACBITS 16
 #define FRACUNIT (1<<FRACBITS)
 
-typedef int fixed_t;
+typedef int32_t fixed_t;
+typedef uint32_t ufixed_t;
 
 /*
  * Absolute Value
@@ -68,16 +69,7 @@ typedef int fixed_t;
 //
 // btw, GCC generates code without nonsenses
 
-#if 0
-inline static CONSTFUNC fixed_t D_abs(fixed_t x)
-{
-  fixed_t _t = (x),_s;
-  _s = _t >> (8*sizeof _t-1);
-  return (_t^_s)-_s;
-}
-#else
 #define D_abs abs
-#endif
 
 /*
  * Fixed Point Multiplication
@@ -89,7 +81,34 @@ inline static CONSTFUNC fixed_t D_abs(fixed_t x)
 
 inline static CONSTFUNC fixed_t FixedMul(fixed_t a, fixed_t b)
 {
-  return (fixed_t)((int_64_t) a*b >> FRACBITS);
+  return (fixed_t)((int64_t) a*b >> FRACBITS);
+}
+
+inline static CONSTFUNC int64_t FixedMul64(int64_t a, int64_t b)
+{
+  return a * b >> FRACBITS;
+}
+
+//
+// Fixed Point Addition, Subtraction, Absolute Value
+//
+
+inline static CONSTFUNC fixed_t FixedAdd(fixed_t a, fixed_t b)
+{
+  // wraparound addition without signed-overflow UB
+  return (fixed_t)((uint32_t)a + (uint32_t)b);
+}
+
+inline static fixed_t FixedSub(fixed_t a, fixed_t b)
+{
+    // wraparound subtraction without signed-overflow UB
+    return (fixed_t)((uint32_t)a - (uint32_t)b);
+}
+
+inline static fixed_t FixedAbs(fixed_t x)
+{
+    // avoid abs(INT32_MIN) UB
+    return x < 0 ? (fixed_t)((uint32_t)0 - (uint32_t)x) : x;
 }
 
 /*
@@ -99,7 +118,7 @@ inline static CONSTFUNC fixed_t FixedMul(fixed_t a, fixed_t b)
 static CONSTFUNC fixed_t FixedDiv(fixed_t a, fixed_t b)
 {
   return (D_abs(a)>>14) >= D_abs(b) ? ((a^b)>>31) ^ INT_MAX :
-    (fixed_t)(((int_64_t) a << FRACBITS) / b);
+    (fixed_t)(((int64_t) a << FRACBITS) / b);
 }
 
 /* CPhipps -
@@ -118,7 +137,7 @@ inline static CONSTFUNC fixed_t FixedMod(fixed_t a, fixed_t b)
 
 static CONSTFUNC fixed_t Scale(fixed_t a, fixed_t b, fixed_t c)
 {
-	return (fixed_t)(((int_64_t)a*b)/c);
+	return (fixed_t)(((int64_t)a*b)/c);
 }
 
 #endif

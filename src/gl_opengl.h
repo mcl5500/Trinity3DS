@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -34,22 +34,133 @@
 #ifndef _GL_OPENGL_H
 #define _GL_OPENGL_H
 
-// #define USE_VERTEX_ARRAYS
-
-#include "doomtype.h"
-
-#ifdef GL_DOOM
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
 
 #ifdef __3DS__
 #include "3DS/gl_wrapper.h"
 #else
-#include <GL/gl.h>
-#include <GL/glext.h>
+#include <SDL.h>
+#include <SDL_opengl.h>
+
+#if SDL_VERSION_ATLEAST(1, 3, 0)
+#if defined(__MACOSX__)
+#include <OpenGL/gl.h>	/* Header File For The OpenGL Library */
+#include <OpenGL/glu.h>	/* Header File For The GLU Library */
+#elif defined(__MACOS__)
+#include <gl.h>		/* Header File For The OpenGL Library */
+#include <glu.h>	/* Header File For The GLU Library */
+#else
+#include <GL/gl.h>	/* Header File For The OpenGL Library */
+#include <GL/glu.h>	/* Header File For The GLU Library */
+#endif
+#endif
+#endif // __3DS__
+
+#include "doomtype.h"
+
+#if !defined(GL_DEPTH_STENCIL_EXT)
+#define GL_DEPTH_STENCIL_EXT              0x84F9
 #endif
 
-//states
-void gld_EnableTexture2D(int enable);
+#define isExtensionSupported(ext) strstr(extensions, ext)
 
-#endif // GL_DOOM
+extern int gl_max_texture_size;
+
+#ifndef __3DS__
+extern SDL_PixelFormat RGBAFormat;
+
+extern dboolean gl_ext_texture_filter_anisotropic;
+extern dboolean gl_arb_texture_compression;
+extern dboolean gl_ext_framebuffer_object;
+extern dboolean gl_ext_packed_depth_stencil;
+extern dboolean gl_ext_blend_color;
+extern dboolean gl_use_stencil;
+extern dboolean gl_ext_arb_vertex_buffer_object;
+extern dboolean gl_arb_pixel_buffer_object;
+extern dboolean gl_arb_shader_objects;
+
+extern PFNGLBINDFRAMEBUFFEREXTPROC         GLEXT_glBindFramebufferEXT;
+extern PFNGLGENFRAMEBUFFERSEXTPROC         GLEXT_glGenFramebuffersEXT;
+extern PFNGLGENRENDERBUFFERSEXTPROC        GLEXT_glGenRenderbuffersEXT;
+extern PFNGLBINDRENDERBUFFEREXTPROC        GLEXT_glBindRenderbufferEXT;
+extern PFNGLRENDERBUFFERSTORAGEEXTPROC     GLEXT_glRenderbufferStorageEXT;
+extern PFNGLFRAMEBUFFERRENDERBUFFEREXTPROC GLEXT_glFramebufferRenderbufferEXT;
+extern PFNGLFRAMEBUFFERTEXTURE2DEXTPROC    GLEXT_glFramebufferTexture2DEXT;
+extern PFNGLCHECKFRAMEBUFFERSTATUSEXTPROC  GLEXT_glCheckFramebufferStatusEXT;
+extern PFNGLDELETEFRAMEBUFFERSEXTPROC      GLEXT_glDeleteFramebuffersEXT;
+extern PFNGLDELETERENDERBUFFERSEXTPROC     GLEXT_glDeleteRenderbuffersEXT;
+
+/* ARB_multitexture command function pointers */
+extern PFNGLACTIVETEXTUREARBPROC           GLEXT_glActiveTextureARB;
+extern PFNGLCLIENTACTIVETEXTUREARBPROC     GLEXT_glClientActiveTextureARB;
+extern PFNGLMULTITEXCOORD2FARBPROC         GLEXT_glMultiTexCoord2fARB;
+extern PFNGLMULTITEXCOORD2FVARBPROC        GLEXT_glMultiTexCoord2fvARB;
+
+extern PFNGLBLENDCOLOREXTPROC              GLEXT_glBlendColorEXT;
+
+/* ARB_texture_compression */
+extern PFNGLCOMPRESSEDTEXIMAGE2DARBPROC    GLEXT_glCompressedTexImage2DARB;
+
+/* VBO */
+extern PFNGLGENBUFFERSARBPROC              GLEXT_glGenBuffersARB;
+extern PFNGLDELETEBUFFERSARBPROC           GLEXT_glDeleteBuffersARB;
+extern PFNGLBINDBUFFERARBPROC              GLEXT_glBindBufferARB;
+extern PFNGLBUFFERDATAARBPROC              GLEXT_glBufferDataARB;
+
+/* PBO */
+extern PFNGLBUFFERSUBDATAARBPROC           GLEXT_glBufferSubDataARB;
+extern PFNGLGETBUFFERPARAMETERIVARBPROC    GLEXT_glGetBufferParameterivARB;
+extern PFNGLMAPBUFFERARBPROC               GLEXT_glMapBufferARB;
+extern PFNGLUNMAPBUFFERARBPROC             GLEXT_glUnmapBufferARB;
+
+/* GL_ARB_shader_objects */
+extern PFNGLDELETEOBJECTARBPROC            GLEXT_glDeleteObjectARB;
+extern PFNGLGETHANDLEARBPROC               GLEXT_glGetHandleARB;
+extern PFNGLDETACHOBJECTARBPROC            GLEXT_glDetachObjectARB;
+extern PFNGLCREATESHADEROBJECTARBPROC      GLEXT_glCreateShaderObjectARB;
+extern PFNGLSHADERSOURCEARBPROC            GLEXT_glShaderSourceARB;
+extern PFNGLCOMPILESHADERARBPROC           GLEXT_glCompileShaderARB;
+extern PFNGLCREATEPROGRAMOBJECTARBPROC     GLEXT_glCreateProgramObjectARB;
+extern PFNGLATTACHOBJECTARBPROC            GLEXT_glAttachObjectARB;
+extern PFNGLLINKPROGRAMARBPROC             GLEXT_glLinkProgramARB;
+extern PFNGLUSEPROGRAMOBJECTARBPROC        GLEXT_glUseProgramObjectARB;
+extern PFNGLVALIDATEPROGRAMARBPROC         GLEXT_glValidateProgramARB;
+
+extern PFNGLUNIFORM1FARBPROC               GLEXT_glUniform1fARB;
+extern PFNGLUNIFORM2FARBPROC               GLEXT_glUniform2fARB;
+extern PFNGLUNIFORM1IARBPROC               GLEXT_glUniform1iARB;
+
+extern PFNGLGETOBJECTPARAMETERFVARBPROC     GLEXT_glGetObjectParameterfvARB;
+extern PFNGLGETOBJECTPARAMETERIVARBPROC     GLEXT_glGetObjectParameterivARB;
+extern PFNGLGETINFOLOGARBPROC               GLEXT_glGetInfoLogARB;
+extern PFNGLGETATTACHEDOBJECTSARBPROC       GLEXT_glGetAttachedObjectsARB;
+extern PFNGLGETUNIFORMLOCATIONARBPROC       GLEXT_glGetUniformLocationARB;
+extern PFNGLGETACTIVEUNIFORMARBPROC         GLEXT_glGetActiveUniformARB;
+extern PFNGLGETUNIFORMFVARBPROC             GLEXT_glGetUniformfvARB;
+#endif
+
+void gld_InitOpenGL(void);
+
+//states
+void gld_EnableTexture2D(GLenum texture, int enable);
+void gld_EnableClientCoordArray(GLenum texture, int enable);
+void gld_EnableMultisample(int enable);
+
+typedef enum
+{
+  TMF_MASKBIT = 1,
+  TMF_OPAQUEBIT = 2,
+  TMF_INVERTBIT = 4,
+
+  TM_MODULATE = 0,
+  TM_MASK = TMF_MASKBIT,
+  TM_OPAQUE = TMF_OPAQUEBIT,
+  TM_INVERT = TMF_INVERTBIT,
+  //TM_INVERTMASK = TMF_MASKBIT | TMF_INVERTBIT
+  TM_INVERTOPAQUE = TMF_INVERTBIT | TMF_OPAQUEBIT,
+} tex_mode_e;
+void SetTextureMode(tex_mode_e type);
 
 #endif // _GL_OPENGL_H

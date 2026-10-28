@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -34,6 +34,8 @@
 #ifndef __I_SOUND__
 #define __I_SOUND__
 
+#include <stddef.h>
+
 #include "sounds.h"
 #include "doomtype.h"
 
@@ -43,8 +45,6 @@
 #ifndef SNDSERV
 #include "l_soundgen.h"
 #endif
-
-extern int lowpass_filter;
 
 // Init at program start...
 void I_InitSound(void);
@@ -56,6 +56,8 @@ void I_ShutdownSound(void);
 //  SFX I/O
 //
 
+void I_CacheSounds(void);
+
 // Initialize channels?
 void I_SetChannels(void);
 
@@ -63,7 +65,7 @@ void I_SetChannels(void);
 int I_GetSfxLumpNum (sfxinfo_t *sfxinfo);
 
 // Starts a sound in a particular sound channel.
-int I_StartSound(int id, int channel, int vol, int sep, int pitch, int priority);
+int I_StartSound(int id, int channel, sfx_params_t *params);
 
 // Stops a sound channel.
 void I_StopSound(int handle);
@@ -78,7 +80,7 @@ dboolean I_AnySoundStillPlaying(void);
 
 // Updates the volume, separation,
 //  and pitch of a sound channel.
-void I_UpdateSoundParams(int handle, int vol, int sep, int pitch);
+void I_UpdateSoundParams(int handle, sfx_params_t *params);
 
 // NSM sound capture routines
 // silences sound output, and instead allows sound capture to work
@@ -93,16 +95,10 @@ void I_ResampleStream (void *dest, unsigned nsamp, void (*proc) (void *dest, uns
 //
 //  MUSIC I/O
 //
-extern const char *snd_soundfont;
-extern const char *snd_mididev;
 extern char music_player_order[][200];
 
 void I_InitMusic(void);
 void I_ShutdownMusic(void);
-void I_SetupTimidity(void);
-
-// Volume.
-void I_SetMusicVolume(int volume);
 
 // PAUSE game handling.
 void I_PauseSong(int handle);
@@ -110,9 +106,6 @@ void I_ResumeSong(int handle);
 
 // Registers a song handle to song data.
 int I_RegisterSong(const void *data, size_t len);
-
-// cournia - tries to load a music file
-int I_RegisterMusic( const char* filename, musicinfo_t *music );
 
 // Called by anything that wishes to start music.
 //  plays a song, and when the song is done,
@@ -126,13 +119,25 @@ void I_StopSong(int handle);
 // See above (register), then think backwards
 void I_UnRegisterSong(int handle);
 
-// Allegro card support jff 1/18/98
-extern int snd_card;
-extern int mus_card;
 // CPhipps - put these in config file
 extern int snd_samplerate;
-extern int snd_samplecount;
+
+// prefered MIDI player
+typedef enum
+{
+  midi_player_fluidsynth,
+  midi_player_opl,
+  midi_player_portmidi,
+
+  midi_player_last
+} midi_player_name_t;
+
+extern const char *midiplayers[];
+
+extern const char *audio_devices_list[];
 
 void M_ChangeMIDIPlayer(void);
+
+void I_ChangeAudioDevice(void);
 
 #endif

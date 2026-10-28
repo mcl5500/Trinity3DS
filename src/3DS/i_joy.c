@@ -78,13 +78,16 @@ void I_ShutdownJoystick(void)
   }
 }
 
+void I_ResetToLauncher(void);
+
 void I_PollJoystick(void)
 {
   event_t ev;
-  short axis_value;
+  memset(&ev, 0, sizeof(ev));
 
   ev.type = ev_joystick;
-  ev.data1 = 0;
+  ev.data1.i = 0;
+  ev.data2.i = 0;
 
   hidScanInput();
 
@@ -105,55 +108,61 @@ void I_PollJoystick(void)
 
   // A, R, ZR: Fire (Button 0)
   if (kHeld & (KEY_A | KEY_R | KEY_ZR))
-    ev.data1 |= (1 << 0);
+    ev.data1.i |= (1 << 0);
   // B, Y: Use / Open Doors & Switches (Button 1)
   if (kHeld & (KEY_B | KEY_Y))
-    ev.data1 |= (1 << 1);
+    ev.data1.i |= (1 << 1);
   // X: Next Weapon (Button 2)
   if (kHeld & KEY_X)
-    ev.data1 |= (1 << 2);
+    ev.data1.i |= (1 << 2);
   // L, ZL: Sprint / Speed (Button 3)
   if (kHeld & (KEY_L | KEY_ZL))
-    ev.data1 |= (1 << 3);
+    ev.data1.i |= (1 << 3);
   if (kHeld & KEY_START)
-    ev.data1 |= (1 << 6);
+    ev.data1.i |= (1 << 6);
   if (kHeld & KEY_SELECT)
-    ev.data1 |= (1 << 7);
+    ev.data1.i |= (1 << 7);
   if (kHeld & KEY_DUP)
-    ev.data1 |= (1 << 8);
+    ev.data1.i |= (1 << 8);
   if (kHeld & KEY_DDOWN)
-    ev.data1 |= (1 << 9);
+    ev.data1.i |= (1 << 9);
   if (kHeld & KEY_DLEFT)
-    ev.data1 |= (1 << 10);
+    ev.data1.i |= (1 << 10);
   if (kHeld & KEY_DRIGHT)
-    ev.data1 |= (1 << 11);
-
-  circlePosition cpos;
-  hidCircleRead(&cpos);
-
-  // Circle Pad X (Strafe)
-  axis_value = (cpos.dx * 192) / 3000;
-  if (abs(axis_value) < 2) axis_value = 0;
-  ev.data2 = axis_value;
-
-  // Circle Pad Y (Walk forward/backward)
-  axis_value = (cpos.dy * 192) / 3000;
-  if (abs(axis_value) < 2) axis_value = 0;
-  ev.data3 = axis_value;
-
-  // C-Stick (Camera turning / look)
-  circlePosition cstickpos = {0, 0};
-  if (irrst_initialized) {
-    irrstCstickRead(&cstickpos);
-  }
-
-  axis_value = (cstickpos.dx * 192) / 3000;
-  if (abs(axis_value) < 2) axis_value = 0;
-  ev.data4 = axis_value;
-
-  axis_value = (cstickpos.dy * 192) / 3000;
-  if (abs(axis_value) < 2) axis_value = 0;
-  ev.data5 = axis_value;
+    ev.data1.i |= (1 << 11);
 
   D_PostEvent(&ev);
+
+  // Circle Pad (Analog Movement)
+  circlePosition cpos;
+  hidCircleRead(&cpos);
+  if (abs(cpos.dx) > 15 || abs(cpos.dy) > 15) {
+    event_t move_ev;
+    memset(&move_ev, 0, sizeof(move_ev));
+    move_ev.type = ev_move_analog;
+    move_ev.data1.f = (float)cpos.dx / 156.0f;
+    move_ev.data2.f = (float)cpos.dy / 156.0f;
+    D_PostEvent(&move_ev);
+  } else {
+    event_t move_ev;
+    memset(&move_ev, 0, sizeof(move_ev));
+    move_ev.type = ev_move_analog;
+    move_ev.data1.f = 0.0f;
+    move_ev.data2.f = 0.0f;
+    D_PostEvent(&move_ev);
+  }
+
+  // C-Stick (Camera Turning / Free Look)
+  if (irrst_initialized) {
+    circlePosition cstickpos = {0, 0};
+    irrstCstickRead(&cstickpos);
+    if (abs(cstickpos.dx) > 15 || abs(cstickpos.dy) > 15) {
+      event_t look_ev;
+      memset(&look_ev, 0, sizeof(look_ev));
+      look_ev.type = ev_look_analog;
+      look_ev.data1.f = (float)cstickpos.dx / 156.0f;
+      look_ev.data2.f = (float)cstickpos.dy / 156.0f;
+      D_PostEvent(&look_ev);
+    }
+  }
 }

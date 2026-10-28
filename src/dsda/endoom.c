@@ -1,0 +1,514 @@
+//
+// Copyright(C) 2022 by Ryan Krafnick
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// DESCRIPTION:
+//	DSDA Endoom
+//
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include "windows.h"
+#endif
+
+#include "doomdef.h"
+#include "doomtype.h"
+#include "i_video.h"
+#include "lprintf.h"
+#include "w_wad.h"
+
+#include "dsda/configuration.h"
+#ifndef __3DS__
+#include "textscreen/txt_main.h"
+#endif
+
+#include "endoom.h"
+
+#define ENDOOM_W 80
+#define ENDOOM_H 25
+
+static const char* cp437_to_utf8[256] = {
+  " ",
+  "\xe2\x98\xba", // ☺
+  "\xe2\x98\xbb", // ☻
+  "\xe2\x99\xa5", // ♥
+  "\xe2\x99\xa6", // ♦
+  "\xe2\x99\xa3", // ♣
+  "\xe2\x99\xa0", // ♠
+  "\xe2\x80\xa2", // •
+  "\xe2\x97\x98", // ◘
+  "\xe2\x97\x8b", // ○
+  "\xe2\x97\x99", // ◙
+  "\xe2\x99\x82", // ♂
+  "\xe2\x99\x80", // ♀
+  "\xe2\x99\xaa", // ♪
+  "\xe2\x99\xab", // ♫
+  "\xe2\x98\xbc", // ☼
+
+  "\xe2\x96\xba", // ►
+  "\xe2\x97\x84", // ◄
+  "\xe2\x86\x95", // ↕
+  "\xe2\x80\xbc", // ‼
+  "\xc2\xb6", // ¶
+  "\xc2\xa7", // §
+  "\xe2\x96\xac", // ▬
+  "\xe2\x86\xa8", // ↨
+  "\xe2\x86\x91", // ↑
+  "\xe2\x86\x93", // ↓
+  "\xe2\x86\x92", // →
+  "\xe2\x86\x90", // ←
+  "\xe2\x88\x9f", // ∟
+  "\xe2\x86\x94", // ↔
+  "\xe2\x96\xb2", // ▲
+  "\xe2\x96\xbc", // ▼
+
+  " ",
+  "!",
+  "\"",
+  "#",
+  "$",
+  "%",
+  "&",
+  "'",
+  "(",
+  ")",
+  "*",
+  "+",
+  ",",
+  "-",
+  ".",
+  "/",
+
+  "0",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  ":",
+  ";",
+  "<",
+  "=",
+  ">",
+  "?",
+
+  "@",
+  "A",
+  "B",
+  "C",
+  "D",
+  "E",
+  "F",
+  "G",
+  "H",
+  "I",
+  "J",
+  "K",
+  "L",
+  "M",
+  "N",
+  "O",
+
+  "P",
+  "Q",
+  "R",
+  "S",
+  "T",
+  "U",
+  "V",
+  "W",
+  "X",
+  "Y",
+  "Z",
+  "[",
+  "\\",
+  "]",
+  "^",
+  "_",
+
+  "`",
+  "a",
+  "b",
+  "c",
+  "d",
+  "e",
+  "f",
+  "g",
+  "h",
+  "i",
+  "j",
+  "k",
+  "l",
+  "m",
+  "n",
+  "o",
+
+  "p",
+  "q",
+  "r",
+  "s",
+  "t",
+  "u",
+  "v",
+  "w",
+  "x",
+  "y",
+  "z",
+  "{",
+  "|",
+  "}",
+  "~",
+  "\xe2\x8c\x82", // ⌂
+
+  "\xc3\x87", // Ç
+  "\xc3\xbc", // ü
+  "\xc3\xa9", // é
+  "\xc3\xa2", // â
+  "\xc3\xa4", // ä
+  "\xc3\xa0", // à
+  "\xc3\xa5", // å
+  "\xc3\xa7", // ç
+  "\xc3\xaa", // ê
+  "\xc3\xab", // ë
+  "\xc3\xa8", // è
+  "\xc3\xaf", // ï
+  "\xc3\xae", // î
+  "\xc3\xac", // ì
+  "\xc3\x84", // Ä
+  "\xc3\x85", // Å
+
+  "\xc3\x89", // É
+  "\xc3\xa6", // æ
+  "\xc3\x86", // Æ
+  "\xc3\xb4", // ô
+  "\xc3\xb6", // ö
+  "\xc3\xb2", // ò
+  "\xc3\xbb", // û
+  "\xc3\xb9", // ù
+  "\xc3\xbf", // ÿ
+  "\xc3\x96", // Ö
+  "\xc3\x9c", // Ü
+  "\xc2\xa2", // ¢
+  "\xc2\xa3", // £
+  "\xc2\xa5", // ¥
+  "\xe2\x82\xa7", // ₧
+  "\xc6\x92", // ƒ
+
+  "\xc3\xa1", // á
+  "\xc3\xad", // í
+  "\xc3\xb3", // ó
+  "\xc3\xba", // ú
+  "\xc3\xb1", // ñ
+  "\xc3\x91", // Ñ
+  "\xc2\xaa", // ª
+  "\xc2\xba", // º
+  "\xc2\xbf", // ¿
+  "\xe2\x8c\x90", // ⌐
+  "\xc2\xac", // ¬
+  "\xc2\xbd", // ½
+  "\xc2\xbc", // ¼
+  "\xc2\xa1", // ¡
+  "\xc2\xab", // «
+  "\xc2\xbb", // »
+
+  "\xe2\x96\x91", // ░
+  "\xe2\x96\x92", // ▒
+  "\xe2\x96\x93", // ▓
+  "\xe2\x94\x82", // │
+  "\xe2\x94\xa4", // ┤
+  "\xe2\x95\xa1", // ╡
+  "\xe2\x95\xa2", // ╢
+  "\xe2\x95\x96", // ╖
+  "\xe2\x95\x95", // ╕
+  "\xe2\x95\xa3", // ╣
+  "\xe2\x95\x91", // ║
+  "\xe2\x95\x97", // ╗
+  "\xe2\x95\x9d", // ╝
+  "\xe2\x95\x9c", // ╜
+  "\xe2\x95\x9b", // ╛
+  "\xe2\x94\x90", // ┐
+
+  "\xe2\x94\x94", // └
+  "\xe2\x94\xb4", // ┴
+  "\xe2\x94\xac", // ┬
+  "\xe2\x94\x9c", // ├
+  "\xe2\x94\x80", // ─
+  "\xe2\x94\xbc", // ┼
+  "\xe2\x95\x9e", // ╞
+  "\xe2\x95\x9f", // ╟
+  "\xe2\x95\x9a", // ╚
+  "\xe2\x95\x94", // ╔
+  "\xe2\x95\xa9", // ╩
+  "\xe2\x95\xa6", // ╦
+  "\xe2\x95\xa0", // ╠
+  "\xe2\x95\x90", // ═
+  "\xe2\x95\xac", // ╬
+  "\xe2\x95\xa7", // ╧
+
+  "\xe2\x95\xa8", // ╨
+  "\xe2\x95\xa4", // ╤
+  "\xe2\x95\xa5", // ╥
+  "\xe2\x95\x99", // ╙
+  "\xe2\x95\x98", // ╘
+  "\xe2\x95\x92", // ╒
+  "\xe2\x95\x93", // ╓
+  "\xe2\x95\xab", // ╫
+  "\xe2\x95\xaa", // ╪
+  "\xe2\x94\x98", // ┘
+  "\xe2\x94\x8c", // ┌
+  "\xe2\x96\x88", // █
+  "\xe2\x96\x84", // ▄
+  "\xe2\x96\x8c", // ▌
+  "\xe2\x96\x90", // ▐
+  "\xe2\x96\x80", // ▀
+
+  "\xce\xb1", // α
+  "\xc3\x9f", // ß
+  "\xce\x93", // Γ
+  "\xcf\x80", // π
+  "\xce\xa3", // Σ
+  "\xcf\x83", // σ
+  "\xc2\xb5", // µ
+  "\xcf\x84", // τ
+  "\xce\xa6", // Φ
+  "\xce\x98", // Θ
+  "\xce\xa9", // Ω
+  "\xce\xb4", // δ
+  "\xe2\x88\x9e", // ∞
+  "\xcf\x86", // φ
+  "\xce\xb5", // ε
+  "\xe2\x88\xa9", // ∩
+
+  "\xe2\x89\xa1", // ≡
+  "\xc2\xb1", // ±
+  "\xe2\x89\xa5", // ≥
+  "\xe2\x89\xa4", // ≤
+  "\xe2\x8c\xa0", // ⌠
+  "\xe2\x8c\xa1", // ⌡
+  "\xc3\xb7", // ÷
+  "\xe2\x89\x88", // ≈
+  "\xc2\xb0", // °
+  "\xe2\x88\x99", // ∙
+  "\xc2\xb7", // ·
+  "\xe2\x88\x9a", // √
+  "\xe2\x81\xbf", // ⁿ
+  "\xc2\xb2", // ²
+  "\xe2\x96\xa0", // ■
+  "\xc2\xa0", // NBSP
+};
+
+typedef enum {
+  format_null,
+  format_cp437,
+  format_utf8,
+} output_format_t;
+
+typedef enum {
+  endoom_window,
+  endoom_terminal,
+} endoom_export_t;
+
+static byte* endoom;
+static output_format_t output_format;
+static endoom_export_t endoom_export;
+
+#ifdef _WIN32
+static HANDLE hConsole;
+static DWORD OldMode;
+static dboolean restore_mode = false;
+
+static void EnableVTMode(void) {
+  hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+  if (hConsole == INVALID_HANDLE_VALUE)
+    return;
+
+  if (!GetConsoleMode(hConsole, &OldMode))
+    return;
+
+  if (!SetConsoleMode(hConsole, ENABLE_PROCESSED_OUTPUT |
+                                ENABLE_VIRTUAL_TERMINAL_PROCESSING)) {
+    return;
+  }
+
+  restore_mode = true;
+}
+
+static void RestoreOldMode(void) {
+  if (!restore_mode)
+    return;
+
+  SetConsoleMode(hConsole, OldMode);
+}
+#endif
+
+int is_opengl = false;
+
+void dsda_CacheEndoom(void) {
+  int lump;
+  int show_endoom;
+  int pwad_only;
+
+  output_format = dsda_IntConfig(dsda_config_ansi_endoom);
+
+  show_endoom = dsda_IntConfig(dsda_config_show_endoom);
+
+  if (V_IsOpenGLMode())
+    is_opengl = true;
+
+  if (started_demo)
+    return;
+
+  if (show_endoom==0)
+    return;
+
+  if (hexen)
+    return;
+
+  if (heretic)
+    lump = W_CheckNumForName("ENDTEXT");
+  else {
+    lump = W_CheckNumForName("ENDBOOM");
+    if (lump == LUMP_NOT_FOUND)
+      lump = W_CheckNumForName("ENDOOM");
+  }
+
+  pwad_only = (show_endoom==2 && !W_PWADLumpNumExists(lump) && W_PWADMapsExist());
+
+  if (lump == LUMP_NOT_FOUND || W_LumpLength(lump) != 4000 || pwad_only)
+    return;
+
+  endoom = Z_Malloc(4000);
+  memcpy(endoom, W_LumpByNum(lump), 4000);
+}
+
+void dsda_DumpEndoom(void) {
+  endoom_export = dsda_IntConfig(dsda_config_export_endoom);
+
+  if (endoom)
+  {
+    if (endoom_export)
+      dsda_TerminalEndoom();
+    else
+      dsda_WindowEndoom();
+  }
+}
+
+//
+// DSDA Terminal ENDOOM
+//
+
+void dsda_TerminalEndoom(void)
+{
+    int i;
+    const char* color_lookup[] = {
+      "0", "4", "2", "6", "1", "5", "3", "7",
+      "0;1", "4;1", "2;1", "6;1", "1;1", "5;1", "3;1", "7;1",
+    };
+
+#ifdef _WIN32
+    EnableVTMode();
+#endif
+
+    for (i = 0; i < 2000; ++i) {
+      byte character;
+      byte data;
+      const char *foreground;
+      const char *background;
+      const char *blink;
+
+      character = endoom[i * 2];
+      data = endoom[i * 2 + 1];
+      foreground = color_lookup[data & 0x0f];
+      background = color_lookup[(data >> 4) & 0x07];
+      blink = ((data >> 7) & 0x01) ? "5" : "25";
+
+      if (!character)
+        character = ' ';
+
+      if (output_format == format_utf8)
+        lprintf(LO_INFO, "\033[3%sm\033[4%sm\033[%sm%s\033[0m",
+                foreground, background, blink, cp437_to_utf8[character]);
+      else
+        lprintf(LO_INFO, "\033[3%sm\033[4%sm\033[%sm%c\033[0m",
+                foreground, background, blink, character);
+
+      if ((i + 1) % 80 == 0)
+        lprintf(LO_INFO, "\n");
+    }
+
+    lprintf(LO_INFO, "\n");
+
+    Z_Free(endoom);
+    endoom = NULL;
+
+#ifdef _WIN32
+    RestoreOldMode();
+#endif
+}
+
+
+//
+// Window ENDOOM
+//
+
+void dsda_WindowEndoom(void)
+{
+#ifndef __3DS__
+    unsigned char *screendata;
+    int y;
+    int indent;
+
+    // Set up text mode screen
+
+    TXT_PreInit(I_GetSDLWindow(), I_GetSDLRenderer(), is_opengl);
+
+    if (!TXT_Init())
+    {
+        lprintf(LO_ERROR, "Failed to initialize libtextscreen");
+        return;
+    }
+
+    // Write the data to the screen memory
+
+    screendata = TXT_GetScreenData();
+
+    indent = (ENDOOM_W - TXT_SCREEN_W) / 2;
+
+    for (y = 0; y < TXT_SCREEN_H; ++y)
+    {
+        memcpy(screendata + (y * TXT_SCREEN_W * 2),
+               endoom + (y * ENDOOM_W + indent) * 2, TXT_SCREEN_W * 2);
+    }
+
+    // Wait for a keypress
+
+    while (true)
+    {
+        TXT_UpdateScreen();
+
+        if (TXT_GetChar() > 0)
+        {
+            break;
+        }
+
+        TXT_Sleep(0);
+    }
+
+    // Shut down text mode screen
+
+    TXT_Shutdown();
+#endif
+}

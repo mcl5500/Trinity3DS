@@ -30,10 +30,10 @@ fi
 
 RES="$DIR/build/3ds/res"
 
-# Single source of truth for the version: src/version.h (TRINITY3DS_VERSION "X.Y.Z")
-VERSION=$(sed -n 's/^#define TRINITY3DS_VERSION "\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/p' "$DIR/src/version.h")
+# Single source of truth for the version: src/3DS/trinity_version.h (TRINITY3DS_VERSION "X.Y.Z")
+VERSION=$(sed -n 's/^#define TRINITY3DS_VERSION "\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/p' "$DIR/src/3DS/trinity_version.h")
 if [ -z "$VERSION" ]; then
-    echo "Error: could not read TRINITY3DS_VERSION from src/version.h"
+    echo "Error: could not read TRINITY3DS_VERSION from src/3DS/trinity_version.h"
     exit 1
 fi
 IFS='.' read -r VER_MAJOR VER_MINOR VER_MICRO <<< "$VERSION"

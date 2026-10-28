@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -36,9 +36,12 @@
 
 #include "doomtype.h"
 
-#ifdef __GNUG__
-#pragma interface
-#endif
+typedef struct {
+  byte actions;
+  byte save_slot;
+  byte load_slot;
+  signed short look;
+} excmd_t;
 
 /* The data sampled per tick (single player)
  * and transmitted to other peers (multiplayer).
@@ -51,9 +54,14 @@ typedef struct
   signed char forwardmove;  /* *2048 for move       */
   signed char sidemove; /* *2048 for move       */
   signed short  angleturn;  /* <<16 for angle delta */
-  short consistancy;          /* checks for net game  */
-  byte  chatchar;
   byte  buttons;
+
+  // heretic
+  byte lookfly; // look/fly up/down/centering
+  byte arti;    // artitype_t to use
+
+  // dsda extension
+  excmd_t ex;
 } ticcmd_t;
 
 #endif

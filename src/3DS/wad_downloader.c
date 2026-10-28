@@ -1,6 +1,8 @@
+#include <time.h>
+#include <stdlib.h>
 #include "wad_downloader.h"
 #include "wad_picker.h"
-#include "version.h"
+#include "trinity_version.h"
 #include <png.h>
 #include <3ds.h>
 #include <curl/curl.h>

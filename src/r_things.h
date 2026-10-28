@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -34,10 +34,6 @@
 #ifndef __R_THINGS__
 #define __R_THINGS__
 
-#ifdef __GNUG__
-#pragma interface
-#endif
-
 #include "r_draw.h"
 
 #define MINZ        (FRACUNIT*4)
@@ -55,7 +51,7 @@ extern int *screenheightarray; /* change to MAX_*  */ // dropoff overflow
 extern int     *mfloorclip;    // dropoff overflow
 extern int     *mceilingclip;  // dropoff overflow
 extern fixed_t spryscale;
-extern int_64_t sprtopscreen;
+extern int64_t sprtopscreen;
 extern fixed_t pspriteiscale;
 /* proff 11/06/98: Added for high-res */
 extern fixed_t pspritexscale;
@@ -64,20 +60,6 @@ extern fixed_t pspriteiyscale;
 //e6y: added for GL
 extern float pspritexscale_f;
 extern float pspriteyscale_f;
-
-typedef enum {
-  DOOM_ORDER_NONE,
-  DOOM_ORDER_STATIC,
-  DOOM_ORDER_DYNAMIC,
-  DOOM_ORDER_LAST
-} sprite_doom_order_t;
-extern int sprites_doom_order;
-
-extern int health_bar;
-extern int health_bar_full_length;
-extern int health_bar_red;
-extern int health_bar_yellow;
-extern int health_bar_green;
 
 void R_DrawMaskedColumn(const rpatch_t *patch,
                         R_DrawColumn_f colfunc,

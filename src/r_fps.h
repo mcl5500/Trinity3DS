@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -37,25 +37,18 @@
 
 #include "doomstat.h"
 
-extern int movement_smooth_default;
 extern int movement_smooth;
 extern dboolean isExtraDDisplay;
 
-extern int interpolation_maxobjects;
-
 typedef struct {
-  unsigned int start;
-  unsigned int next;
-  unsigned int step;
   fixed_t frac;
-  float msec;
 } tic_vars_t;
 
 extern tic_vars_t tic_vars;
 
 void M_ChangeUncappedFrameRate(void);
 
-void R_InitInterpolation(void);
+dboolean R_ViewInterpolation(void);
 void R_InterpolateView(player_t *player, fixed_t frac);
 
 extern dboolean WasRenderedInTryRunTics;

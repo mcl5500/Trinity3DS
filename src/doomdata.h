@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -37,11 +37,9 @@
 #define __DOOMDATA__
 
 // The most basic types we use, portability.
-#ifdef HAVE_CONFIG_H
 #include "config.h"
-#endif
-
 #include "doomtype.h"
+#include "m_fixed.h"
 
 //
 // Map level types.
@@ -62,8 +60,11 @@ enum {
   ML_NODES,             // BSP nodes
   ML_SECTORS,           // Sectors, from editing
   ML_REJECT,            // LUT, sector-sector visibility
-  ML_BLOCKMAP           // LUT, motion clipping, walls/grid element
+  ML_BLOCKMAP,          // LUT, motion clipping, walls/grid element
+  ML_BEHAVIOR
 };
+
+#define ML_TEXTMAP 1
 
 #ifdef _MSC_VER // proff: This is the same as __attribute__ ((packed)) in GNUC
 #pragma pack(push)
@@ -89,6 +90,19 @@ typedef struct {
 // A LineDef, as used for editing, and as input to the BSP builder.
 
 typedef struct {
+    unsigned short v1;
+    unsigned short v2;
+    unsigned short flags;
+    byte special;
+    byte arg1;
+    byte arg2;
+    byte arg3;
+    byte arg4;
+    byte arg5;
+    unsigned short sidenum[2];
+} PACKEDATTR hexen_maplinedef_t;
+
+typedef struct {
   unsigned short v1;
   unsigned short v2;
   unsigned short flags;
@@ -98,22 +112,23 @@ typedef struct {
   // use the unsigned value and special case the -1
   // sidenum[1] will be -1 (NO_INDEX) if one sided
   unsigned short sidenum[2];
-} PACKEDATTR maplinedef_t;
+} PACKEDATTR doom_maplinedef_t;
 
-#define NO_INDEX ((unsigned short)-1)
+// Updated to 32-bit
+#define NO_INDEX ((unsigned int)-1)
 
 //
 // LineDef attributes.
 //
 
 // Solid, is an obstacle.
-#define ML_BLOCKING             1
+#define ML_BLOCKING      0x0001
 
 // Blocks monsters only.
-#define ML_BLOCKMONSTERS        2
+#define ML_BLOCKMONSTERS 0x0002
 
 // Backside will not be drawn if not two sided.
-#define ML_TWOSIDED             4
+#define ML_TWOSIDED      0x0004
 
 // If a texture is pegged, the texture will have
 // the end exposed to air held constant at the
@@ -125,26 +140,67 @@ typedef struct {
 // top and bottom textures (use next to windows).
 
 // upper texture unpegged
-#define ML_DONTPEGTOP           8
+#define ML_DONTPEGTOP    0x0008
 
 // lower texture unpegged
-#define ML_DONTPEGBOTTOM        16
+#define ML_DONTPEGBOTTOM 0x0010
 
 // In AutoMap: don't map as two sided: IT'S A SECRET!
-#define ML_SECRET               32
+#define ML_SECRET        0x0020
 
 // Sound rendering: don't let sound cross two of these.
-#define ML_SOUNDBLOCK           64
+#define ML_SOUNDBLOCK    0x0040
 
 // Don't draw on the automap at all.
-#define ML_DONTDRAW             128
+#define ML_DONTDRAW      0x0080
 
 // Set if already seen, thus drawn in automap.
-#define ML_MAPPED               256
+#define ML_MAPPED        0x0100
 
 //jff 3/21/98 Set if line absorbs use by player
 //allow multiple push/switch triggers to be used on one push
-#define ML_PASSUSE      512
+#define ML_PASSUSE 0x0200
+
+// Reserved by EE
+// SoM 9/02/02: 3D Middletexture flag!
+#define ML_ETERNITY 0x0400
+
+// haleyjd 05/02/06: Although it was believed until now that a reserved line
+// flag was unnecessary, a problem with Ultimate DOOM E2M7 has disproven this
+// theory. It has roughly 1000 linedefs with 0xFE00 masked into the flags, so
+// making the next line flag reserved and using it to toggle off ALL extended
+// flags will preserve compatibility for such maps. I have been told this map
+// is one of the first ever created, so it may have something to do with that.
+#define ML_RESERVED 0x0800
+
+// mbf21
+#define ML_BLOCKLANDMONSTERS 0x1000
+#define ML_BLOCKPLAYERS      0x2000
+
+#define ML_VANILLA 0x01ff
+#define ML_BOOM    0x03ff
+#define ML_MBF21   0x3fff
+
+// extensions
+#define ML_MONSTERSCANACTIVATE 0x4000 // zdoom
+#define ML_BLOCKEVERYTHING     0x8000 // zdoom
+
+#define ML_REPEATSPECIAL       0x00010000 // hexen
+
+// udmf
+#define ML_CLIPMIDTEX          0x00020000
+#define ML_BLOCKSIGHT          0x00040000
+#define ML_BLOCKHITSCAN        0x00080000
+#define ML_BLOCKPROJECTILES    0x00100000
+#define ML_BLOCKUSE            0x00200000
+#define ML_BLOCKFLOATERS       0x00400000
+#define ML_JUMPOVER            0x00800000
+#define ML_3DMIDTEX            0x01000000
+#define ML_3DMIDTEXIMPASSIBLE  0x02000000
+#define ML_FIRSTSIDEONLY       0x04000000
+#define ML_REVEALED            0x08000000
+#define ML_CHECKSWITCHRANGE    0x10000000
+#define ML_WRAPMIDTEX          0x20000000
 
 // Sector definition, from editing.
 typedef struct {
@@ -198,6 +254,11 @@ typedef struct {
   unsigned char side;
 } PACKEDATTR mapseg_znod_t;
 
+typedef struct {
+  unsigned int v1, v2;
+  unsigned int linedef;
+  unsigned char side;
+} PACKEDATTR mapseg_znod2_t;
 
 // BSP node structure.
 
@@ -238,15 +299,84 @@ typedef struct {
   int children[2];
 } PACKEDATTR mapnode_znod_t;
 
+typedef struct {
+  int x;  // Partition line from (x,y) to x+dx,y+dy)
+  int y;
+  int dx;
+  int dy;
+  // Bounding box for each child, clip against view frustum.
+  short bbox[2][4];
+  // If NF_SUBSECTOR its a subsector, else it's a node of another subtree.
+  int children[2];
+} PACKEDATTR mapnode_znod2_t;
+
 // Thing definition, position, orientation and type,
 // plus skill/visibility flags and attributes.
+
+typedef struct {
+  short tid;
+  fixed_t x;
+  fixed_t y;
+  fixed_t height;
+  short angle;
+  short type;
+  int options;
+  int special;
+  int special_args[5];
+  fixed_t gravity;
+  fixed_t health;
+  float alpha;
+} mapthing_t;
+
+typedef struct {
+  short tid;
+  short x;
+  short y;
+  short height;
+  short angle;
+  short type;
+  short options;
+  byte special;
+  byte arg1;
+  byte arg2;
+  byte arg3;
+  byte arg4;
+  byte arg5;
+} PACKEDATTR hexen_mapthing_t;
+
 typedef struct {
   short x;
   short y;
   short angle;
   short type;
   short options;
-} PACKEDATTR mapthing_t;
+} PACKEDATTR doom_mapthing_t;
+
+// hexen
+#define HML_REPEATSPECIAL 0x0200  // special is repeatable
+#define HML_SPAC_SHIFT 10
+#define HML_SPAC_MASK 0x1c00
+#define GET_SPAC_INDEX(flags) ((flags&HML_SPAC_MASK)>>HML_SPAC_SHIFT)
+
+// zdoom
+#define ZML_MONSTERSCANACTIVATE 0x2000 // Monsters and players can activate
+#define ZML_BLOCKPLAYERS        0x4000 // Blocks players
+#define ZML_BLOCKEVERYTHING     0x8000 // Blocks everything
+
+// line activation
+#define SPAC_NONE     0x0000
+#define SPAC_CROSS    0x0001
+#define SPAC_USE      0x0002
+#define SPAC_MCROSS   0x0004
+#define SPAC_IMPACT   0x0008
+#define SPAC_PUSH     0x0010
+#define SPAC_PCROSS   0x0020
+#define SPAC_USEBACK  0x0040
+#define SPAC_MPUSH    0x0080
+#define SPAC_MUSE     0x0100
+#define SPAC_ANYCROSS 0x0200
+#define SPAC_DAMAGE   0x0400
+#define SPAC_DEATH    0x0800
 
 #ifdef _MSC_VER
 #pragma pack(pop)

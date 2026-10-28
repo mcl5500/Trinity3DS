@@ -17,292 +17,25 @@
 //
 //-----------------------------------------------------------------------------
 
+#include <assert.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
-#include <ctype.h>
-#include <assert.h>
-#include "umapinfo.h"
 #include "scanner.h"
+#include "umapinfo.h"
 
 extern "C"
 {
-#include "m_misc.h"
-#include "g_game.h"
 #include "doomdef.h"
 #include "doomstat.h"
-
-void M_AddEpisode(const char *map, const char *gfx, const char *txt, const char *alpha);
-void M_ClearEpisodes(void);
+#include "dsda/episode.h"
+#include "dsda/name.h"
+#include "g_game.h"
+#include "lprintf.h"
+#include "m_misc.h"
 
 MapList Maps;
 }
-
-
-//==========================================================================
-//
-// The Doom actors in their original order
-// Names are the same as in ZDoom.
-//
-//==========================================================================
-
-static const char * const ActorNames[] =
-{
-	"DoomPlayer",
-	"ZombieMan",
-	"ShotgunGuy",
-	"Archvile",
-	"ArchvileFire",
-	"Revenant",
-	"RevenantTracer",
-	"RevenantTracerSmoke",
-	"Fatso",
-	"FatShot",
-	"ChaingunGuy",
-	"DoomImp",
-	"Demon",
-	"Spectre",
-	"Cacodemon",
-	"BaronOfHell",
-	"BaronBall",
-	"HellKnight",
-	"LostSoul",
-	"SpiderMastermind",
-	"Arachnotron",
-	"Cyberdemon",
-	"PainElemental",
-	"WolfensteinSS",
-	"CommanderKeen",
-	"BossBrain",
-	"BossEye",
-	"BossTarget",
-	"SpawnShot",
-	"SpawnFire",
-	"ExplosiveBarrel",
-	"DoomImpBall",
-	"CacodemonBall",
-	"Rocket",
-	"PlasmaBall",
-	"BFGBall",
-	"ArachnotronPlasma",
-	"BulletPuff",
-	"Blood",
-	"TeleportFog",
-	"ItemFog",
-	"TeleportDest",
-	"BFGExtra",
-	"GreenArmor",
-	"BlueArmor",
-	"HealthBonus",
-	"ArmorBonus",
-	"BlueCard",
-	"RedCard",
-	"YellowCard",
-	"YellowSkull",
-	"RedSkull",
-	"BlueSkull",
-	"Stimpack",
-	"Medikit",
-	"Soulsphere",
-	"InvulnerabilitySphere",
-	"Berserk",
-	"BlurSphere",
-	"RadSuit",
-	"Allmap",
-	"Infrared",
-	"Megasphere",
-	"Clip",
-	"ClipBox",
-	"RocketAmmo",
-	"RocketBox",
-	"Cell",
-	"CellPack",
-	"Shell",
-	"ShellBox",
-	"Backpack",
-	"BFG9000",
-	"Chaingun",
-	"Chainsaw",
-	"RocketLauncher",
-	"PlasmaRifle",
-	"Shotgun",
-	"SuperShotgun",
-	"TechLamp",
-	"TechLamp2",
-	"Column",
-	"TallGreenColumn",
-	"ShortGreenColumn",
-	"TallRedColumn",
-	"ShortRedColumn",
-	"SkullColumn",
-	"HeartColumn",
-	"EvilEye",
-	"FloatingSkull",
-	"TorchTree",
-	"BlueTorch",
-	"GreenTorch",
-	"RedTorch",
-	"ShortBlueTorch",
-	"ShortGreenTorch",
-	"ShortRedTorch",
-	"Stalagtite",
-	"TechPillar",
-	"CandleStick",
-	"Candelabra",
-	"BloodyTwitch",
-	"Meat2",
-	"Meat3",
-	"Meat4",
-	"Meat5",
-	"NonsolidMeat2",
-	"NonsolidMeat4",
-	"NonsolidMeat3",
-	"NonsolidMeat5",
-	"NonsolidTwitch",
-	"DeadCacodemon",
-	"DeadMarine",
-	"DeadZombieMan",
-	"DeadDemon",
-	"DeadLostSoul",
-	"DeadDoomImp",
-	"DeadShotgunGuy",
-	"GibbedMarine",
-	"GibbedMarineExtra",
-	"HeadsOnAStick",
-	"Gibs",
-	"HeadOnAStick",
-	"HeadCandles",
-	"DeadStick",
-	"LiveStick",
-	"BigTree",
-	"BurningBarrel",
-	"HangNoGuts",
-	"HangBNoBrain",
-	"HangTLookingDown",
-	"HangTSkull",
-	"HangTLookingUp",
-	"HangTNoBrain",
-	"ColonGibs",
-	"SmallBloodPool",
-	"BrainStem",
-	//Boom/MBF additions
-	"PointPusher",
-	"PointPuller",
-	"MBFHelperDog",
-	"PlasmaBall1",
-	"PlasmaBall2",
-	"EvilSceptre",
-	"UnholyBible",
-	"MusicChanger",
-	"Deh_Actor_145",
-	"Deh_Actor_146",
-	"Deh_Actor_147",
-	"Deh_Actor_148",
-	"Deh_Actor_149",
-	// DEHEXTRA Actors start here
-	"Deh_Actor_150", // Extra thing 0
-	"Deh_Actor_151", // Extra thing 1
-	"Deh_Actor_152", // Extra thing 2
-	"Deh_Actor_153", // Extra thing 3
-	"Deh_Actor_154", // Extra thing 4
-	"Deh_Actor_155", // Extra thing 5
-	"Deh_Actor_156", // Extra thing 6
-	"Deh_Actor_157", // Extra thing 7
-	"Deh_Actor_158", // Extra thing 8
-	"Deh_Actor_159", // Extra thing 9
-	"Deh_Actor_160", // Extra thing 10
-	"Deh_Actor_161", // Extra thing 11
-	"Deh_Actor_162", // Extra thing 12
-	"Deh_Actor_163", // Extra thing 13
-	"Deh_Actor_164", // Extra thing 14
-	"Deh_Actor_165", // Extra thing 15
-	"Deh_Actor_166", // Extra thing 16
-	"Deh_Actor_167", // Extra thing 17
-	"Deh_Actor_168", // Extra thing 18
-	"Deh_Actor_169", // Extra thing 19
-	"Deh_Actor_170", // Extra thing 20
-	"Deh_Actor_171", // Extra thing 21
-	"Deh_Actor_172", // Extra thing 22
-	"Deh_Actor_173", // Extra thing 23
-	"Deh_Actor_174", // Extra thing 24
-	"Deh_Actor_175", // Extra thing 25
-	"Deh_Actor_176", // Extra thing 26
-	"Deh_Actor_177", // Extra thing 27
-	"Deh_Actor_178", // Extra thing 28
-	"Deh_Actor_179", // Extra thing 29
-	"Deh_Actor_180", // Extra thing 30
-	"Deh_Actor_181", // Extra thing 31
-	"Deh_Actor_182", // Extra thing 32
-	"Deh_Actor_183", // Extra thing 33
-	"Deh_Actor_184", // Extra thing 34
-	"Deh_Actor_185", // Extra thing 35
-	"Deh_Actor_186", // Extra thing 36
-	"Deh_Actor_187", // Extra thing 37
-	"Deh_Actor_188", // Extra thing 38
-	"Deh_Actor_189", // Extra thing 39
-	"Deh_Actor_190", // Extra thing 40
-	"Deh_Actor_191", // Extra thing 41
-	"Deh_Actor_192", // Extra thing 42
-	"Deh_Actor_193", // Extra thing 43
-	"Deh_Actor_194", // Extra thing 44
-	"Deh_Actor_195", // Extra thing 45
-	"Deh_Actor_196", // Extra thing 46
-	"Deh_Actor_197", // Extra thing 47
-	"Deh_Actor_198", // Extra thing 48
-	"Deh_Actor_199", // Extra thing 49
-	"Deh_Actor_200", // Extra thing 50
-	"Deh_Actor_201", // Extra thing 51
-	"Deh_Actor_202", // Extra thing 52
-	"Deh_Actor_203", // Extra thing 53
-	"Deh_Actor_204", // Extra thing 54
-	"Deh_Actor_205", // Extra thing 55
-	"Deh_Actor_206", // Extra thing 56
-	"Deh_Actor_207", // Extra thing 57
-	"Deh_Actor_208", // Extra thing 58
-	"Deh_Actor_209", // Extra thing 59
-	"Deh_Actor_210", // Extra thing 60
-	"Deh_Actor_211", // Extra thing 61
-	"Deh_Actor_212", // Extra thing 62
-	"Deh_Actor_213", // Extra thing 63
-	"Deh_Actor_214", // Extra thing 64
-	"Deh_Actor_215", // Extra thing 65
-	"Deh_Actor_216", // Extra thing 66
-	"Deh_Actor_217", // Extra thing 67
-	"Deh_Actor_218", // Extra thing 68
-	"Deh_Actor_219", // Extra thing 69
-	"Deh_Actor_220", // Extra thing 70
-	"Deh_Actor_221", // Extra thing 71
-	"Deh_Actor_222", // Extra thing 72
-	"Deh_Actor_223", // Extra thing 73
-	"Deh_Actor_224", // Extra thing 74
-	"Deh_Actor_225", // Extra thing 75
-	"Deh_Actor_226", // Extra thing 76
-	"Deh_Actor_227", // Extra thing 77
-	"Deh_Actor_228", // Extra thing 78
-	"Deh_Actor_229", // Extra thing 79
-	"Deh_Actor_230", // Extra thing 80
-	"Deh_Actor_231", // Extra thing 81
-	"Deh_Actor_232", // Extra thing 82
-	"Deh_Actor_233", // Extra thing 83
-	"Deh_Actor_234", // Extra thing 84
-	"Deh_Actor_235", // Extra thing 85
-	"Deh_Actor_236", // Extra thing 86
-	"Deh_Actor_237", // Extra thing 87
-	"Deh_Actor_238", // Extra thing 88
-	"Deh_Actor_239", // Extra thing 89
-	"Deh_Actor_240", // Extra thing 90
-	"Deh_Actor_241", // Extra thing 91
-	"Deh_Actor_242", // Extra thing 92
-	"Deh_Actor_243", // Extra thing 93
-	"Deh_Actor_244", // Extra thing 94
-	"Deh_Actor_245", // Extra thing 95
-	"Deh_Actor_246", // Extra thing 96
-	"Deh_Actor_247", // Extra thing 97
-	"Deh_Actor_248", // Extra thing 98
-	"Deh_Actor_249", // Extra thing 99
-	NULL
-};
-
 
 // -----------------------------------------------
 //
@@ -311,28 +44,26 @@ static const char * const ActorNames[] =
 
 static void FreeMap(MapEntry *mape)
 {
-	if (mape->mapname) free(mape->mapname);
-	if (mape->levelname) free(mape->levelname);
-	if (mape->label) free(mape->label);
-	if (mape->intertext) free(mape->intertext);
-	if (mape->intertextsecret) free(mape->intertextsecret);
-	if (mape->properties) free(mape->properties);
-	if (mape->bossactions) free(mape->bossactions);
-	mape->propertycount = 0;
-	mape->mapname = NULL;
-	mape->properties = NULL;
+	if (mape->lumpname) Z_Free(mape->lumpname);
+	if (mape->levelname) Z_Free(mape->levelname);
+	if (mape->label) Z_Free(mape->label);
+	if (mape->author) Z_Free(mape->author);
+	if (mape->intertext) Z_Free(mape->intertext);
+	if (mape->intertextsecret) Z_Free(mape->intertextsecret);
+	if (mape->bossactions) Z_Free(mape->bossactions);
+	mape->lumpname = NULL;
 }
 
 
 void FreeMapList()
 {
 	unsigned i;
-	
+
 	for(i = 0; i < Maps.mapcount; i++)
 	{
 		FreeMap(&Maps.maps[i]);
 	}
-	free(Maps.maps);
+	Z_Free(Maps.maps);
 	Maps.maps = NULL;
 	Maps.mapcount = 0;
 }
@@ -340,8 +71,8 @@ void FreeMapList()
 
 void ReplaceString(char **pptr, const char *newstring)
 {
-	if (*pptr != NULL) free(*pptr);
-	*pptr = strdup(newstring);
+	if (*pptr != NULL) Z_Free(*pptr);
+	*pptr = Z_Strdup(newstring);
 }
 
 // -----------------------------------------------
@@ -353,27 +84,27 @@ void ReplaceString(char **pptr, const char *newstring)
 static char *ParseMultiString(Scanner &scanner, int error)
 {
 	char *build = NULL;
-	
+
 	if (scanner.CheckToken(TK_Identifier))
 	{
-		if (!strcasecmp(scanner.string, "clear"))
+		if (scanner.StringMatch("clear"))
 		{
-			return strdup("-");	// this was explicitly deleted to override the default.
+			return Z_Strdup("-");	// this was explicitly deleted to override the default.
 		}
 		else
 		{
 			scanner.ErrorF("Either 'clear' or string constant expected");
 		}
 	}
-	
+
 	do
 	{
 		scanner.MustGetToken(TK_StringConst);
-		if (build == NULL) build = strdup(scanner.string);
+		if (build == NULL) build = Z_Strdup(scanner.string);
 		else
 		{
 			size_t newlen = strlen(build) + strlen(scanner.string) + 2; // strlen for both the existing text and the new line, plus room for one \n and one \0
-			build = (char*)realloc(build, newlen); // Prepare the destination memory for the below strcats
+			build = (char*)Z_Realloc(build, newlen); // Prepare the destination memory for the below strcats
 			strcat(build, "\n"); // Replace the existing text's \0 terminator with a \n
 			strcat(build, scanner.string); // Concatenate the new line onto the existing text
 		}
@@ -403,6 +134,38 @@ static int ParseLumpName(Scanner &scanner, char *buffer)
 
 // -----------------------------------------------
 //
+// Parses an advanced player movement option
+//
+// -----------------------------------------------
+static PlayerMovement ParsePlayerMovement(Scanner &scanner)
+{
+	auto pm = PM_Unset;
+	scanner.MustGetToken(TK_Identifier);
+	auto keyword = scanner.string;
+
+	if (!stricmp(keyword, "disallow"))
+	{
+		pm = PM_Disallow;
+	}
+	else if (!stricmp(keyword, "allow"))
+	{
+		pm = PM_Allow;
+	}
+	else if (!stricmp(keyword, "require"))
+	{
+		pm = PM_Require;
+	}
+
+	if (pm == PM_Unset)
+	{
+		scanner.ErrorF("Expected 'disallow', 'allow' or 'require', got %s", keyword);
+	}
+
+	return pm;
+}
+
+// -----------------------------------------------
+//
 // Parses a standard property that is already known
 // These do not get stored in the property list
 // but in dedicated struct member variables.
@@ -413,21 +176,24 @@ static int ParseStandardProperty(Scanner &scanner, MapEntry *mape)
 {
 	// find the next line with content.
 	// this line is no property.
-	
+
 	scanner.MustGetToken(TK_Identifier);
-	char *pname = strdup(scanner.string);
+	char *pname = Z_Strdup(scanner.string);
 	scanner.MustGetToken('=');
 
-	if (!strcasecmp(pname, "levelname"))
+	if (!stricmp(pname, "levelname"))
 	{
 		scanner.MustGetToken(TK_StringConst);
 		ReplaceString(&mape->levelname, scanner.string);
 	}
-	else if (!strcasecmp(pname, "label"))
+	else if (!stricmp(pname, "label"))
 	{
 		if (scanner.CheckToken(TK_Identifier))
 		{
-			if (!strcasecmp(scanner.string, "clear")) ReplaceString(&mape->label, "-");
+			if (scanner.StringMatch("clear"))
+			{
+				mape->flags |= MapInfo_LabelClear;
+			}
 			else
 			{
 				scanner.ErrorF("Either 'clear' or string constant expected");
@@ -437,10 +203,16 @@ static int ParseStandardProperty(Scanner &scanner, MapEntry *mape)
 		else
 		{
 			scanner.MustGetToken(TK_StringConst);
-	                ReplaceString(&mape->label, scanner.string);
-	        }
+			mape->flags &= ~MapInfo_LabelClear;
+			ReplaceString(&mape->label, scanner.string);
+		}
 	}
-	else if (!strcasecmp(pname, "next"))
+	else if (!stricmp(pname, "author"))
+	{
+		scanner.MustGetToken(TK_StringConst);
+		ReplaceString(&mape->author, scanner.string);
+	}
+	else if (!stricmp(pname, "next"))
 	{
 		ParseLumpName(scanner, mape->nextmap);
 		if (!G_ValidateMapName(mape->nextmap, NULL, NULL))
@@ -449,7 +221,7 @@ static int ParseStandardProperty(Scanner &scanner, MapEntry *mape)
 			return 0;
 		}
 	}
-	else if (!strcasecmp(pname, "nextsecret"))
+	else if (!stricmp(pname, "nextsecret"))
 	{
 		ParseLumpName(scanner, mape->nextsecret);
 		if (!G_ValidateMapName(mape->nextsecret, NULL, NULL))
@@ -458,85 +230,109 @@ static int ParseStandardProperty(Scanner &scanner, MapEntry *mape)
 			return 0;
 		}
 	}
-	else if (!strcasecmp(pname, "levelpic"))
+	else if (!stricmp(pname, "levelpic"))
 	{
 		ParseLumpName(scanner, mape->levelpic);
 	}
-	else if (!strcasecmp(pname, "skytexture"))
+	else if (!stricmp(pname, "skytexture"))
 	{
 		ParseLumpName(scanner, mape->skytexture);
 	}
-	else if (!strcasecmp(pname, "music"))
+	else if (!stricmp(pname, "music"))
 	{
 		ParseLumpName(scanner, mape->music);
 	}
-	else if (!strcasecmp(pname, "endpic"))
+	else if (!stricmp(pname, "endpic"))
 	{
 		ParseLumpName(scanner, mape->endpic);
+		mape->finale = EG_Art;
 	}
-	else if (!strcasecmp(pname, "endcast"))
+	else if (!stricmp(pname, "endcast") && !raven)
 	{
 		scanner.MustGetToken(TK_BoolConst);
-		if (scanner.boolean) strcpy(mape->endpic, "$CAST");
-		else strcpy(mape->endpic, "-");
+		mape->finale = (scanner.boolean) ? EG_Cast : EG_Clear;
 	}
-	else if (!strcasecmp(pname, "endbunny"))
+	else if ((!stricmp(pname, "endbunny") && !raven) ||
+	         (!stricmp(pname, "enddemon") && heretic))
 	{
 		scanner.MustGetToken(TK_BoolConst);
-		if (scanner.boolean) strcpy(mape->endpic, "$BUNNY");
-		else strcpy(mape->endpic, "-");
+		mape->finale = (scanner.boolean) ? EG_Scroll : EG_Clear;
 	}
-	else if (!strcasecmp(pname, "endgame"))
+	else if (!stricmp(pname, "endgame"))
 	{
 		scanner.MustGetToken(TK_BoolConst);
-		if (scanner.boolean) strcpy(mape->endpic, "!");
-		else strcpy(mape->endpic, "-");
+		mape->finale = (scanner.boolean) ? EG_Standard : EG_Clear;
 	}
-	else if (!strcasecmp(pname, "exitpic"))
+	else if (!stricmp(pname, "endpalette"))
+	{
+		ParseLumpName(scanner, mape->endpalette);
+	}
+	else if (!stricmp(pname, "exitpic"))
 	{
 		ParseLumpName(scanner, mape->exitpic);
 	}
-	else if (!strcasecmp(pname, "enterpic"))
+	else if (!stricmp(pname, "enterpic"))
 	{
 		ParseLumpName(scanner, mape->enterpic);
 	}
-	else if (!strcasecmp(pname, "nointermission"))
+	else if (!stricmp(pname, "nointermission"))
 	{
 		scanner.MustGetToken(TK_BoolConst);
-		mape->nointermission = scanner.boolean;
+		if (scanner.boolean)
+			mape->flags |= MapInfo_NoIntermission;
+		else
+			mape->flags &= ~MapInfo_NoIntermission;
 	}
-	else if (!strcasecmp(pname, "partime"))
+	else if (!stricmp(pname, "partime"))
 	{
 		scanner.MustGetInteger();
 		mape->partime = TICRATE * scanner.number;
 	}
-	else if (!strcasecmp(pname, "intertext"))
-	{
-		char *lname = ParseMultiString(scanner, 1);
-		if (!lname) return 0;
-		if (mape->intertext != NULL) free(mape->intertext);
-		mape->intertext = lname;
-	}
-	else if (!strcasecmp(pname, "intertextsecret"))
-	{
-		char *lname = ParseMultiString(scanner, 1);
-		if (!lname) return 0;
-		if (mape->intertextsecret != NULL) free(mape->intertextsecret);
-		mape->intertextsecret = lname;
-	}
-	else if (!strcasecmp(pname, "interbackdrop"))
-	{
-		ParseLumpName(scanner, mape->interbackdrop);
-	}
-	else if (!strcasecmp(pname, "intermusic"))
-	{
-		ParseLumpName(scanner, mape->intermusic);
-	}
-	else if (!strcasecmp(pname, "episode"))
+	else if (!stricmp(pname, "intertext"))
 	{
 		if (scanner.CheckToken(TK_Identifier))
 		{
-			if (!strcasecmp(scanner.string, "clear")) M_ClearEpisodes();
+			if (!stricmp(scanner.string, "clear"))
+				mape->flags |= MapInfo_InterTextClear;
+			else
+				scanner.ErrorF("Either 'clear' or string constant expected");
+		}
+		else
+		{
+			mape->flags &= ~MapInfo_InterTextClear;
+			if (mape->intertext) Z_Free(mape->intertext);
+			mape->intertext = ParseMultiString(scanner, 1);
+		}
+	}
+	else if (!stricmp(pname, "intertextsecret"))
+	{
+		if (scanner.CheckToken(TK_Identifier))
+		{
+			if (!stricmp(scanner.string, "clear"))
+				mape->flags |= MapInfo_InterTextSecretClear;
+			else
+				scanner.ErrorF("Either 'clear' or string constant expected");
+		}
+		else
+		{
+			mape->flags &= ~MapInfo_InterTextSecretClear;
+			if (mape->intertextsecret) Z_Free(mape->intertextsecret);
+			mape->intertextsecret = ParseMultiString(scanner, 1);
+		}
+	}
+	else if (!stricmp(pname, "interbackdrop"))
+	{
+		ParseLumpName(scanner, mape->interbackdrop);
+	}
+	else if (!stricmp(pname, "intermusic"))
+	{
+		ParseLumpName(scanner, mape->intermusic);
+	}
+	else if (!stricmp(pname, "episode"))
+	{
+		if (scanner.CheckToken(TK_Identifier))
+		{
+			if (scanner.StringMatch("clear")) dsda_ClearEpisodes();
 			else
 			{
 				scanner.ErrorF("Either 'clear' or string constant expected");
@@ -547,47 +343,45 @@ static int ParseStandardProperty(Scanner &scanner, MapEntry *mape)
 		{
 			char lumpname[9] = {0};
 			char *alttext = NULL;
-			char *key = NULL;
+			char key = 0;
 
 			ParseLumpName(scanner, lumpname);
 			if (scanner.CheckToken(','))
 			{
 				scanner.MustGetToken(TK_StringConst);
-				alttext = strdup(scanner.string);
+				alttext = Z_Strdup(scanner.string);
 				if (scanner.CheckToken(','))
 				{
 					scanner.MustGetToken(TK_StringConst);
-					key = strdup(scanner.string);
-					key[0] = tolower(key[0]);
+					key = tolower(scanner.string[0]);
 				}
 			}
 
-			M_AddEpisode(mape->mapname, lumpname, alttext, key);
+			dsda_AddEpisode(mape->lumpname, alttext, lumpname, key, false);
 
-			if (alttext) free(alttext);
-			if (key) free(key);
+			if (alttext) Z_Free(alttext);
 		}
 	}
-	else if (!strcasecmp(pname, "bossaction"))
+	else if (!stricmp(pname, "bossaction"))
 	{
 		scanner.MustGetToken(TK_Identifier);
-		int classnum, special, tag;
-		if (!strcasecmp(scanner.string, "clear"))
+		if (scanner.StringMatch("clear"))
 		{
 			// mark level free of boss actions
-			classnum = special = tag = -1;
-			if (mape->bossactions) free(mape->bossactions);
+			if (mape->bossactions) Z_Free(mape->bossactions);
 			mape->bossactions = NULL;
-			mape->numbossactions = -1;
+			mape->numbossactions = 0;
+			mape->flags |= MapInfo_BossActionClear;
 		}
 		else
 		{
-			int i;
-			for (i = 0; ActorNames[i]; i++)
-			{
-				if (!strcasecmp(scanner.string, ActorNames[i])) break;
-			}
-			if (ActorNames[i] == NULL)
+			BossAction action = { 0 };
+			int special, tag, type;
+			mape->flags &= ~MapInfo_BossActionClear;
+
+			type = dsda_ActorNameToType(scanner.string);
+
+			if (type == NAME_NOT_FOUND)
 			{
 				scanner.ErrorF("Unknown thing type %s", scanner.string);
 				return 0;
@@ -599,17 +393,80 @@ static int ParseStandardProperty(Scanner &scanner, MapEntry *mape)
 			scanner.MustGetToken(',');
 			scanner.MustGetInteger();
 			tag = scanner.number;
-			// allow no 0-tag specials here, unless a level exit.
-			if (tag != 0 || special == 11 || special == 51 || special == 52 || special == 124)
+			// allow no 0-tag specials here, unless a level exit or massacre.
+			if (tag != 0 || special == 11 || special == 51 || special == 52 ||
+			   (heretic ? special == 105 : special == 124) ||
+			   (heretic && special == 515))
 			{
-				if (mape->numbossactions == -1) mape->numbossactions = 1;
-				else mape->numbossactions++;
-				mape->bossactions = (struct BossAction *)realloc(mape->bossactions, sizeof(struct BossAction) * mape->numbossactions);
-				mape->bossactions[mape->numbossactions - 1].type = i;
-				mape->bossactions[mape->numbossactions - 1].special = special;
-				mape->bossactions[mape->numbossactions - 1].tag = tag;
+				action.type = type;
+				action.special = special;
+				action.args[0] = tag;
+				mape->numbossactions++;
+				mape->bossactions = (struct BossAction *)Z_Realloc(mape->bossactions, sizeof(struct BossAction) * mape->numbossactions);
+				mape->bossactions[mape->numbossactions - 1] = action;
 			}
 
+		}
+	}
+	else if (!stricmp(pname, "jumping"))
+	{
+		mape->jumping = ParsePlayerMovement(scanner);
+	}
+	else if (!stricmp(pname, "crouching"))
+	{
+		mape->crouching = ParsePlayerMovement(scanner);
+
+		if (mape->crouching == PM_Require)
+		{
+			lprintf(LO_WARN,
+			        "Parsing UMAPINFO found a 'crouching = "
+			        "require' entry, but crouching is not "
+			        "supported, map %s may not work correctly.\n",
+			        mape->lumpname);
+		}
+	}
+	else if (!stricmp(pname, "freeaim"))
+	{
+		mape->freeaim = ParsePlayerMovement(scanner);
+	}
+	else if (!stricmp(pname, "DSDADoom_VerticalExplosionThrust"))
+	{
+		scanner.MustGetToken(TK_BoolConst);
+		if (scanner.boolean) mape->flags |= MapInfo_EX_VerticalExplosionThrust;
+		else mape->flags &= ~MapInfo_EX_VerticalExplosionThrust;
+	}
+	else if (!stricmp(pname, "DSDADoom_ExplodeIn3D"))
+	{
+		scanner.MustGetToken(TK_BoolConst);
+		if (scanner.boolean) mape->flags |= MapInfo_EX_ExplodeIn3D;
+		else mape->flags &= ~MapInfo_EX_ExplodeIn3D;
+	}
+	else if (!stricmp(pname, "DSDADoom_SpecialAction"))
+	{
+		BossAction action = { 0 };
+		action.is_param = true;
+		scanner.MustGetString();
+		action.type = dsda_ActorNameToType(scanner.string);
+		scanner.MustGetToken(',');
+		scanner.MustGetString();
+		action.special = dsda_ActionNameToNumber(scanner.string);
+
+		for (int i = 0; i < 5; ++i)
+		{
+			if (!scanner.CheckToken(','))
+				break;
+			scanner.MustGetInteger();
+			action.args[i] = scanner.number;
+		}
+
+		if (action.type != NAME_NOT_FOUND && action.special != NAME_NOT_FOUND)
+		{
+			mape->flags &= ~MapInfo_BossActionClear;
+			mape->numbossactions++;
+			mape->bossactions = (struct BossAction *)Z_Realloc(
+			      mape->bossactions,
+			      sizeof(struct BossAction) * mape->numbossactions);
+			mape->bossactions[mape->numbossactions - 1] = action;
 		}
 	}
 	else
@@ -617,14 +474,14 @@ static int ParseStandardProperty(Scanner &scanner, MapEntry *mape)
 		do
 		{
 			if (!scanner.CheckFloat()) scanner.GetNextToken();
-			if (scanner.token > TK_BoolConst) 
+			if (scanner.token > TK_BoolConst)
 			{
 				scanner.Error(TK_Identifier);
 			}
-			
+
 		} while (scanner.CheckToken(','));
 	}
-	free(pname);
+	Z_Free(pname);
 	return 1;
 }
 
@@ -636,9 +493,7 @@ static int ParseStandardProperty(Scanner &scanner, MapEntry *mape)
 
 static int ParseMapEntry(Scanner &scanner, MapEntry *val)
 {
-	val->mapname = NULL;
-	val->propertycount = 0;
-	val->properties = NULL;
+	val->lumpname = NULL;
 
 	scanner.MustGetIdentifier("map");
 	scanner.MustGetToken(TK_Identifier);
@@ -648,7 +503,7 @@ static int ParseMapEntry(Scanner &scanner, MapEntry *val)
 		return 0;
 	}
 
-	ReplaceString(&val->mapname, scanner.string);
+	ReplaceString(&val->lumpname, scanner.string);
 	scanner.MustGetToken('{');
 	while(!scanner.CheckToken('}'))
 	{
@@ -676,35 +531,80 @@ int ParseUMapInfo(const unsigned char *buffer, size_t length, umapinfo_errorfunc
 		MapEntry parsed = { 0 };
 		ParseMapEntry(scanner, &parsed);
 
-		// Set default level progression here to simplify the checks elsewhere. Doing this lets us skip all normal code for this if nothing has been defined.
-		if (parsed.endpic[0] && (strcmp(parsed.endpic, "-") != 0))
+		// Set default level progression here to simplify the checks elsewhere.
+		// Doing this lets us skip all normal code for this if nothing has been defined.
+		if (!parsed.nextmap[0] && parsed.finale == EG_None)
 		{
-			parsed.nextmap[0] = 0;
-		}
-		else if (!parsed.nextmap[0] && !parsed.endpic[0])
-		{
-			if (!strcasecmp(parsed.mapname, "MAP30")) strcpy(parsed.endpic, "$CAST");
-			else if (!strcasecmp(parsed.mapname, "E1M8"))  strcpy(parsed.endpic, gamemode == retail? "CREDIT" : "HELP2");
-			else if (!strcasecmp(parsed.mapname, "E2M8"))  strcpy(parsed.endpic, "VICTORY2");
-			else if (!strcasecmp(parsed.mapname, "E3M8"))  strcpy(parsed.endpic, "$BUNNY");
-			else if (!strcasecmp(parsed.mapname, "E4M8"))  strcpy(parsed.endpic, "ENDPIC");
-			else if (gamemission == chex && !strcasecmp(parsed.mapname, "E1M5"))  strcpy(parsed.endpic, "CREDIT");
-			else
+			if (!raven)
+			{
+				if (!stricmp(parsed.lumpname, "MAP30"))
+				{
+					parsed.finale = EG_Cast;
+				}
+				else if (!stricmp(parsed.lumpname, "E1M8"))
+				{
+					parsed.finale = EG_Art;
+					strcpy(parsed.endpic, gamemode == retail && !pwad_help2_check ? "CREDIT" : "HELP2");
+				}
+				else if (!stricmp(parsed.lumpname, "E2M8"))
+				{
+					parsed.finale = EG_Art;
+					strcpy(parsed.endpic, "VICTORY2");
+				}
+				else if (!stricmp(parsed.lumpname, "E3M8"))
+				{
+					parsed.finale = EG_Scroll;
+				}
+				else if (!stricmp(parsed.lumpname, "E4M8"))
+				{
+					parsed.finale = EG_Art;
+					strcpy(parsed.endpic, "ENDPIC");
+				}
+				else if (gamemission == tc_chex && !stricmp(parsed.lumpname, "E1M5"))
+				{
+					parsed.finale = EG_Art;
+					strcpy(parsed.endpic, "CREDIT");
+				}
+			}
+			else if (heretic)
+			{
+				if (!stricmp(parsed.lumpname, "E1M8"))
+				{
+					parsed.finale = EG_Art;
+					strcpy(parsed.endpic, gamemode == shareware ? "ORDER" : "CREDIT");
+				}
+				else if (!stricmp(parsed.lumpname, "E2M8"))
+				{
+					parsed.finale = EG_Art;
+					strcpy(parsed.endpic, "E2END");
+					strcpy(parsed.endpalette, "E2PAL");
+				}
+				else if (!stricmp(parsed.lumpname, "E3M8"))
+				{
+					parsed.finale = EG_Scroll;
+				}
+				else if (!stricmp(parsed.lumpname, "E4M8") || !stricmp(parsed.lumpname, "E5M8"))
+				{
+					parsed.finale = EG_Art;
+					strcpy(parsed.endpic, "CREDIT");
+				}
+			}
+
+			// If no default attribute, just go to the next map
+			if (parsed.finale == EG_None)
 			{
 				int ep, map;
-				G_ValidateMapName(parsed.mapname, &ep, &map);
-				map++;
-				if (gamemode == commercial)
-					sprintf(parsed.nextmap, "MAP%02d", map);
-				else
-					sprintf(parsed.nextmap, "E%dM%d", ep, map);
+				if (G_ValidateMapName(parsed.lumpname, &ep, &map))
+				{
+					strcpy(parsed.nextmap, VANILLA_MAP_LUMP_NAME(ep, map + 1));
+				}
 			}
 		}
 
 		// Does this property already exist? If yes, replace it.
 		for(i = 0; i < Maps.mapcount; i++)
 		{
-			if (!strcmp(parsed.mapname, Maps.maps[i].mapname))
+			if (!strcmp(parsed.lumpname, Maps.maps[i].lumpname))
 			{
 				FreeMap(&Maps.maps[i]);
 				Maps.maps[i] = parsed;
@@ -715,10 +615,10 @@ int ParseUMapInfo(const unsigned char *buffer, size_t length, umapinfo_errorfunc
 		if (i == Maps.mapcount)
 		{
 			Maps.mapcount++;
-			Maps.maps = (MapEntry*)realloc(Maps.maps, sizeof(MapEntry)*Maps.mapcount);
+			Maps.maps = (MapEntry*)Z_Realloc(Maps.maps, sizeof(MapEntry)*Maps.mapcount);
 			Maps.maps[Maps.mapcount-1] = parsed;
 		}
-		
+
 	}
 	return 1;
 }

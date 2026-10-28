@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -33,15 +33,25 @@
  */
 
 #include "doomstat.h"
+#include "m_random.h"
 #include "r_defs.h"
 #include "r_state.h"
 #include "p_spec.h"
-#include "r_demo.h"
+#include "smooth.h"
 #include "r_fps.h"
 #include "i_system.h"
+#include "i_capture.h"
 #include "e6y.h"
 
-int movement_smooth_default;
+#include "dsda/aim.h"
+#include "dsda/build.h"
+#include "dsda/configuration.h"
+#include "dsda/pause.h"
+#include "dsda/scroll.h"
+#include "dsda/settings.h"
+
+#include "hexen/a_action.h"
+
 int movement_smooth;
 dboolean isExtraDDisplay = false;
 
@@ -49,7 +59,6 @@ typedef enum
 {
   INTERP_SectorFloor,
   INTERP_SectorCeiling,
-  INTERP_Vertex,
   INTERP_WallPanning,
   INTERP_FloorPanning,
   INTERP_CeilingPanning
@@ -61,25 +70,20 @@ typedef struct
   void *address;
 } interpolation_t;
 
-int interpolation_maxobjects;
-
 static int numinterpolations = 0;
 
 tic_vars_t tic_vars;
 
 static void R_DoAnInterpolation (int i, fixed_t smoothratio);
 
-extern int realtic_clock_rate;
 void D_Display(fixed_t frac);
 
 void M_ChangeUncappedFrameRate(void)
 {
-  movement_smooth = (singletics ? false : movement_smooth_default);
-}
-
-void R_InitInterpolation(void)
-{
-  tic_vars.msec = realtic_clock_rate * TICRATE / 100000.0f;
+  if (capturing_video)
+    movement_smooth = true;
+  else
+    movement_smooth = (singletics ? false : dsda_IntConfig(dsda_config_uncapped_framerate));
 }
 
 typedef fixed_t fixed2_t[2];
@@ -91,11 +95,18 @@ static dboolean NoInterpolateView;
 static dboolean didInterp;
 dboolean WasRenderedInTryRunTics;
 
+dboolean R_ViewInterpolation(void) {
+  return !dsda_Paused() && movement_smooth;
+}
+
 void R_InterpolateView(player_t *player, fixed_t frac)
 {
   static mobj_t *oviewer;
+  int quake_intensity;
 
-  dboolean NoInterpolate = (paused && !walkcamera.type) || (menuactive && !demoplayback);
+  dboolean NoInterpolate = dsda_CameraPaused() || dsda_PausedViaMenu();
+
+  quake_intensity = dsda_IntConfig(dsda_config_quake_intensity);
 
   viewplayer = player;
 
@@ -116,8 +127,8 @@ void R_InterpolateView(player_t *player, fixed_t frac)
       NoInterpolateView = false;
 
       player->prev_viewz = player->viewz;
-      player->prev_viewangle = player->mo->angle + viewangleoffset;
-      player->prev_viewpitch = player->mo->pitch + viewpitchoffset;
+      player->prev_viewangle = player->mo->angle;
+      player->prev_viewpitch = dsda_PlayerPitch(player);
 
       P_ResetWalkcam();
     }
@@ -142,8 +153,8 @@ void R_InterpolateView(player_t *player, fixed_t frac)
     }
     else
     {
-      viewangle = player->prev_viewangle + FixedMul (frac, R_SmoothPlaying_Get(player) - player->prev_viewangle) + viewangleoffset;
-      viewpitch = player->prev_viewpitch + FixedMul (frac, player->mo->pitch - player->prev_viewpitch) + viewpitchoffset;
+      viewangle = player->prev_viewangle + FixedMul (frac, R_SmoothPlaying_Get(player) - player->prev_viewangle);
+      viewpitch = player->prev_viewpitch + FixedMul (frac, dsda_PlayerPitch(player) - player->prev_viewpitch);
     }
   }
   else
@@ -167,12 +178,35 @@ void R_InterpolateView(player_t *player, fixed_t frac)
     }
     else
     {
-      viewangle = R_SmoothPlaying_Get(player) + viewangleoffset;
-      viewpitch = player->mo->pitch + viewpitchoffset;
+      viewangle = R_SmoothPlaying_Get(player);
+      viewpitch = dsda_PlayerPitch(player);
     }
   }
 
-  if (!paused && movement_smooth)
+  if (localQuakeHappening[displayplayer] && !dsda_Paused())
+  {
+    static int x_displacement;
+    static int y_displacement;
+    static int last_leveltime = -1;
+
+    if (leveltime != last_leveltime)
+    {
+      int intensity = localQuakeHappening[displayplayer];
+
+      x_displacement = ((M_Random() % (intensity << 2)) - (intensity << 1)) << FRACBITS;
+      y_displacement = ((M_Random() % (intensity << 2)) - (intensity << 1)) << FRACBITS;
+
+      x_displacement = x_displacement * quake_intensity / 100;
+      y_displacement = y_displacement * quake_intensity / 100;
+
+      last_leveltime = leveltime;
+    }
+
+    viewx += x_displacement;
+    viewy += y_displacement;
+  }
+
+  if (R_ViewInterpolation())
   {
     int i;
 
@@ -202,10 +236,6 @@ static void R_CopyInterpToOld (int i)
   case INTERP_SectorCeiling:
     oldipos[i][0] = ((sector_t*)curipos[i].address)->ceilingheight;
     break;
-  case INTERP_Vertex:
-    oldipos[i][0] = ((vertex_t*)curipos[i].address)->x;
-    oldipos[i][1] = ((vertex_t*)curipos[i].address)->y;
-    break;
   case INTERP_WallPanning:
     oldipos[i][0] = ((side_t*)curipos[i].address)->rowoffset;
     oldipos[i][1] = ((side_t*)curipos[i].address)->textureoffset;
@@ -230,10 +260,6 @@ static void R_CopyBakToInterp (int i)
     break;
   case INTERP_SectorCeiling:
     ((sector_t*)curipos[i].address)->ceilingheight = bakipos[i][0];
-    break;
-  case INTERP_Vertex:
-    ((vertex_t*)curipos[i].address)->x = bakipos[i][0];
-    ((vertex_t*)curipos[i].address)->y = bakipos[i][1];
     break;
   case INTERP_WallPanning:
     ((side_t*)curipos[i].address)->rowoffset = bakipos[i][0];
@@ -264,10 +290,6 @@ static void R_DoAnInterpolation (int i, fixed_t smoothratio)
   case INTERP_SectorCeiling:
     adr1 = &((sector_t*)curipos[i].address)->ceilingheight;
     break;
-  case INTERP_Vertex:
-    adr1 = &((vertex_t*)curipos[i].address)->x;
-////    adr2 = &((vertex_t*)curipos[i].Address)->y;
-    break;
   case INTERP_WallPanning:
     adr1 = &((side_t*)curipos[i].address)->rowoffset;
     adr2 = &((side_t*)curipos[i].address)->textureoffset;
@@ -297,20 +319,23 @@ static void R_DoAnInterpolation (int i, fixed_t smoothratio)
     *adr2 = oldipos[i][1] + FixedMul (pos - oldipos[i][1], smoothratio);
   }
 
-#ifdef GL_DOOM
   switch (curipos[i].type)
   {
   case INTERP_SectorFloor:
   case INTERP_SectorCeiling:
     gld_UpdateSplitData(((sector_t*)curipos[i].address));
     break;
+  default:
+    break;
   }
-#endif
 }
 
 void R_UpdateInterpolations()
 {
   int i;
+
+  P_UpdateMobjInterpolations();
+
   if (!movement_smooth)
     return;
   for (i = numinterpolations-1; i >= 0; --i)
@@ -324,27 +349,22 @@ static void R_SetInterpolation(interpolation_type_e type, void *posptr)
   int *i;
   if (!movement_smooth)
     return;
-  
+
   if (numinterpolations >= interpolations_max) {
     int prevmax = interpolations_max;
 
     interpolations_max = interpolations_max ? interpolations_max * 2 : 256;
 
-    if (interpolation_maxobjects > 0 && interpolations_max > interpolation_maxobjects)
-    {
-      interpolations_max = interpolation_maxobjects;
-    }
-
     if (interpolations_max == prevmax)
     {
       return;
     }
-    
-    oldipos = (fixed2_t*)realloc(oldipos, sizeof(*oldipos) * interpolations_max);
-    bakipos = (fixed2_t*)realloc(bakipos, sizeof(*bakipos) * interpolations_max);
-    curipos = (interpolation_t*)realloc(curipos, sizeof(*curipos) * interpolations_max);
+
+    oldipos = (fixed2_t*)Z_Realloc(oldipos, sizeof(*oldipos) * interpolations_max);
+    bakipos = (fixed2_t*)Z_Realloc(bakipos, sizeof(*bakipos) * interpolations_max);
+    curipos = (interpolation_t*)Z_Realloc(curipos, sizeof(*curipos) * interpolations_max);
   }
-  
+
   i = NULL;
   switch (type)
   {
@@ -373,7 +393,7 @@ static void R_SetInterpolation(interpolation_type_e type, void *posptr)
     numinterpolations++;
     (*i) = numinterpolations;
   }
-} 
+}
 
 static void R_StopInterpolation(interpolation_type_e type, void *posptr)
 {
@@ -450,7 +470,7 @@ static void R_StopInterpolation(interpolation_type_e type, void *posptr)
 void R_StopAllInterpolations(void)
 {
   int i;
-  
+
   if (!movement_smooth)
     return;
 
@@ -481,7 +501,7 @@ void R_StopAllInterpolations(void)
 void R_RestoreInterpolations(void)
 {
   int i;
-  
+
   if (!movement_smooth)
     return;
 
@@ -551,24 +571,22 @@ static void R_InterpolationGetData(thinker_t *th,
     *posptr2 = ((elevator_t *)th)->sector;
   }
   else
-  if (th->function == T_Scroll)
+  if (th->function == dsda_UpdateSideScroller || th->function == dsda_UpdateControlSideScroller)
   {
-    switch (((scroll_t *)th)->type)
-    {
-      case sc_side:
-        *type1 = INTERP_WallPanning;
-        *posptr1 = sides + ((scroll_t *)th)->affectee;
-        break;
-      case sc_floor:
-        *type1 = INTERP_FloorPanning;
-        *posptr1 = sectors + ((scroll_t *)th)->affectee;
-        break;
-      case sc_ceiling:
-        *type1 = INTERP_CeilingPanning;
-        *posptr1 = sectors + ((scroll_t *)th)->affectee;
-        break;
-      default: ;
-    }
+    *type1 = INTERP_WallPanning;
+    *posptr1 = sides + ((scroll_t *)th)->affectee;
+  }
+  else
+  if (th->function == dsda_UpdateFloorScroller || th->function == dsda_UpdateControlFloorScroller)
+  {
+    *type1 = INTERP_FloorPanning;
+    *posptr1 = sectors + ((scroll_t *)th)->affectee;
+  }
+  else
+  if (th->function == dsda_UpdateCeilingScroller || th->function == dsda_UpdateControlCeilingScroller)
+  {
+    *type1 = INTERP_CeilingPanning;
+    *posptr1 = sectors + ((scroll_t *)th)->affectee;
   }
 }
 
@@ -586,7 +604,7 @@ void R_ActivateThinkerInterpolations(thinker_t *th)
   if(posptr1)
   {
     R_SetInterpolation (type1, posptr1);
-    
+
     if(posptr2)
       R_SetInterpolation (type2, posptr2);
   }

@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -29,7 +29,7 @@
  * DESCRIPTION:
  *  Dehacked file support
  *  New for the TeamTNT "Boom" engine
- * 
+ *
  *  Author: Ty Halderman, TeamTNT
  *
  *  Description: This file translates the #defined string constants
@@ -42,9 +42,10 @@
 #ifndef __D_DEH__
 #define __D_DEH__
 
-extern int deh_apply_cheats;
+#include "doomtype.h"
 
 void ProcessDehFile(const char *filename, const char *outfilename, int lumpnum);
+void PostProcessDeh(void);
 
 //
 //      Ty 03/22/98 - note that we are keeping the english versions and
@@ -58,14 +59,6 @@ void ProcessDehFile(const char *filename, const char *outfilename, int lumpnum);
 //
 
 //
-// D_Main.C
-//
-//#define D_DEVSTR      "Development mode ON.\n"
-extern const char *s_D_DEVSTR; // = D_DEVSTR;
-//#define D_CDROM       "CD-ROM Version: default.cfg from c:\\doomdata\n"
-extern const char *s_D_CDROM; // = D_CDROM;
-
-//
 //      M_Menu.C
 //
 //#define PRESSKEY      "press a key."
@@ -74,6 +67,20 @@ extern const char *s_PRESSKEY; // = PRESSKEY;
 extern const char *s_PRESSYN; // = PRESSYN;
 //#define QUITMSG       "are you sure you want to\nquit this great game?"
 extern const char *s_QUITMSG; // = QUITMSG;
+extern const char *s_QUITMSG1;  // = QUITMSG1;
+extern const char *s_QUITMSG2;  // = QUITMSG2;
+extern const char *s_QUITMSG3;  // = QUITMSG3;
+extern const char *s_QUITMSG4;  // = QUITMSG4;
+extern const char *s_QUITMSG5;  // = QUITMSG5;
+extern const char *s_QUITMSG6;  // = QUITMSG6;
+extern const char *s_QUITMSG7;  // = QUITMSG7;
+extern const char *s_QUITMSG8;  // = QUITMSG8;
+extern const char *s_QUITMSG9;  // = QUITMSG9;
+extern const char *s_QUITMSG10; // = QUITMSG10;
+extern const char *s_QUITMSG11; // = QUITMSG11;
+extern const char *s_QUITMSG12; // = QUITMSG12;
+extern const char *s_QUITMSG13; // = QUITMSG13;
+extern const char *s_QUITMSG14; // = QUITMSG14;
 //#define LOADNET       "you can't do load while in a net game!\n\n"PRESSKEY
 extern const char *s_LOADNET; // = LOADNET;
 //#define QLOADNET      "you can't quickload during a netgame!\n\n"PRESSKEY
@@ -82,10 +89,6 @@ extern const char *s_QLOADNET; // = QLOADNET;
 extern const char *s_QSAVESPOT; // = QSAVESPOT;
 //#define SAVEDEAD      "you can't save if you aren't playing!\n\n"PRESSKEY
 extern const char *s_SAVEDEAD; // = SAVEDEAD;
-//#define QSPROMPT      "quicksave over your game named\n\n'%s'?\n\n"PRESSYN
-extern const char *s_QSPROMPT; // = QSPROMPT;
-//#define QLPROMPT      "do you want to quickload the game named\n\n'%s'?\n\n"PRESSYN
-extern const char *s_QLPROMPT; // = QLPROMPT;
 
 /*
 #define NEWGAME       \
@@ -221,6 +224,10 @@ extern const char *s_GOTPLASMA; // = GOTPLASMA;
 extern const char *s_GOTSHOTGUN; // = GOTSHOTGUN;
 //#define GOTSHOTGUN2   "You got the super shotgun!"
 extern const char *s_GOTSHOTGUN2; // = GOTSHOTGUN2;
+
+// Beta pickups.
+extern const char *s_BETA_BONUS3;
+extern const char *s_BETA_BONUS4;
 
 //
 // P_Doors.C
@@ -549,53 +556,6 @@ extern const char *s_THUSTR_30; // = THUSTR_30;
 extern const char *s_THUSTR_31; // = THUSTR_31;
 //#define THUSTR_32     "level 32: caribbean"
 extern const char *s_THUSTR_32; // = THUSTR_32;
-
-//#define HUSTR_CHATMACRO1      "I'm ready to kick butt!"
-extern const char *s_HUSTR_CHATMACRO1; // = HUSTR_CHATMACRO1;
-//#define HUSTR_CHATMACRO2      "I'm OK."
-extern const char *s_HUSTR_CHATMACRO2; // = HUSTR_CHATMACRO2;
-//#define HUSTR_CHATMACRO3      "I'm not looking too good!"
-extern const char *s_HUSTR_CHATMACRO3; // = HUSTR_CHATMACRO3;
-//#define HUSTR_CHATMACRO4      "Help!"
-extern const char *s_HUSTR_CHATMACRO4; // = HUSTR_CHATMACRO4;
-//#define HUSTR_CHATMACRO5      "You suck!"
-extern const char *s_HUSTR_CHATMACRO5; // = HUSTR_CHATMACRO5;
-//#define HUSTR_CHATMACRO6      "Next time, scumbag..."
-extern const char *s_HUSTR_CHATMACRO6; // = HUSTR_CHATMACRO6;
-//#define HUSTR_CHATMACRO7      "Come here!"
-extern const char *s_HUSTR_CHATMACRO7; // = HUSTR_CHATMACRO7;
-//#define HUSTR_CHATMACRO8      "I'll take care of it."
-extern const char *s_HUSTR_CHATMACRO8; // = HUSTR_CHATMACRO8;
-//#define HUSTR_CHATMACRO9      "Yes"
-extern const char *s_HUSTR_CHATMACRO9; // = HUSTR_CHATMACRO9;
-//#define HUSTR_CHATMACRO0      "No"
-extern const char *s_HUSTR_CHATMACRO0; // = HUSTR_CHATMACRO0;
-
-//#define HUSTR_TALKTOSELF1     "You mumble to yourself"
-extern const char *s_HUSTR_TALKTOSELF1; // = HUSTR_TALKTOSELF1;
-//#define HUSTR_TALKTOSELF2     "Who's there?"
-extern const char *s_HUSTR_TALKTOSELF2; // = HUSTR_TALKTOSELF2;
-//#define HUSTR_TALKTOSELF3     "You scare yourself"
-extern const char *s_HUSTR_TALKTOSELF3; // = HUSTR_TALKTOSELF3;
-//#define HUSTR_TALKTOSELF4     "You start to rave"
-extern const char *s_HUSTR_TALKTOSELF4; // = HUSTR_TALKTOSELF4;
-//#define HUSTR_TALKTOSELF5     "You've lost it..."
-extern const char *s_HUSTR_TALKTOSELF5; // = HUSTR_TALKTOSELF5;
-
-//#define HUSTR_MESSAGESENT     "[Message Sent]"
-extern const char *s_HUSTR_MESSAGESENT; // = HUSTR_MESSAGESENT;
-
-// The following should NOT be changed unless it seems
-// just AWFULLY necessary
-
-//#define HUSTR_PLRGREEN        "Green: "
-extern const char *s_HUSTR_PLRGREEN; // = HUSTR_PLRGREEN;
-//#define HUSTR_PLRINDIGO       "Indigo: "
-extern const char *s_HUSTR_PLRINDIGO; // = HUSTR_PLRINDIGO;
-//#define HUSTR_PLRBROWN        "Brown: "
-extern const char *s_HUSTR_PLRBROWN; // = HUSTR_PLRBROWN;
-//#define HUSTR_PLRRED          "Red: "
-extern const char *s_HUSTR_PLRRED; // = HUSTR_PLRRED;
 
 //
 //      AM_map.C
@@ -1104,22 +1064,14 @@ extern const char* bgflat31;
 // char*        bgcastcall = "BOSSBACK"; // panel behind cast call
 extern const char* bgcastcall;
 
-// ignored if blank, general purpose startup announcements
-// char*        startup1 = "";
-extern const char* startup1;
-// char*        startup2 = "";
-extern const char* startup2;
-// char*        startup3 = "";
-extern const char* startup3;
-// char*        startup4 = "";
-extern const char* startup4;
-// char*        startup5 = "";
-extern const char* startup5;
-
 // from g_game.c, prefix for savegame name like "boomsav"
 extern const char* savegamename;
 
-void D_BuildBEXTables(void);
+// secret messages
+extern const char* s_HUSTR_SECRETFOUND;
+
+uint64_t deh_stringToMBF21MobjFlags(char *strval);
+uint64_t deh_stringToMobjFlags(char *strval);
 void deh_changeCompTranslucency(void);
 void deh_applyCompatibility(void);
 

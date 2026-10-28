@@ -1,0 +1,460 @@
+cmake_minimum_required(VERSION 3.8...4.0)
+project(dsda-doom-wad
+    LANGUAGES C
+)
+
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    list(APPEND
+        CMAKE_MODULE_PATH
+        "${CMAKE_CURRENT_LIST_DIR}/../cmake"
+    )
+endif()
+
+# PrBoom-Plus WAD creation tool
+
+add_executable(dsda_rdatawad
+    rd_main.c
+    rd_util.c
+    rd_util.h
+    rd_output.c
+    rd_output.h
+    rd_sound.c
+    rd_sound.h
+    rd_palette.c
+    rd_palette.h
+    rd_graphic.c
+    rd_graphic.h
+)
+
+target_compile_features(dsda_rdatawad
+    PRIVATE c_std_99
+)
+set_target_properties(dsda_rdatawad
+    PROPERTIES
+    OUTPUT_NAME rdatawad
+)
+
+include(DsdaTargetFeatures)
+dsda_target_set_warnings(dsda_rdatawad)
+dsda_target_silence_deprecation(dsda_rdatawad)
+
+include(CheckBigEndian)
+check_big_endian(RD_IS_BIG_ENDIAN)
+
+target_compile_definitions(dsda_rdatawad
+    PRIVATE
+    "RD_IS_BIG_ENDIAN=${RD_IS_BIG_ENDIAN}"
+)
+
+# PrBoom-Plus internal WAD
+
+set(PALETTE
+    palette.rgb
+)
+
+set(LUMPS
+    lumps/switches.lmp
+    lumps/animated.lmp
+    lumps/sndcurve.lmp
+    lumps/soundfont/sndfont.lmp
+    lumps/dsdacr.lmp
+    lumps/dsdahud.lmp
+    lumps/dsdatc.lmp
+)
+
+set(COLORMAPS
+    lumps/watermap.lmp
+)
+
+set(TABLES
+    lumps/sinetabl.lmp
+    lumps/tangtabl.lmp
+    lumps/tantoang.lmp
+    lumps/gammatbl.lmp
+    lumps/chexdeh.lmp
+    lumps/bfgbex.lmp
+    lumps/nervebex.lmp
+    lumps/glshadow.lmp
+    lumps/gls_main.lmp
+    lumps/gls_fuzz.lmp
+    lumps/gls_v.lmp
+    lumps/m_ammo.lmp
+    lumps/m_armour.lmp
+    lumps/m_arrow.lmp
+    lumps/m_health.lmp
+    lumps/m_key.lmp
+    lumps/m_normal.lmp
+    lumps/m_shadow.lmp
+    lumps/m_power.lmp
+    lumps/m_weap.lmp
+    lumps/m_mark.lmp
+)
+
+set(SOUNDS
+    sounds/dsdgsit.wav
+    sounds/dsdgatk.wav
+    sounds/dsdgact.wav
+    sounds/dsdgdth.wav
+    sounds/dsdgpain.wav
+    sounds/dssecret.wav
+)
+
+set(GRAPHICS
+    graphics/dig033.ppm
+    graphics/dig034.ppm
+    graphics/dig035.ppm
+    graphics/dig036.ppm
+    graphics/dig037.ppm
+    graphics/dig038.ppm
+    graphics/dig039.ppm
+    graphics/dig040.ppm
+    graphics/dig041.ppm
+    graphics/dig042.ppm
+    graphics/dig043.ppm
+    graphics/dig044.ppm
+    graphics/dig045.ppm
+    graphics/dig046.ppm
+    graphics/dig047.ppm
+    graphics/dig048.ppm
+    graphics/dig049.ppm
+    graphics/dig050.ppm
+    graphics/dig051.ppm
+    graphics/dig052.ppm
+    graphics/dig053.ppm
+    graphics/dig054.ppm
+    graphics/dig055.ppm
+    graphics/dig056.ppm
+    graphics/dig057.ppm
+    graphics/dig058.ppm
+    graphics/dig059.ppm
+    graphics/dig060.ppm
+    graphics/dig061.ppm
+    graphics/dig062.ppm
+    graphics/dig063.ppm
+    graphics/dig064.ppm
+    graphics/dig065.ppm
+    graphics/dig066.ppm
+    graphics/dig067.ppm
+    graphics/dig068.ppm
+    graphics/dig069.ppm
+    graphics/dig070.ppm
+    graphics/dig071.ppm
+    graphics/dig072.ppm
+    graphics/dig073.ppm
+    graphics/dig074.ppm
+    graphics/dig075.ppm
+    graphics/dig076.ppm
+    graphics/dig077.ppm
+    graphics/dig078.ppm
+    graphics/dig079.ppm
+    graphics/dig080.ppm
+    graphics/dig081.ppm
+    graphics/dig082.ppm
+    graphics/dig083.ppm
+    graphics/dig084.ppm
+    graphics/dig085.ppm
+    graphics/dig086.ppm
+    graphics/dig087.ppm
+    graphics/dig088.ppm
+    graphics/dig089.ppm
+    graphics/dig090.ppm
+    graphics/dig091.ppm
+    graphics/dig092.ppm
+    graphics/dig093.ppm
+    graphics/dig094.ppm
+    graphics/dig095.ppm
+    graphics/dig096.ppm
+    graphics/dig097.ppm
+    graphics/dig098.ppm
+    graphics/dig099.ppm
+    graphics/dig100.ppm
+    graphics/dig101.ppm
+    graphics/dig102.ppm
+    graphics/dig103.ppm
+    graphics/dig104.ppm
+    graphics/dig105.ppm
+    graphics/dig106.ppm
+    graphics/dig107.ppm
+    graphics/dig108.ppm
+    graphics/dig109.ppm
+    graphics/dig110.ppm
+    graphics/dig111.ppm
+    graphics/dig112.ppm
+    graphics/dig113.ppm
+    graphics/dig114.ppm
+    graphics/dig115.ppm
+    graphics/dig116.ppm
+    graphics/dig117.ppm
+    graphics/dig118.ppm
+    graphics/dig119.ppm
+    graphics/dig120.ppm
+    graphics/dig121.ppm
+    graphics/dig122.ppm
+    graphics/dig123.ppm
+    graphics/dig124.ppm
+    graphics/dig125.ppm
+    graphics/dig126.ppm
+    graphics/fonta06.ppm
+    graphics/fonta28.ppm
+    graphics/fonta30.ppm
+    graphics/boxul.ppm
+    graphics/boxuc.ppm
+    graphics/boxur.ppm
+    graphics/boxcl.ppm
+    graphics/boxcc.ppm
+    graphics/boxcr.ppm
+    graphics/boxll.ppm
+    graphics/boxlc.ppm
+    graphics/boxlr.ppm
+    graphics/stkeys6.ppm
+    graphics/stkeys7.ppm
+    graphics/stkeys8.ppm
+    graphics/stcfn096.ppm
+    graphics/m_butt1.ppm
+    graphics/m_butt2.ppm
+    graphics/m_colors.ppm
+    graphics/m_palno.ppm
+    graphics/m_palsel.ppm
+    graphics/m_vbox.ppm
+    graphics/cross1.ppm
+    graphics/cross2.ppm
+    graphics/cross3.ppm
+    graphics/cross4.ppm
+    graphics/cross5.ppm
+    graphics/cross6.ppm
+    graphics/cross7.ppm
+)
+
+set(FLATS
+    flats/-n0_tex-.ppm
+)
+
+set(SPRITES
+    sprites/tnt1a0.ppm
+)
+set(SPRITEP "0,0,sprites/tnt1a0.ppm")
+
+set(SPRITES
+    ${SPRITES}
+    sprites/dogsa1.ppm
+    sprites/dogsa2.ppm
+    sprites/dogsa3.ppm
+    sprites/dogsa4.ppm
+    sprites/dogsa5.ppm
+    sprites/dogsa6.ppm
+    sprites/dogsa7.ppm
+    sprites/dogsa8.ppm
+    sprites/dogsb1.ppm
+    sprites/dogsb2.ppm
+    sprites/dogsb3.ppm
+    sprites/dogsb4.ppm
+    sprites/dogsb5.ppm
+    sprites/dogsb6.ppm
+    sprites/dogsb7.ppm
+    sprites/dogsb8.ppm
+    sprites/dogsc1.ppm
+    sprites/dogsc2.ppm
+    sprites/dogsc3.ppm
+    sprites/dogsc4.ppm
+    sprites/dogsc5.ppm
+    sprites/dogsc6.ppm
+    sprites/dogsc7.ppm
+    sprites/dogsc8.ppm
+    sprites/dogsd1.ppm
+    sprites/dogsd2.ppm
+    sprites/dogsd3.ppm
+    sprites/dogsd4.ppm
+    sprites/dogsd5.ppm
+    sprites/dogsd6.ppm
+    sprites/dogsd7.ppm
+    sprites/dogsd8.ppm
+    sprites/dogse1.ppm
+    sprites/dogse2.ppm
+    sprites/dogse3.ppm
+    sprites/dogse4.ppm
+    sprites/dogse5.ppm
+    sprites/dogse6.ppm
+    sprites/dogse7.ppm
+    sprites/dogse8.ppm
+    sprites/dogsf1.ppm
+    sprites/dogsf2.ppm
+    sprites/dogsf3.ppm
+    sprites/dogsf4.ppm
+    sprites/dogsf5.ppm
+    sprites/dogsf6.ppm
+    sprites/dogsf7.ppm
+    sprites/dogsf8.ppm
+    sprites/dogsg1.ppm
+    sprites/dogsg2.ppm
+    sprites/dogsg3.ppm
+    sprites/dogsg4.ppm
+    sprites/dogsg5.ppm
+    sprites/dogsg6.ppm
+    sprites/dogsg7.ppm
+    sprites/dogsg8.ppm
+    sprites/dogsh1.ppm
+    sprites/dogsh2.ppm
+    sprites/dogsh3.ppm
+    sprites/dogsh4.ppm
+    sprites/dogsh5.ppm
+    sprites/dogsh6.ppm
+    sprites/dogsh7.ppm
+    sprites/dogsh8.ppm
+    sprites/dogsi0.ppm
+    sprites/dogsj0.ppm
+    sprites/dogsk0.ppm
+    sprites/dogsl0.ppm
+    sprites/dogsm0.ppm
+    sprites/dogsn0.ppm
+    sprites/bon3a0.ppm
+    sprites/bon4a0.ppm
+)
+set(SPRITEP
+    ${SPRITEP}
+    "33,66,sprites/dogsa1.ppm"
+    "33,66,sprites/dogsa2.ppm"
+    "33,66,sprites/dogsa3.ppm"
+    "33,66,sprites/dogsa4.ppm"
+    "33,66,sprites/dogsa5.ppm"
+    "33,66,sprites/dogsa6.ppm"
+    "33,66,sprites/dogsa7.ppm"
+    "33,66,sprites/dogsa8.ppm"
+    "33,66,sprites/dogsb1.ppm"
+    "33,66,sprites/dogsb2.ppm"
+    "33,66,sprites/dogsb3.ppm"
+    "33,66,sprites/dogsb4.ppm"
+    "33,66,sprites/dogsb5.ppm"
+    "33,66,sprites/dogsb6.ppm"
+    "33,66,sprites/dogsb7.ppm"
+    "33,66,sprites/dogsb8.ppm"
+    "33,66,sprites/dogsc1.ppm"
+    "33,66,sprites/dogsc2.ppm"
+    "33,66,sprites/dogsc3.ppm"
+    "33,66,sprites/dogsc4.ppm"
+    "33,66,sprites/dogsc5.ppm"
+    "33,66,sprites/dogsc6.ppm"
+    "33,66,sprites/dogsc7.ppm"
+    "33,66,sprites/dogsc8.ppm"
+    "33,66,sprites/dogsd1.ppm"
+    "33,66,sprites/dogsd2.ppm"
+    "33,66,sprites/dogsd3.ppm"
+    "33,66,sprites/dogsd4.ppm"
+    "33,66,sprites/dogsd5.ppm"
+    "33,66,sprites/dogsd6.ppm"
+    "33,66,sprites/dogsd7.ppm"
+    "33,66,sprites/dogsd8.ppm"
+    "33,66,sprites/dogse1.ppm"
+    "33,66,sprites/dogse2.ppm"
+    "33,66,sprites/dogse3.ppm"
+    "33,66,sprites/dogse4.ppm"
+    "33,66,sprites/dogse5.ppm"
+    "33,66,sprites/dogse6.ppm"
+    "33,66,sprites/dogse7.ppm"
+    "33,66,sprites/dogse8.ppm"
+    "33,66,sprites/dogsf1.ppm"
+    "33,66,sprites/dogsf2.ppm"
+    "33,66,sprites/dogsf3.ppm"
+    "33,66,sprites/dogsf4.ppm"
+    "33,66,sprites/dogsf5.ppm"
+    "33,66,sprites/dogsf6.ppm"
+    "33,66,sprites/dogsf7.ppm"
+    "33,66,sprites/dogsf8.ppm"
+    "33,66,sprites/dogsg1.ppm"
+    "33,66,sprites/dogsg2.ppm"
+    "33,66,sprites/dogsg3.ppm"
+    "33,66,sprites/dogsg4.ppm"
+    "33,66,sprites/dogsg5.ppm"
+    "33,66,sprites/dogsg6.ppm"
+    "33,66,sprites/dogsg7.ppm"
+    "33,66,sprites/dogsg8.ppm"
+    "33,66,sprites/dogsh1.ppm"
+    "33,66,sprites/dogsh2.ppm"
+    "33,66,sprites/dogsh3.ppm"
+    "33,66,sprites/dogsh4.ppm"
+    "33,66,sprites/dogsh5.ppm"
+    "33,66,sprites/dogsh6.ppm"
+    "33,66,sprites/dogsh7.ppm"
+    "33,66,sprites/dogsh8.ppm"
+    "33,67,sprites/dogsi0.ppm"
+    "33,67,sprites/dogsj0.ppm"
+    "33,67,sprites/dogsk0.ppm"
+    "33,67,sprites/dogsl0.ppm"
+    "33,68,sprites/dogsm0.ppm"
+    "33,69,sprites/dogsn0.ppm"
+)
+
+set(SPRITES
+    ${SPRITES}
+    sprites/bon3a0.ppm
+    sprites/bon4a0.ppm
+)
+set(SPRITEP
+    ${SPRITEP}
+    "4,47,sprites/bon3a0.ppm"
+    "19,19,sprites/bon4a0.ppm"
+)
+
+set(SPRITES
+    ${SPRITES}
+    sprites/pls1a0.ppm
+    sprites/pls1b0.ppm
+    sprites/pls1c0.ppm
+    sprites/pls1d0.ppm
+    sprites/pls1e0.ppm
+    sprites/pls1f0.ppm
+    sprites/pls1g0.ppm
+    sprites/pls2a0.ppm
+    sprites/pls2b0.ppm
+    sprites/pls2c0.ppm
+    sprites/pls2d0.ppm
+    sprites/pls2e0.ppm
+)
+set(SPRITEP
+    ${SPRITEP}
+    "9,11,sprites/pls1a0.ppm"
+    "8,11,sprites/pls1b0.ppm"
+    "9,11,sprites/pls1c0.ppm"
+    "8,11,sprites/pls1d0.ppm"
+    "16,27,sprites/pls1e0.ppm"
+    "16,27,sprites/pls1f0.ppm"
+    "18,27,sprites/pls1g0.ppm"
+    "9,11,sprites/pls2a0.ppm"
+    "8,13,sprites/pls2b0.ppm"
+    "11,18,sprites/pls2c0.ppm"
+    "16,27,sprites/pls2d0.ppm"
+    "18,27,sprites/pls2e0.ppm"
+)
+
+set(WAD_SRC
+    ${PALETTE}
+    ${LUMPS}
+    ${COLORMAPS}
+    ${TABLES}
+    ${SOUNDS}
+    ${GRAPHICS}
+    ${FLATS}
+    ${SPRITES}
+)
+
+set(WAD_CMDLINE
+    -palette ${PALETTE}
+    -lumps ${LUMPS}
+    -marker C_START -lumps ${COLORMAPS} -marker C_END
+    -marker B_START -lumps ${TABLES} -marker B_END
+    -sounds ${SOUNDS}
+    -graphics ${GRAPHICS}
+    -marker FF_START -flats ${FLATS} -marker FF_END
+    -marker SS_START -sprites ${SPRITEP} -marker SS_END
+)
+
+add_custom_command(
+    OUTPUT ${WAD_DATA_PATH}
+    COMMAND $<TARGET_FILE:dsda_rdatawad> -I "${CMAKE_CURRENT_SOURCE_DIR}" ${WAD_CMDLINE} -o "${WAD_DATA_PATH}"
+    DEPENDS dsda_rdatawad ${WAD_SRC}
+    VERBATIM
+)
+
+add_custom_target(dsda-doom-wad 
+    ALL
+    DEPENDS ${WAD_DATA_PATH}
+)

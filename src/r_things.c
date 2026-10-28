@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -44,6 +44,10 @@
 #include "lprintf.h"
 #include "e6y.h"//e6y
 
+#include "dsda/configuration.h"
+#include "dsda/render_stats.h"
+#include "dsda/settings.h"
+
 #define BASEYCENTER 100
 
 static int *clipbot = NULL; // killough 2/8/98: // dropoff overflow
@@ -68,14 +72,6 @@ static const lighttable_t **spritelights;        // killough 1/25/98 made static
 //e6y: added for GL
 float pspriteyscale_f;
 float pspritexscale_f;
-
-int sprites_doom_order;
-
-int health_bar;
-int health_bar_full_length;
-int health_bar_red;
-int health_bar_yellow;
-int health_bar_green;
 
 typedef struct drawseg_xrange_item_s
 {
@@ -110,27 +106,38 @@ int *screenheightarray;  // change to MAX_* // dropoff overflow
 // variables used to look up and range check thing_t sprites patches
 
 spritedef_t *sprites;
-int numsprites;
 
-#define MAX_SPRITE_FRAMES 29          /* Macroized -- killough 1/25/98 */
+#define MAX_SPRITE_FRAMES 30          /* Macroized -- killough 1/25/98 */
 
 static spriteframe_t sprtemp[MAX_SPRITE_FRAMES];
 static int maxframe;
 
 void R_InitSpritesRes(void)
 {
-  if (xtoviewangle) free(xtoviewangle);
-  if (negonearray) free(negonearray);
-  if (screenheightarray) free(screenheightarray);
+  if (xtoviewangle) Z_Free(xtoviewangle);
+  if (linearskyangle) Z_Free (linearskyangle);
+  if (negonearray) Z_Free(negonearray);
+  if (screenheightarray) Z_Free(screenheightarray);
 
-  xtoviewangle = calloc(1, (SCREENWIDTH + 1) * sizeof(*xtoviewangle));
-  negonearray = calloc(1, SCREENWIDTH * sizeof(*negonearray));
-  screenheightarray = calloc(1, SCREENWIDTH * sizeof(*screenheightarray));
+  xtoviewangle = Z_Calloc(1, (SCREENWIDTH + 1) * sizeof(*xtoviewangle));
+  linearskyangle = Z_Calloc(1, (SCREENWIDTH + 1) * sizeof(*linearskyangle));
+  negonearray = Z_Calloc(1, SCREENWIDTH * sizeof(*negonearray));
+  screenheightarray = Z_Calloc(1, SCREENWIDTH * sizeof(*screenheightarray));
 
-  if (clipbot) free(clipbot);
+  if (clipbot) Z_Free(clipbot);
 
-  clipbot = calloc(1, 2 * SCREENWIDTH * sizeof(*clipbot));
+  clipbot = Z_Calloc(1, 2 * SCREENWIDTH * sizeof(*clipbot));
   cliptop = clipbot + SCREENWIDTH;
+}
+
+void R_UpdateVisSpriteTranMap(vissprite_t *vis, mobj_t *thing)
+{
+  if (thing && thing->tranmap)
+    vis->tranmap = thing->tranmap;
+  else if (vis->mobjflags & g_mf_translucent)
+    vis->tranmap = main_tranmap;
+  else
+    vis->tranmap = NULL;
 }
 
 //
@@ -235,18 +242,12 @@ static void R_InitSpriteDefs(const char * const * namelist)
   if (!numentries || !*namelist)
     return;
 
-  // count the number of sprite names
-  for (i=0; namelist[i]; i++)
-    ;
-
-  numsprites = i;
-
-  sprites = Z_Calloc(numsprites, sizeof(*sprites), PU_STATIC, NULL);
+  sprites = Z_Calloc(num_sprites, sizeof(*sprites));
 
   // Create hash table based on just the first four letters of each sprite
   // killough 1/31/98
 
-  hash = malloc(sizeof(*hash)*numentries); // allocate hash table
+  hash = Z_Malloc(sizeof(*hash)*numentries); // allocate hash table
 
   for (i=0; (size_t)i<numentries; i++)             // initialize hash table as empty
     hash[i].index = -1;
@@ -261,13 +262,18 @@ static void R_InitSpriteDefs(const char * const * namelist)
   // scan all the lump names for each of the names,
   //  noting the highest frame letter.
 
-  for (i=0 ; i<numsprites ; i++)
+  for (i=0 ; i<num_sprites ; i++)
     {
       int k;
       int rot;
-      const char *spritename = namelist[i];
-      int j = hash[R_SpriteNameHash(spritename) % numentries].index;
+      const char *spritename;
+      int j;
 
+      spritename = namelist[i];
+      if (!spritename)
+        continue;
+
+      j = hash[R_SpriteNameHash(spritename) % numentries].index;
       if (j >= 0)
         {
           memset(sprtemp, -1, sizeof(sprtemp));
@@ -374,13 +380,13 @@ static void R_InitSpriteDefs(const char * const * namelist)
 
               // allocate space for the frames present and copy sprtemp to it
               sprites[i].spriteframes =
-                Z_Malloc (maxframe * sizeof(spriteframe_t), PU_STATIC, NULL);
+                Z_Malloc (maxframe * sizeof(spriteframe_t));
               memcpy (sprites[i].spriteframes, sprtemp,
                       maxframe*sizeof(spriteframe_t));
             }
         }
     }
-  free(hash);             // free hash table
+  Z_Free(hash);             // free hash table
 }
 
 //
@@ -424,8 +430,8 @@ static vissprite_t *R_NewVisSprite(void)
       size_t num_vissprite_alloc_prev = num_vissprite_alloc;
 
       num_vissprite_alloc = num_vissprite_alloc ? num_vissprite_alloc*2 : 128;
-      vissprites = realloc(vissprites,num_vissprite_alloc*sizeof(*vissprites));
-      
+      vissprites = Z_Realloc(vissprites,num_vissprite_alloc*sizeof(*vissprites));
+
       //e6y: set all fields to zero
       memset(vissprites + num_vissprite_alloc_prev, 0,
         (num_vissprite_alloc - num_vissprite_alloc_prev)*sizeof(*vissprites));
@@ -443,7 +449,8 @@ static vissprite_t *R_NewVisSprite(void)
 int   *mfloorclip;   // dropoff overflow
 int   *mceilingclip; // dropoff overflow
 fixed_t spryscale;
-int_64_t sprtopscreen; // R_WiggleFix
+int64_t sprtopscreen; // R_WiggleFix
+int colheight; // Scaled software fuzz
 
 void R_DrawMaskedColumn(
   const rpatch_t *patch,
@@ -455,9 +462,11 @@ void R_DrawMaskedColumn(
 )
 {
   int     i;
-  int_64_t     topscreen; // R_WiggleFix
-  int_64_t     bottomscreen; // R_WiggleFix
+  int64_t     topscreen; // R_WiggleFix
+  int64_t     bottomscreen; // R_WiggleFix
   fixed_t basetexturemid = dcvars->texturemid;
+  
+  colheight = 0;
 
   dcvars->texheight = patch->height; // killough 11/98
   for (i=0; i<column->numPosts; i++) {
@@ -476,6 +485,9 @@ void R_DrawMaskedColumn(
       if (dcvars->yl <= mceilingclip[dcvars->x])
         dcvars->yl = mceilingclip[dcvars->x]+1;
 
+      if (dcvars->yh >= dcvars->baseclip && dcvars->baseclip != -1)
+        dcvars->yh = dcvars->baseclip;
+
       // killough 3/2/98, 3/27/98: Failsafe against overflow/crash:
       if (dcvars->yl >= 0 && dcvars->yl <= dcvars->yh && dcvars->yh < viewheight)
         {
@@ -484,6 +496,7 @@ void R_DrawMaskedColumn(
           dcvars->nextsource = nextcolumn->pixels + post->topdelta;
 
           dcvars->texturemid = basetexturemid - (post->topdelta<<FRACBITS);
+          dcvars->pspritepostheight = dcvars->isplayersprite ? post->length : 0;
 
           dcvars->edgeslope = post->slope;
           // Drawn by either R_DrawColumn
@@ -491,6 +504,8 @@ void R_DrawMaskedColumn(
           dcvars->drawingmasked = 1; // POPE
           colfunc (dcvars);
           dcvars->drawingmasked = 0; // POPE
+
+          colheight += dcvars->yh - dcvars->yl + 1;
         }
     }
   dcvars->texturemid = basetexturemid;
@@ -512,60 +527,78 @@ static void R_DrawVisSprite(vissprite_t *vis)
 {
   int      texturecolumn;
   fixed_t  frac;
-  const rpatch_t *patch = R_CachePatchNum(vis->patch+firstspritelump);
+  const rpatch_t *patch = R_PatchByNum(vis->patch+firstspritelump);
   R_DrawColumn_f colfunc;
   draw_column_vars_t dcvars;
-  enum draw_filter_type_e filter;
-  enum draw_filter_type_e filterz;
 
   R_SetDefaultDrawColumnVars(&dcvars);
-  if (vis->mobjflags & MF_PLAYERSPRITE) {
-    dcvars.edgetype = drawvars.patch_edges;
-    filter = drawvars.filterpatch;
-    filterz = RDRAW_FILTER_POINT;
-  } else {
-    dcvars.edgetype = drawvars.sprite_edges;
-    filter = drawvars.filtersprite;
-    filterz = drawvars.filterz;
-  }
 
   dcvars.colormap = vis->colormap;
-  dcvars.nextcolormap = dcvars.colormap; // for filtering -- POPE
+
+  if (vis->mobjflags & MF_PLAYERSPRITE)
+    dcvars.isplayersprite = true;
+
+  // hexen_note: colfunc: No idea how to merge this right now...
+  // if (vis->mobjflags & (MF_SHADOW | MF_ALTSHADOW))
+  // {
+  //     if (vis->mobjflags & MF_TRANSLATION)
+  //     {
+  //         colfunc = R_DrawTranslatedTLColumn;
+  //         dc_translation = translationtables - 256
+  //             + (vis->pclass - 1) * ((g_maxplayers - 1) * 256) +
+  //             ((vis->mobjflags & MF_TRANSLATION) >> (MF_TRANSSHIFT - 8));
+  //     }
+  //     else if (vis->mobjflags & MF_SHADOW)
+  //     {                       // Draw using shadow column function
+  //         colfunc = tlcolfunc;
+  //     }
+  //     else
+  //     {
+  //         colfunc = R_DrawAltTLColumn;
+  //     }
+  // }
+  // else if (vis->mobjflags & MF_TRANSLATION)
+  // {
+  //     // Draw using translated column function
+  //     colfunc = R_DrawTranslatedColumn;
+  //     dc_translation = translationtables - 256
+  //         + (vis->pclass - 1) * ((g_maxplayers - 1) * 256) +
+  //         ((vis->mobjflags & MF_TRANSLATION) >> (MF_TRANSSHIFT - 8));
+  // }
 
   // killough 4/11/98: rearrange and handle translucent sprites
   // mixed with translucent/non-translucenct 2s normals
 
   if (!dcvars.colormap)   // NULL colormap = shadow draw
-    colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_FUZZ, filter, filterz);    // killough 3/14/98
+  {
+    R_ResetFuzzCol(colheight); // Reset fuzz column for new sprite
+    colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_FUZZ, RDRAW_FILTER_POINT);    // killough 3/14/98
+  }
+  else if (vis->color)
+  {
+    colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_TRANSLATED, RDRAW_FILTER_POINT);
+    dcvars.translation = colrngs[vis->color];
+  }
+  else if (vis->mobjflags & MF_TRANSLATION)
+  {
+    colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_TRANSLATED, RDRAW_FILTER_POINT);
+    dcvars.translation = translationtables - 256 +
+      ((vis->mobjflags & MF_TRANSLATION) >> (MF_TRANSSHIFT-8) );
+  }
+  else if (vis->tranmap) // phares
+  {
+    colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_TRANSLUCENT, RDRAW_FILTER_POINT);
+    tranmap = vis->tranmap;
+  }
   else
-    // [FG] colored blood and gibs
-    if (vis->mobjflags & MF_COLOREDBLOOD)
-      {
-        colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_TRANSLATED, filter, filterz);
-        dcvars.translation = colrngs[vis->color];
-      }
-  else
-    if (vis->mobjflags & MF_TRANSLATION)
-      {
-        colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_TRANSLATED, filter, filterz);
-        dcvars.translation = translationtables - 256 +
-          ((vis->mobjflags & MF_TRANSLATION) >> (MF_TRANSSHIFT-8) );
-      }
-    else
-      if (vis->mobjflags & MF_TRANSLUCENT && general_translucency) // phares
-        {
-          colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_TRANSLUCENT, filter, filterz);
-          tranmap = main_tranmap;       // killough 4/11/98
-        }
-      else
-        colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_STANDARD, filter, filterz); // killough 3/14/98, 4/11/98
+  {
+    colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_STANDARD, RDRAW_FILTER_POINT); // killough 3/14/98, 4/11/98
+  }
 
 // proff 11/06/98: Changed for high-res
   dcvars.iscale = FixedDiv (FRACUNIT, vis->scale);
   dcvars.texturemid = vis->texturemid;
   frac = vis->startfrac;
-  if (filter == RDRAW_FILTER_LINEAR)
-    frac -= (FRACUNIT>>1);
   spryscale = vis->scale;
   sprtopscreen = centeryfrac - FixedMul(dcvars.texturemid,spryscale);
 
@@ -578,10 +611,17 @@ static void R_DrawVisSprite(vissprite_t *vis)
     sprtopscreen += (viewheight/2 - centery)<<FRACBITS;
   }
 
+  if (vis->floorclip && !(vis->mobjflags & MF_PLAYERSPRITE))
+  {
+    fixed_t sprbotscreen = sprtopscreen + FixedMul(LittleShort(patch->height) << FRACBITS, spryscale);
+    dcvars.baseclip = (sprbotscreen - FixedMul(vis->floorclip, spryscale)) >> FRACBITS;
+  }
+
   for (dcvars.x=vis->x1 ; dcvars.x<=vis->x2 ; dcvars.x++, frac += vis->xiscale)
     {
       texturecolumn = frac>>FRACBITS;
-      dcvars.texu = frac;
+
+      if (!dcvars.colormap) R_CheckFuzzCol(dcvars.x, colheight);
 
       R_DrawMaskedColumn(
         patch,
@@ -592,20 +632,29 @@ static void R_DrawVisSprite(vissprite_t *vis)
         R_GetPatchColumnClamped(patch, texturecolumn+1)
       );
     }
-  R_UnlockPatchNum(vis->patch+firstspritelump); // cph - release lump
 }
 
 int r_near_clip_plane = MINZ;
 
 void R_SetClipPlanes(void)
 {
-  r_near_clip_plane = MINZ;
+  // thing is behind view plane?
+  if ((V_IsOpenGLMode()) && (HaveMouseLook() || (gl_render_fov > FOV90)))
+  {
+    r_near_clip_plane = -(FRACUNIT * 80);
+  }
+  else
+  {
+    r_near_clip_plane = MINZ;
+  }
 }
 
 //
 // R_ProjectSprite
 // Generates a vissprite for a thing if it might be visible.
 //
+
+dboolean LevelUseFullBright = true;
 
 static void R_ProjectSprite (mobj_t* thing, int lightlevel)
 {
@@ -630,15 +679,18 @@ static void R_ProjectSprite (mobj_t* thing, int lightlevel)
   fixed_t tz, tz2;
   int width;
 
-#ifdef GL_DOOM
-  if (V_GetMode() == VID_MODEGL)
+  if (thing->flags2 & MF2_DONTDRAW)
+  {
+    return;
+  }
+
+  if (V_IsOpenGLMode())
   {
     gld_ProjectSprite(thing, lightlevel);
     return;
   }
-#endif
 
-  if (!paused && movement_smooth)
+  if (R_ViewInterpolation())
   {
     fx = thing->PrevX + FixedMul (tic_vars.frac, thing->x - thing->PrevX);
     fy = thing->PrevY + FixedMul (tic_vars.frac, thing->y - thing->PrevY);
@@ -670,12 +722,12 @@ static void R_ProjectSprite (mobj_t* thing, int lightlevel)
   tx = -(gyt+gxt);
 
   // too far off the side?
-  if (D_abs(tx)>(tz<<2))
+  if (D_abs(tx) > ((int64_t) tz << 2))
     return;
 
     // decide which patch to use for sprite relative to player
 #ifdef RANGECHECK
-  if ((unsigned) thing->sprite >= (unsigned)numsprites)
+  if ((unsigned) thing->sprite >= (unsigned)num_sprites)
     I_Error ("R_ProjectSprite: Invalid sprite number %i", thing->sprite);
 #endif
 
@@ -718,7 +770,7 @@ static void R_ProjectSprite (mobj_t* thing, int lightlevel)
     }
 
   {
-    const rpatch_t* patch = R_CachePatchNum(lump+firstspritelump);
+    const rpatch_t* patch = R_PatchByNum(lump+firstspritelump);
     thing->patch_width = patch->width;
 
     /* calculate edges of the shape
@@ -737,7 +789,6 @@ static void R_ProjectSprite (mobj_t* thing, int lightlevel)
     gzt = fz + (patch->topoffset << FRACBITS);
     gzb = gzt - (patch->height << FRACBITS);
     width = patch->width;
-    R_UnlockPatchNum(lump+firstspritelump);
   }
 
   // off the side?
@@ -793,11 +844,47 @@ static void R_ProjectSprite (mobj_t* thing, int lightlevel)
 // proff 11/06/98: Changed for high-res
   vis->scale = FixedDiv(projectiony, tz);
   vis->gzt = gzt;                          // killough 3/27/98
-  vis->texturemid = vis->gzt - viewz;
+
+  if (heretic)
+  {
+    if (thing->flags2 & MF2_FEETARECLIPPED
+        && vis->gz <= thing->subsector->sector->floorheight)
+    {
+      vis->floorclip = 10 << FRACBITS;
+    }
+    else
+      vis->floorclip = 0;
+  }
+  else if (hexen)
+  {
+    if (thing->flags & MF_TRANSLATION)
+    {
+      if (thing->player)
+      {
+        vis->pclass = thing->player->pclass;
+      }
+      else
+      {
+        vis->pclass = thing->special1.i;
+      }
+      if (vis->pclass > 3)
+      {
+        vis->pclass = 1;
+      }
+    }
+    // foot clipping
+    vis->floorclip = thing->floorclip;
+  }
+  else
+  {
+    vis->floorclip = 0;
+  }
+
+  vis->texturemid = vis->gzt - viewz - vis->floorclip;
   vis->x1 = x1 < 0 ? 0 : x1;
   vis->x2 = x2 >= viewwidth ? viewwidth-1 : x2;
   iscale = FixedDiv (FRACUNIT, xscale);
-  vis->color = thing->bloodcolor;
+  vis->color = thing->color;
 
   if (flip)
     {
@@ -817,19 +904,21 @@ static void R_ProjectSprite (mobj_t* thing, int lightlevel)
   R_SetSpritelights(lightlevel);
 
   // get light level
-  if (thing->flags & MF_SHADOW)
+  if (thing->flags & g_mf_shadow)
       vis->colormap = NULL;             // shadow draw
   else if (fixedcolormap)
     vis->colormap = fixedcolormap;      // fixed map
-  else if (thing->frame & FF_FULLBRIGHT)
+  else if (LevelUseFullBright && thing->frame & FF_FULLBRIGHT)
     vis->colormap = fullcolormap;     // full bright  // killough 3/20/98
   else
     {      // diminished light
-      int index = (int)(((int_64_t)xscale * 160 / wide_centerx) >> LIGHTSCALESHIFT);
+      int index = (int)(((int64_t)xscale * 160 / wide_centerx) >> LIGHTSCALESHIFT);
       if (index >= MAXLIGHTSCALE)
         index = MAXLIGHTSCALE - 1;
       vis->colormap = spritelights[index];
     }
+
+  R_UpdateVisSpriteTranMap(vis, thing);
 }
 
 //
@@ -847,10 +936,9 @@ void R_AddSprites(subsector_t* subsec, int lightlevel)
 
   // Handle all things in sector.
 
-#ifdef GL_DOOM
-  if (show_alive)
+  if (dsda_ShowAliveMonsters() && V_IsOpenGLMode())
   {
-    if (show_alive == 1)
+    if (dsda_ShowAliveMonsters() == 1)
     {
       for (thing = sec->thinglist; thing; thing = thing->snext)
       {
@@ -860,7 +948,6 @@ void R_AddSprites(subsector_t* subsec, int lightlevel)
     }
   }
   else
-#endif
   {
     for (thing = sec->thinglist; thing; thing = thing->snext)
     {
@@ -898,6 +985,7 @@ void R_AddAllAliveMonstersSprites(void)
 static void R_ApplyWeaponBob (fixed_t *sx, dboolean bobx, fixed_t *sy, dboolean boby)
 {
 	const angle_t angle = (128 * leveltime) & FINEMASK;
+	fixed_t bob = viewplayer->bob * dsda_WeaponBob() / 4;
 
 	if (sx)
 	{
@@ -905,7 +993,7 @@ static void R_ApplyWeaponBob (fixed_t *sx, dboolean bobx, fixed_t *sy, dboolean 
 
 		if (bobx)
 		{
-			 *sx += FixedMul(viewplayer->bob, finecosine[angle]);
+			 *sx += FixedMul(bob, finecosine[angle]);
 		}
 	}
 
@@ -915,7 +1003,7 @@ static void R_ApplyWeaponBob (fixed_t *sx, dboolean bobx, fixed_t *sy, dboolean 
 
 		if (boby)
 		{
-			*sy += FixedMul(viewplayer->bob, finesine[angle & (FINEANGLES / 2 - 1)]);
+			*sy += FixedMul(bob, finesine[angle & (FINEANGLES / 2 - 1)]);
 		}
 	}
 }
@@ -924,9 +1012,29 @@ static void R_ApplyWeaponBob (fixed_t *sx, dboolean bobx, fixed_t *sy, dboolean 
 // R_DrawPSprite
 //
 
+// heretic
+static int PSpriteSY[NUMCLASSES][NUMWEAPONS] = {
+  {
+    0,                          // staff
+    5 * FRACUNIT,               // goldwand
+    15 * FRACUNIT,              // crossbow
+    15 * FRACUNIT,              // blaster
+    15 * FRACUNIT,              // skullrod
+    15 * FRACUNIT,              // phoenix rod
+    15 * FRACUNIT,              // mace
+    15 * FRACUNIT,              // gauntlets
+    15 * FRACUNIT               // beak
+  },
+  {0, -12 * FRACUNIT, -10 * FRACUNIT, 10 * FRACUNIT}, // Fighter
+  {-8 * FRACUNIT, 10 * FRACUNIT, 10 * FRACUNIT, 0}, // Cleric
+  {9 * FRACUNIT, 20 * FRACUNIT, 20 * FRACUNIT, 20 * FRACUNIT}, // Mage
+  {10 * FRACUNIT, 10 * FRACUNIT, 10 * FRACUNIT, 10 * FRACUNIT} // Pig
+};
+
 static void R_DrawPSprite (pspdef_t *psp)
 {
   int           x1, x2;
+  int           gx1;
   spritedef_t   *sprdef;
   spriteframe_t *sprframe;
   int           lump;
@@ -941,7 +1049,7 @@ static void R_DrawPSprite (pspdef_t *psp)
   // decide which patch to use
 
 #ifdef RANGECHECK
-  if ( (unsigned)psp->state->sprite >= (unsigned)numsprites)
+  if ( (unsigned)psp->state->sprite >= (unsigned)num_sprites)
     I_Error ("R_ProjectSprite: Invalid sprite number %i", psp->state->sprite);
 #endif
 
@@ -958,24 +1066,56 @@ static void R_DrawPSprite (pspdef_t *psp)
   lump = sprframe->lump[0];
   flip = (dboolean)(sprframe->flip & 1);
 
-  // [crispy] center the weapon sprite horizontally and vertically
-  if (weapon_attack_alignment && viewplayer->attackdown && !psp->state->misc1)
   {
-      const weaponinfo_t *const winfo = &weaponinfo[viewplayer->readyweapon];
-      const int state = viewplayer->psprites[ps_weapon].state - states;
+    int weapon_attack_alignment = dsda_IntConfig(dsda_config_weapon_attack_alignment);
 
+    // [crispy] don't align swiping weapons
+    const dboolean swiping_weapon = hexen && (viewplayer->pclass == PCLASS_FIGHTER ||
+                                             (viewplayer->pclass == PCLASS_CLERIC &&
+                                             viewplayer->readyweapon == wp_first));
+
+    if (!dsda_WeaponBob() && !(swiping_weapon && viewplayer->attackdown))
+    {
+      static fixed_t last_sy = 32 * FRACUNIT;
+
+      psp_sx = FRACUNIT;
+
+      if (psp->state->action != A_Lower && psp->state->action != A_Raise)
+      {
+        last_sy = psp->sy;
+        psp_sy = 32 * FRACUNIT;
+      }
+      else if (psp->state->action == A_Lower)
+      {
+        // We want to move smoothly from where we were
+        psp_sy -= (last_sy - 32 * FRACUNIT);
+      }
+    }
+    else if (weapon_attack_alignment && viewplayer->attackdown && !psp->state->misc1)
+    { // [crispy] center the weapon sprite horizontally and vertically
       R_ApplyWeaponBob(&psp_sx, weapon_attack_alignment == CENTERWEAPON_BOB, NULL, false);
 
       // [crispy] don't center vertically during lowering and raising states
       if (weapon_attack_alignment >= CENTERWEAPON_HORVER &&
-          state != winfo->downstate && state != winfo->upstate)
+          psp->state->action != A_Lower && psp->state->action != A_Raise && !swiping_weapon)
       {
           R_ApplyWeaponBob(NULL, false, &psp_sy, weapon_attack_alignment == CENTERWEAPON_BOB);
       }
+    }
+    else if (psp->state->action == A_WeaponReady && psp->state->tics > 1 && movement_smooth)
+    {
+      // Interpolate bobbing for animated weapons (Chainsaw)
+      R_ApplyWeaponBob(&psp_sx, true, &psp_sy, true);
+    }
+    else if (psp->state->action == A_WeaponReady && dsda_WeaponBob() < 4)
+    {
+      // Always apply Weaponbob when using bobbing increments
+      R_ApplyWeaponBob(&psp_sx, true, &psp_sy, true);
+    }
   }
 
   {
-    const rpatch_t* patch = R_CachePatchNum(lump+firstspritelump);
+    const rpatch_t* patch = R_PatchByNum(lump+firstspritelump);
     // calculate edges of the shape
     fixed_t       tx;
     tx = psp_sx-160*FRACUNIT;
@@ -983,12 +1123,14 @@ static void R_DrawPSprite (pspdef_t *psp)
     tx -= patch->leftoffset<<FRACBITS;
     x1 = (centerxfrac + FixedMul (tx,pspritexscale))>>FRACBITS;
 
+    // [AR] opengl weapon alignment
+    gx1 = x1;
+
     tx += patch->width<<FRACBITS;
     x2 = ((centerxfrac + FixedMul (tx, pspritexscale) ) >>FRACBITS) - 1;
 
     width = patch->width;
     topoffset = patch->topoffset<<FRACBITS;
-    R_UnlockPatchNum(lump+firstspritelump);
   }
 
   // off the side
@@ -998,17 +1140,29 @@ static void R_DrawPSprite (pspdef_t *psp)
   // store information in a vissprite
   vis = &avis;
   vis->mobjflags = MF_PLAYERSPRITE;
+  vis->pclass = 0;
+  vis->floorclip = 0;
    // killough 12/98: fix psprite positioning problem
   vis->texturemid = (BASEYCENTER<<FRACBITS) /* +  FRACUNIT/2 */ -
                     (psp_sy-topoffset);
+
+  if (R_FullView() && raven)
+  {
+    vis->texturemid -= PSpriteSY[viewplayer->pclass][players[consoleplayer].readyweapon];
+  }
 
   // Move the weapon down for 1280x1024.
   vis->texturemid -= psprite_offset;
 
   vis->x1 = x1 < 0 ? 0 : x1;
   vis->x2 = x2 >= viewwidth ? viewwidth-1 : x2;
+
+  // [AR] opengl weapon alignment
+  vis->gx1 = gx1;
+
 // proff 11/06/98: Added for high-res
   vis->scale = pspriteyscale;
+  vis->color = 0;
 
   if (flip)
     {
@@ -1028,7 +1182,36 @@ static void R_DrawPSprite (pspdef_t *psp)
 
   if (viewplayer->powers[pw_invisibility] > 4*32
       || viewplayer->powers[pw_invisibility] & 8)
-    vis->colormap = NULL;                    // shadow draw
+  {
+    if (heretic)
+    {
+      vis->mobjflags |= MF_SHADOW;
+      vis->colormap = spritelights[MAXLIGHTSCALE-1];
+    }
+    else
+    {
+      vis->colormap = NULL;                    // shadow draw
+    }
+  }
+  else if (viewplayer->powers[pw_invulnerability] && viewplayer->pclass == PCLASS_CLERIC)
+  {
+    vis->colormap = spritelights[MAXLIGHTSCALE - 1];
+    if (viewplayer->powers[pw_invulnerability] > 4 * 32)
+    {
+      if (viewplayer->mo->flags2 & MF2_DONTDRAW)
+      {                   // don't draw the psprite
+        vis->mobjflags |= MF_SHADOW;
+      }
+      else if (viewplayer->mo->flags & MF_SHADOW)
+      {
+        vis->mobjflags |= MF_ALTSHADOW;
+      }
+    }
+    else if (viewplayer->powers[pw_invulnerability] & 8)
+    {
+      vis->mobjflags |= MF_SHADOW;
+    }
+  }
   else if (fixedcolormap)
     vis->colormap = fixedcolormap;           // fixed color
   else if (psp->state->frame & FF_FULLBRIGHT)
@@ -1037,6 +1220,8 @@ static void R_DrawPSprite (pspdef_t *psp)
     // e6y: original code is restored
     vis->colormap = spritelights[MAXLIGHTSCALE-1];  // local light
 
+  R_UpdateVisSpriteTranMap(vis, NULL);
+
   //e6y: interpolation for weapon bobbing
   if (movement_smooth)
   {
@@ -1044,6 +1229,8 @@ static void R_DrawPSprite (pspdef_t *psp)
     {
       int x1;
       int x1_prev;
+      int gx1;
+      int gx1_prev;
       int texturemid;
       int texturemid_prev;
       int lump;
@@ -1054,33 +1241,43 @@ static void R_DrawPSprite (pspdef_t *psp)
     if (realframe)
     {
       psp_inter.x1 = psp_inter.x1_prev;
+      psp_inter.gx1 = psp_inter.gx1_prev;
       psp_inter.texturemid = psp_inter.texturemid_prev;
     }
 
     psp_inter.x1_prev = vis->x1;
+    psp_inter.gx1_prev = vis->gx1;
     psp_inter.texturemid_prev = vis->texturemid;
 
-    if (lump == psp_inter.lump)
+    // Do not interpolate on the first tic of the level
+    if (leveltime > 1)
     {
-      int deltax = vis->x2 - vis->x1;
-      vis->x1 = psp_inter.x1 + FixedMul (tic_vars.frac, (vis->x1 - psp_inter.x1));
-      vis->x2 = vis->x1 + deltax;
-      vis->texturemid = psp_inter.texturemid + FixedMul (tic_vars.frac, (vis->texturemid - psp_inter.texturemid));
-    }
-    else
-    {
-      psp_inter.x1 = vis->x1;
-      psp_inter.texturemid = vis->texturemid;
-      psp_inter.lump=lump;
+      if (lump == psp_inter.lump)
+      {
+        int deltax = vis->x2 - vis->x1;
+        vis->x1 = psp_inter.x1 + FixedMul (tic_vars.frac, (vis->x1 - psp_inter.x1));
+        vis->gx1 = psp_inter.gx1 + FixedMul(tic_vars.frac, (vis->gx1 - psp_inter.gx1));
+        vis->x2 = vis->x1 + deltax;
+        vis->texturemid = psp_inter.texturemid + FixedMul (tic_vars.frac, (vis->texturemid - psp_inter.texturemid));
+      }
+      else
+      {
+        psp_inter.x1 = vis->x1;
+        psp_inter.gx1 = vis->gx1;
+        psp_inter.texturemid = vis->texturemid;
+        psp_inter.lump=lump;
+      }
     }
   }
 
+  if (dsda_HideWeapon())
+    return;
+
   // proff 11/99: don't use software stuff in OpenGL
-  if (V_GetMode() != VID_MODEGL)
+  if (V_IsSoftwareMode())
   {
     R_DrawVisSprite(vis);
   }
-#ifdef GL_DOOM
   else
   {
     int lightlevel;
@@ -1095,7 +1292,6 @@ static void R_DrawPSprite (pspdef_t *psp)
       R_FakeFlat( viewplayer->mo->subsector->sector, &tmpsec,
                   &floorlightlevel, &ceilinglightlevel, false);
       lightlevel = ((floorlightlevel+ceilinglightlevel) >> 1) + (extralight << LIGHTSEGSHIFT);
-      lightlevel += usegamma * 16;
 
       if (lightlevel < 0)
         lightlevel = 0;
@@ -1104,7 +1300,6 @@ static void R_DrawPSprite (pspdef_t *psp)
     }
     gld_DrawWeapon(lump,vis,lightlevel);
   }
-#endif
 }
 
 //
@@ -1201,21 +1396,13 @@ void R_SortVisSprites (void)
 
       if (num_vissprite_ptrs < num_vissprite*2)
         {
-          free(vissprite_ptrs);  // better than realloc -- no preserving needed
-          vissprite_ptrs = malloc((num_vissprite_ptrs = num_vissprite_alloc*2)
+          Z_Free(vissprite_ptrs);  // better than realloc -- no preserving needed
+          vissprite_ptrs = Z_Malloc((num_vissprite_ptrs = num_vissprite_alloc*2)
                                   * sizeof *vissprite_ptrs);
         }
 
-      if (sprites_doom_order)
-      {
-        while (--i>=0)
-          vissprite_ptrs[num_vissprite-i-1] = vissprites+i;
-      }
-      else
-      {
-        while (--i>=0)
-          vissprite_ptrs[i] = vissprites+i;
-      }
+      while (--i>=0)
+        vissprite_ptrs[num_vissprite-i-1] = vissprites+i;
 
       // killough 9/22/98: replace qsort with merge sort, since the keys
       // are roughly in order to begin with, due to BSP rendering.
@@ -1388,7 +1575,7 @@ void R_DrawMasked(void)
       drawsegs_xrange_size = 2 * maxdrawsegs;
       for(i = 0; i < DS_RANGES_COUNT; i++)
       {
-        drawsegs_xranges[i].items = realloc(
+        drawsegs_xranges[i].items = Z_Realloc(
           drawsegs_xranges[i].items,
           drawsegs_xrange_size * sizeof(drawsegs_xranges[i].items[0]));
       }
@@ -1400,17 +1587,17 @@ void R_DrawMasked(void)
         drawsegs_xranges[0].items[drawsegs_xranges[0].count].x1 = ds->x1;
         drawsegs_xranges[0].items[drawsegs_xranges[0].count].x2 = ds->x2;
         drawsegs_xranges[0].items[drawsegs_xranges[0].count].user = ds;
-        
+
         // e6y: ~13% of speed improvement on sunder.wad map10
         if (ds->x1 < cx)
         {
-          drawsegs_xranges[1].items[drawsegs_xranges[1].count] = 
+          drawsegs_xranges[1].items[drawsegs_xranges[1].count] =
             drawsegs_xranges[0].items[drawsegs_xranges[0].count];
           drawsegs_xranges[1].count++;
         }
         if (ds->x2 >= cx)
         {
-          drawsegs_xranges[2].items[drawsegs_xranges[2].count] = 
+          drawsegs_xranges[2].items[drawsegs_xranges[2].count] =
             drawsegs_xranges[0].items[drawsegs_xranges[0].count];
           drawsegs_xranges[2].count++;
         }
@@ -1422,7 +1609,8 @@ void R_DrawMasked(void)
 
   // draw all vissprites back to front
 
-  rendered_vissprites = num_vissprite;
+  dsda_RecordVisSprites(num_vissprite);
+
   for (i = num_vissprite ;--i>=0; )
   {
     vissprite_t* spr = vissprite_ptrs[i];
@@ -1459,7 +1647,5 @@ void R_DrawMasked(void)
       R_RenderMaskedSegRange(ds, ds->x1, ds->x2);
 
   // draw the psprites on top of everything
-  //  but does not draw on side views
-  if (!viewangleoffset && !viewpitchoffset)
-    R_DrawPlayerSprites ();
+  R_DrawPlayerSprites ();
 }

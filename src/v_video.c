@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -39,18 +39,30 @@
 #include "config.h"
 #endif
 
+#include <assert.h>
+#include "SDL.h"
+
 #include "doomdef.h"
 #include "doomstat.h"
 #include "r_main.h"
 #include "r_draw.h"
+#include "r_patch.h"
 #include "m_bbox.h"
 #include "w_wad.h"   /* needed for color translation lump lookup */
 #include "v_video.h"
 #include "i_video.h"
-#include "r_filter.h"
 #include "lprintf.h"
 #include "st_stuff.h"
 #include "e6y.h"
+
+#include "dsda/configuration.h"
+#include "dsda/cr_table.h"
+#include "dsda/exhud.h"
+#include "dsda/global.h"
+#include "dsda/palette.h"
+#include "dsda/settings.h"
+#include "dsda/stretch.h"
+#include "dsda/text_color.h"
 
 // DWF 2012-05-10
 // SetRatio sets the following global variables based on window geometry and
@@ -61,22 +73,6 @@ unsigned int ratio_multiplier, ratio_scale;
 float gl_ratio;
 int psprite_offset; // Needed for "tallscreen" modes
 
-const char *render_aspects_list[5] = {"auto", "16:9", "16:10", "4:3", "5:4"};
-const char *render_stretch_list[patch_stretch_max] = {"not adjusted", "Doom format", "fit to width"};
-
-stretch_param_t stretch_params_table[3][VPT_ALIGN_MAX];
-stretch_param_t *stretch_params;
-
-cb_video_t video;
-cb_video_t video_stretch;
-cb_video_t video_full;
-int patches_scalex;
-int patches_scaley;
-
-int render_stretch_hud;
-int render_stretch_hud_default;
-int render_patches_scalex;
-int render_patches_scaley;
 
 // Each screen is [SCREENWIDTH*SCREENHEIGHT];
 screeninfo_t screens[NUM_SCREENS];
@@ -86,72 +82,18 @@ const byte *colrngs[CR_LIMIT];
 
 int usegamma;
 
-/*
- * V_InitColorTranslation
- *
- * Loads the color translation tables from predefined lumps at game start
- * No return
- *
- * Used for translating text colors from the red palette range
- * to other colors. The first nine entries can be used to dynamically
- * switch the output of text color thru the HUlib_drawText routine
- * by embedding ESCn in the text to obtain color n. Symbols for n are
- * provided in v_video.h.
- *
- * cphipps - constness of crdef_t stuff fixed
- */
-
-typedef struct {
-  const char *name;
-  const byte **map;
-} crdef_t;
-
-// killough 5/2/98: table-driven approach
-static const crdef_t crdefs[] = {
-  {"CRBRICK",  &colrngs[CR_BRICK ]},
-  {"CRTAN",    &colrngs[CR_TAN   ]},
-  {"CRGRAY",   &colrngs[CR_GRAY  ]},
-  {"CRGREEN",  &colrngs[CR_GREEN ]},
-  {"CRBROWN",  &colrngs[CR_BROWN ]},
-  {"CRGOLD",   &colrngs[CR_GOLD  ]},
-  {"CRRED",    &colrngs[CR_RED   ]},
-  {"CRBLUE",   &colrngs[CR_BLUE  ]},
-  {"CRORANGE", &colrngs[CR_ORANGE]},
-  {"CRYELLOW", &colrngs[CR_YELLOW]},
-  {"CRBLUE2",  &colrngs[CR_BLUE2]},
-  {"CRBLACK",  &colrngs[CR_BLACK]},
-  {"CRPURPLE", &colrngs[CR_PURPLE]},
-  {"CRWHITE",  &colrngs[CR_WHITE]},
-  {NULL}
-};
-
-// [FG] translate between blood color value as per EE spec
-//      and actual color translation table index
-
-static const int bloodcolor[] = {
-  CR_RED,    // 0 - Red (normal)
-  CR_GRAY,   // 1 - Grey
-  CR_GREEN,  // 2 - Green
-  CR_BLUE2,  // 3 - Blue
-  CR_YELLOW, // 4 - Yellow
-  CR_BLACK,  // 5 - Black
-  CR_PURPLE, // 6 - Purple
-  CR_WHITE,  // 7 - White
-  CR_ORANGE, // 8 - Orange
-};
-
 int V_BloodColor(int blood)
 {
-  if (blood < 0 || blood > 8)
-    blood = 0;
+  if (blood < 1 || blood > 8)
+    return 0;
 
-  return bloodcolor[blood];
+  return CR_BLOOD + blood - 1;
 }
 
 // haleyjd: DOSDoom-style single translucency lookup-up table
-// generation code. This code has a 32k (plus a bit more) 
+// generation code. This code has a 32k (plus a bit more)
 // footprint but allows a much wider range of translucency effects
-// than BOOM-style translucency. This will be used for particles, 
+// than BOOM-style translucency. This will be used for particles,
 // for variable mapthing trans levels, and for screen patches.
 
 // haleyjd: Updated 06/21/08 to use 32k lookup, mainly to fix
@@ -206,26 +148,17 @@ void V_InitFlexTranTable(void)
   }
 }
 
-// killough 5/2/98: tiny engine driven by table above
 void V_InitColorTranslation(void)
 {
-  register const crdef_t *p;
-  for (p=crdefs; p->name; p++)
-  {
-    *p->map = W_CacheLumpName(p->name);
-    if (p - crdefs == CR_DEFAULT)
-      continue;
-    if (gamemission == chex || gamemission == hacx)
-    {
-      byte *temp = malloc(256);
-      memcpy (temp, *p->map, 256);
-      if (gamemission == chex)
-        memcpy (temp+112, *p->map+176, 16); // green range
-      else if (gamemission == hacx)
-        memcpy (temp+192, *p->map+176, 16); // blue range
-      *p->map = temp;
-    }
-  }
+  int i;
+  byte* full_table;
+
+  full_table = dsda_GenerateCRTable();
+
+  for (i = 0; i < CR_LIMIT; ++i)
+    colrngs[i] = full_table + 256 * i;
+
+  dsda_LoadTextColor();
 }
 
 //
@@ -246,7 +179,6 @@ static void FUNC_V_CopyRect(int srcscrn, int destscrn,
 {
   byte *src;
   byte *dest;
-  int pixel_depth = V_GetPixelDepth();
 
   if (flags & VPT_STRETCH_MASK)
   {
@@ -254,7 +186,7 @@ static void FUNC_V_CopyRect(int srcscrn, int destscrn,
     int sx = x;
     int sy = y;
 
-    params = &stretch_params[flags & VPT_ALIGN_MASK];
+    params = dsda_StretchParams(flags);
 
     x  = params->video->x1lookup[x];
     y  = params->video->y1lookup[y];
@@ -291,14 +223,14 @@ static void FUNC_V_CopyRect(int srcscrn, int destscrn,
     return;
   }
 
-  src = screens[srcscrn].data + screens[srcscrn].byte_pitch * y + x * pixel_depth;
-  dest = screens[destscrn].data + screens[destscrn].byte_pitch * y + x * pixel_depth;
+  src = screens[srcscrn].data + screens[srcscrn].pitch * y + x;
+  dest = screens[destscrn].data + screens[destscrn].pitch * y + x;
 
   for ( ; height>0 ; height--)
     {
-      memcpy (dest, src, width * pixel_depth);
-      src += screens[srcscrn].byte_pitch;
-      dest += screens[destscrn].byte_pitch;
+      memcpy (dest, src, width);
+      src += screens[srcscrn].pitch;
+      dest += screens[destscrn].pitch;
     }
 }
 
@@ -332,28 +264,31 @@ static void FUNC_V_CopyRect(int srcscrn, int destscrn,
 
 static void FUNC_V_FillFlat(int lump, int scrn, int x, int y, int width, int height, enum patch_translation_e flags)
 {
-  /* erase the entire screen to a tiled background */
   const byte *data;
-  int sx, sy, w, h;
-  int i, j, pitch;
+  byte *dest;
+  int sx, sy;
+  int pitch, src_x_offset, src_y_offset;
+  float ratio_x, ratio_y;
+  stretch_param_t* stretch;
 
-  lump += firstflat;
+  stretch = dsda_StretchParams(flags);
+  pitch = screens[scrn].pitch;
+  data = W_LumpByNum(lump + firstflat);
 
-  // killough 4/17/98:
-  data = W_CacheLumpNum(lump);
+  ratio_x = stretch->video->width / 320.f;
+  ratio_y = stretch->video->height / 200.f;
 
-  if (V_GetMode() == VID_MODE15) {
-    pitch = screens[scrn].short_pitch;
-    FILL_FLAT(unsigned short, pitch, VID_PAL15);
-  } else if (V_GetMode() == VID_MODE16) {
-    pitch = screens[scrn].short_pitch;
-    FILL_FLAT(unsigned short, pitch, VID_PAL16);
-  } else if (V_GetMode() == VID_MODE32) {
-    pitch = screens[scrn].int_pitch;
-    FILL_FLAT(unsigned int, pitch, VID_PAL32);
+  for (sy = y; sy < y + height; ++sy)
+  {
+    src_y_offset = 64 * ((int) (sy / ratio_y) % 64);
+    dest = screens[scrn].data + pitch * sy + x;
+
+    for (sx = x; sx < x + width; ++sx)
+    {
+      src_x_offset = (int) ((sx - x) / ratio_x) % 64;
+      *dest++ = data[src_x_offset + src_y_offset];
+    }
   }
-
-  W_UnlockLumpNum(lump);
 }
 
 static void FUNC_V_FillPatch(int lump, int scrn, int x, int y, int width, int height, enum patch_translation_e flags)
@@ -380,7 +315,7 @@ static void FUNC_V_FillPatch(int lump, int scrn, int x, int y, int width, int he
  */
 static void FUNC_V_DrawBackground(const char* flatname, int scrn)
 {
-  V_FillFlatName(flatname, scrn, 0, 0, SCREENWIDTH, SCREENHEIGHT, VPT_NONE);
+  V_FillFlatName(flatname, scrn, 0, 0, SCREENWIDTH, SCREENHEIGHT, VPT_STRETCH);
 }
 
 //
@@ -400,9 +335,7 @@ void V_Init (void)
     screens[i].not_on_heap = false;
     screens[i].width = 0;
     screens[i].height = 0;
-    screens[i].byte_pitch = 0;
-    screens[i].short_pitch = 0;
-    screens[i].int_pitch = 0;
+    screens[i].pitch = 0;
   }
 }
 
@@ -419,17 +352,21 @@ void V_Init (void)
 //  means that their inner loops weren't so well optimised, so merging code may even speed them).
 //
 static void V_DrawMemPatch(int x, int y, int scrn, const rpatch_t *patch,
-        int cm, enum patch_translation_e flags)
+        dboolean center, int cm, enum patch_translation_e flags)
 {
   const byte *trans;
 
   stretch_param_t *params;
 
-  if (cm<CR_LIMIT)
-    trans=colrngs[cm];
+  if (cm == CR_DEFAULT)
+    trans = &colormaps[0][0];
+  else if (cm == CR_DARKEN)
+    trans = &colormaps[0][256 * 15];
+  else if (cm < CR_LIMIT)
+    trans = colrngs[cm];
   else
-    trans=translationtables + 256*((cm-CR_LIMIT)-1);
-  
+    trans = translationtables + 256*((cm - CR_LIMIT) - 1);
+
   if (!(flags & VPT_NOOFFSET))
   {
     y -= patch->topoffset;
@@ -440,61 +377,130 @@ static void V_DrawMemPatch(int x, int y, int scrn, const rpatch_t *patch,
   if ((flags & VPT_STRETCH_MASK) && SCREEN_320x200)
     flags &= ~VPT_STRETCH_MASK;
 
-  // e6y: wide-res
-  params = &stretch_params[flags & VPT_ALIGN_MASK];
+  params = dsda_StretchParams(flags);
 
   // CPhipps - null translation pointer => no translation
   if (!trans)
     flags &= ~VPT_TRANS;
 
   // [FG] automatically center wide patches without horizontal offset
-  if (patch->width > 320 && patch->leftoffset == 0)
-    x -= (patch->width - 320) / 2;
-
-  // CPhipps - move stretched patch drawing code here
-  //         - reformat initialisers, move variables into inner blocks
-
-  int   col;
-  int   w = (patch->width << 16) - 1; // CPhipps - -1 for faster flipping
-  int   left, right, top, bottom;
-  int   DXI, DYI;
-  R_DrawColumn_f colfunc;
-  draw_column_vars_t dcvars;
-  draw_vars_t olddrawvars = drawvars;
-
-  R_SetDefaultDrawColumnVars(&dcvars);
-
-  drawvars.byte_topleft = screens[scrn].data;
-  drawvars.short_topleft = (unsigned short *)screens[scrn].data;
-  drawvars.int_topleft = (unsigned int *)screens[scrn].data;
-  drawvars.byte_pitch = screens[scrn].byte_pitch;
-  drawvars.short_pitch = screens[scrn].short_pitch;
-  drawvars.int_pitch = screens[scrn].int_pitch;
-
-  if (flags & VPT_TRANS) {
-    colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_TRANSLATED, drawvars.filterpatch, RDRAW_FILTER_NONE);
-    dcvars.translation = trans;
-  } else {
-    colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_STANDARD, drawvars.filterpatch, RDRAW_FILTER_NONE);
+  if (center)
+  {
+    if (patch->width > 320 && patch->leftoffset == 0)
+      x -= (patch->width - 320) / 2;
   }
 
-  //e6y: predefined arrays are used
-  if (!(flags & VPT_STRETCH_MASK))
-  {
-    DXI = 1 << 16;
-    DYI = 1 << 16;
+  if (!(flags & VPT_STRETCH_MASK)) {
+    int             col;
+    byte           *desttop = screens[scrn].data+y*screens[scrn].pitch+x;
+    int    w = patch->width;
 
-    left = x;
-    top = y;
-    right = x + patch->width - 1;
-    bottom = y + patch->height;
+    if (y<0 || y+patch->height > ((flags & VPT_STRETCH) ? 200 :  SCREENHEIGHT)) {
+      // killough 1/19/98: improved error message:
+      lprintf(LO_WARN, "V_DrawMemPatch8: Patch (%d,%d)-(%d,%d) exceeds LFB in vertical direction (horizontal is clipped)\n"
+              "Bad V_DrawMemPatch8 (flags=%u)", x, y, x+patch->width, y+patch->height, flags);
+      return;
+    }
+
+    w--; // CPhipps - note: w = width-1 now, speeds up flipping
+
+    for (col=0 ; col<=w ; desttop++, col++, x++) {
+      int i;
+      const int colindex = (flags & VPT_FLIP) ? (w - col) : (col);
+      const rcolumn_t *column = R_GetPatchColumn(patch, colindex);
+
+      if (x < 0)
+        continue;
+      if (x >= SCREENWIDTH)
+        break;
+
+      // step through the posts in a column
+      for (i=0; i<column->numPosts; i++) {
+        const rpost_t *post = &column->posts[i];
+        // killough 2/21/98: Unrolled and performance-tuned
+
+        const byte *source = column->pixels + post->topdelta;
+        byte *dest = desttop + post->topdelta*screens[scrn].pitch;
+        int count = post->length;
+
+        if (!(flags & VPT_TRANS)) {
+          if ((count-=4)>=0)
+            do {
+              register byte s0,s1;
+              s0 = source[0];
+              s1 = source[1];
+              dest[0] = s0;
+              dest[screens[scrn].pitch] = s1;
+              dest += screens[scrn].pitch*2;
+              s0 = source[2];
+              s1 = source[3];
+              source += 4;
+              dest[0] = s0;
+              dest[screens[scrn].pitch] = s1;
+              dest += screens[scrn].pitch*2;
+            } while ((count-=4)>=0);
+          if (count+=4)
+            do {
+              *dest = *source++;
+              dest += screens[scrn].pitch;
+            } while (--count);
+        } else {
+          // CPhipps - merged translation code here
+          if ((count-=4)>=0)
+            do {
+              register byte s0,s1;
+              s0 = source[0];
+              s1 = source[1];
+              s0 = trans[s0];
+              s1 = trans[s1];
+              dest[0] = s0;
+              dest[screens[scrn].pitch] = s1;
+              dest += screens[scrn].pitch*2;
+              s0 = source[2];
+              s1 = source[3];
+              s0 = trans[s0];
+              s1 = trans[s1];
+              source += 4;
+              dest[0] = s0;
+              dest[screens[scrn].pitch] = s1;
+              dest += screens[scrn].pitch*2;
+            } while ((count-=4)>=0);
+          if (count+=4)
+            do {
+              *dest = trans[*source++];
+              dest += screens[scrn].pitch;
+            } while (--count);
+        }
+      }
+    }
   }
-  else
-  {
+  else {
+    // CPhipps - move stretched patch drawing code here
+    //         - reformat initialisers, move variables into inner blocks
+
+    int   col;
+    int   w = (patch->width << 16) - 1; // CPhipps - -1 for faster flipping
+    int   left, right, top, bottom;
+    int   DXI, DYI;
+    int   deltay1;
+    R_DrawColumn_f colfunc;
+    draw_column_vars_t dcvars;
+    draw_vars_t olddrawvars = drawvars;
+
+    R_SetDefaultDrawColumnVars(&dcvars);
+
+    drawvars.topleft = screens[scrn].data;
+    drawvars.pitch = screens[scrn].pitch;
+
+    if (flags & VPT_TRANS) {
+      colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_TRANSLATED, RDRAW_FILTER_NONE);
+      dcvars.translation = trans;
+    } else {
+      colfunc = R_GetDrawColumnFunc(RDC_PIPELINE_STANDARD, RDRAW_FILTER_NONE);
+    }
+
     DXI = params->video->xstep;
     DYI = params->video->ystep;
-
-    //FIXME: Is it needed only for F_BunnyScroll?
 
     left = (x < 0 || x > 320 ? (x * params->video->width) / 320 : params->video->x1lookup[x]);
     top =  (y < 0 || y > 200 ? (y * params->video->height) / 200 : params->video->y1lookup[y]);
@@ -509,119 +515,145 @@ static void V_DrawMemPatch(int x, int y, int scrn, const rpatch_t *patch,
     else
       bottom = params->video->y2lookup[y + patch->height - 1];
 
+    deltay1 = params->deltay1;
+
+    if (TOP_ALIGNMENT(flags & VPT_STRETCH_MASK))
+      deltay1 += global_patch_top_offset;
+
     left   += params->deltax1;
     right  += params->deltax2;
-    top    += params->deltay1;
-    bottom += params->deltay1;
-  }
+    top    += deltay1;
+    bottom += deltay1;
 
-  dcvars.texheight = patch->height;
-  dcvars.iscale = DYI;
-  dcvars.drawingmasked = MAX(patch->width, patch->height) > 8;
-  dcvars.edgetype = drawvars.patch_edges;
+    dcvars.texheight = patch->height;
+    dcvars.iscale = DYI;
+    dcvars.drawingmasked = MAX(patch->width, patch->height) > 8;
 
-  if (drawvars.filterpatch == RDRAW_FILTER_LINEAR) {
-    // bias the texture u coordinate
-    if (patch->flags&PATCH_ISNOTTILEABLE)
-      col = -(FRACUNIT>>1);
-    else
-      col = (patch->width<<FRACBITS)-(FRACUNIT>>1);
-  }
-  else {
     col = 0;
+
+    for (dcvars.x=left; dcvars.x<=right; dcvars.x++, col+=DXI) {
+      int i;
+      const int colindex = (flags & VPT_FLIP) ? ((w - col)>>16): (col>>16);
+      const rcolumn_t *column = R_GetPatchColumn(patch, colindex);
+      const rcolumn_t *prevcolumn = R_GetPatchColumn(patch, colindex-1);
+      const rcolumn_t *nextcolumn = R_GetPatchColumn(patch, colindex+1);
+
+      // ignore this column if it's to the left of our clampRect
+      if (dcvars.x < 0)
+        continue;
+      if (dcvars.x >= SCREENWIDTH)
+        break;
+
+      // step through the posts in a column
+      for (i=0; i<column->numPosts; i++) {
+        const rpost_t *post = &column->posts[i];
+        int yoffset = 0;
+
+        //e6y
+        if (!(flags & VPT_STRETCH_MASK))
+        {
+          dcvars.yl = y + post->topdelta;
+          dcvars.yh = ((((y + post->topdelta + post->length) << 16) - (FRACUNIT>>1))>>FRACBITS);
+        }
+        else
+        {
+          // e6y
+          // More accurate patch drawing from Eternity.
+          // Predefined arrays are used instead of dynamic calculation
+          // of the top and bottom screen coordinates of a column.
+
+          int tmpy;
+
+          tmpy = y + post->topdelta;
+          if (tmpy < 0 || tmpy > 200)
+            dcvars.yl = (tmpy * params->video->height) / 200 + deltay1;
+          else
+            dcvars.yl = params->video->y1lookup[tmpy] + deltay1;
+
+          tmpy = y + post->topdelta + post->length - 1;
+          if (tmpy < 0 || tmpy > 200)
+            dcvars.yh = (tmpy * params->video->height) / 200 + deltay1;
+          else
+            dcvars.yh = params->video->y2lookup[tmpy] + deltay1;
+        }
+        dcvars.edgeslope = post->slope;
+
+        if ((dcvars.yh < 0) || (dcvars.yh < top))
+          continue;
+        if ((dcvars.yl >= SCREENHEIGHT) || (dcvars.yl >= bottom))
+          continue;
+
+        if (dcvars.yh >= bottom) {
+          //dcvars.yh = bottom-1;
+          dcvars.edgeslope &= ~RDRAW_EDGESLOPE_BOT_MASK;
+        }
+        if (dcvars.yh >= SCREENHEIGHT) {
+          dcvars.yh = SCREENHEIGHT-1;
+          dcvars.edgeslope &= ~RDRAW_EDGESLOPE_BOT_MASK;
+        }
+
+        if (dcvars.yl < 0) {
+          yoffset = (0-dcvars.yl) * 200/params->video->height;
+          dcvars.yl = 0;
+          dcvars.edgeslope &= ~RDRAW_EDGESLOPE_TOP_MASK;
+        }
+        if (dcvars.yl < top) {
+          yoffset = (top-dcvars.yl) * 200/params->video->height;
+          dcvars.yl = top;
+          dcvars.edgeslope &= ~RDRAW_EDGESLOPE_TOP_MASK;
+        }
+
+        dcvars.source = column->pixels + post->topdelta + yoffset;
+        dcvars.prevsource = prevcolumn ? prevcolumn->pixels + post->topdelta + yoffset: dcvars.source;
+        dcvars.nextsource = nextcolumn ? nextcolumn->pixels + post->topdelta + yoffset: dcvars.source;
+
+        dcvars.texturemid = -((dcvars.yl-centery)*dcvars.iscale);
+
+        //e6y
+        dcvars.dy = deltay1;
+        dcvars.flags |= DRAW_COLUMN_ISPATCH;
+
+        colfunc(&dcvars);
+      }
+    }
+
+    R_ResetColumnBuffer();
+    drawvars = olddrawvars;
   }
+}
 
-  for (dcvars.x=left; dcvars.x<=right; dcvars.x++, col+=DXI) {
-    int i;
-    const int colindex = (flags & VPT_FLIP) ? ((w - col)>>16): (col>>16);
-    const rcolumn_t *column = R_GetPatchColumn(patch, colindex);
-    const rcolumn_t *prevcolumn = R_GetPatchColumn(patch, colindex-1);
-    const rcolumn_t *nextcolumn = R_GetPatchColumn(patch, colindex+1);
 
-    // ignore this column if it's to the left of our clampRect
-    if (dcvars.x < 0)
-      continue;
-    if (dcvars.x >= SCREENWIDTH)
-      break;
+//
+// FUNC_V_DrawShaded
+//
+// Adapted from Woof.
+//
+// This uses a dark colormap to create
+// a dark faded background under menus.
+//
+static void FUNC_V_DrawShaded(int scrn, int x, int y, int width, int height, int shade)
+{
+  const lighttable_t *darkcolormap;
+  extern dboolean LevelUseFullBright;
+  extern const byte* colormap_lump;
+  byte* dest;
+  int ix, iy;
 
-    dcvars.texu = ((flags & VPT_FLIP) ? ((patch->width<<FRACBITS)-col) : col) % (patch->width<<FRACBITS);
+  // Compensate for Hexen FOGMAP
+  darkcolormap = (hexen && !LevelUseFullBright) ? (const lighttable_t *)colormap_lump : colormaps[scrn];
 
-    // step through the posts in a column
-    for (i=0; i<column->numPosts; i++) {
-      const rpost_t *post = &column->posts[i];
-      int yoffset = 0;
+  for (iy = y; iy < y + height; ++iy)
+  {
+    dest = screens[scrn].data + screens[scrn].pitch * iy + x;
 
-      //e6y
-      if (!(flags & VPT_STRETCH_MASK))
-      {
-        dcvars.yl = y + post->topdelta;
-        dcvars.yh = ((((y + post->topdelta + post->length) << 16) - (FRACUNIT>>1))>>FRACBITS);
-      }
-      else
-      {
-        // e6y
-        // More accurate patch drawing from Eternity.
-        // Predefined arrays are used instead of dynamic calculation 
-        // of the top and bottom screen coordinates of a column.
-
-        int tmpy;
-        
-        tmpy = y + post->topdelta;
-        if (tmpy < 0 || tmpy > 200)
-          dcvars.yl = (tmpy * params->video->height) / 200 + params->deltay1;
-        else
-          dcvars.yl = params->video->y1lookup[tmpy] + params->deltay1;
-
-        tmpy = y + post->topdelta + post->length - 1;
-        if (tmpy < 0 || tmpy > 200)
-          dcvars.yh = (tmpy * params->video->height) / 200 + params->deltay1;
-        else
-          dcvars.yh = params->video->y2lookup[tmpy] + params->deltay1;
-      }
-      dcvars.edgeslope = post->slope;
-
-      if ((dcvars.yh < 0) || (dcvars.yh < top))
-        continue;
-      if ((dcvars.yl >= SCREENHEIGHT) || (dcvars.yl >= bottom))
-        continue;
-
-      if (dcvars.yh >= bottom) {
-        //dcvars.yh = bottom-1;
-        dcvars.edgeslope &= ~RDRAW_EDGESLOPE_BOT_MASK;
-      }
-      if (dcvars.yh >= SCREENHEIGHT) {
-        dcvars.yh = SCREENHEIGHT-1;
-        dcvars.edgeslope &= ~RDRAW_EDGESLOPE_BOT_MASK;
-      }
-
-      if (dcvars.yl < 0) {
-        yoffset = 0-dcvars.yl;
-        dcvars.yl = 0;
-        dcvars.edgeslope &= ~RDRAW_EDGESLOPE_TOP_MASK;
-      }
-      if (dcvars.yl < top) {
-        yoffset = top-dcvars.yl;
-        dcvars.yl = top;
-        dcvars.edgeslope &= ~RDRAW_EDGESLOPE_TOP_MASK;
-      }
-
-      dcvars.source = column->pixels + post->topdelta + yoffset;
-      dcvars.prevsource = prevcolumn ? prevcolumn->pixels + post->topdelta + yoffset: dcvars.source;
-      dcvars.nextsource = nextcolumn ? nextcolumn->pixels + post->topdelta + yoffset: dcvars.source;
-
-      dcvars.texturemid = -((dcvars.yl-centery)*dcvars.iscale);
-
-      //e6y
-      dcvars.dy = params->deltay1;
-      dcvars.flags |= DRAW_COLUMN_ISPATCH; 
-
-      colfunc(&dcvars);
+    for (ix = x; ix < x + width; ++ix)
+    {
+      *dest = darkcolormap[shade * 256 + dest[scrn]];
+      dest++;
     }
   }
-
-  R_ResetColumnBuffer();
-  drawvars = olddrawvars;
 }
+
 
 // CPhipps - some simple, useful wrappers for that function, for drawing patches from wads
 
@@ -630,206 +662,50 @@ static void V_DrawMemPatch(int x, int y, int scrn, const rpatch_t *patch,
 // This inline is _only_ for the function below
 
 static void FUNC_V_DrawNumPatch(int x, int y, int scrn, int lump,
-         int cm, enum patch_translation_e flags)
+         dboolean center, int cm, enum patch_translation_e flags)
 {
-  V_DrawMemPatch(x, y, scrn, R_CachePatchNum(lump), cm, flags);
-  R_UnlockPatchNum(lump);
+  V_DrawMemPatch(x, y, scrn, R_PatchByNum(lump), center, cm, flags);
 }
 
 static void FUNC_V_DrawNumPatchPrecise(float x, float y, int scrn, int lump,
-         int cm, enum patch_translation_e flags)
+         dboolean center, int cm, enum patch_translation_e flags)
 {
-  V_DrawMemPatch((int)x, (int)y, scrn, R_CachePatchNum(lump), cm, flags);
-  R_UnlockPatchNum(lump);
+  V_DrawMemPatch((int)x, (int)y, scrn, R_PatchByNum(lump), center, cm, flags);
 }
 
-unsigned short *V_Palette15 = NULL;
-unsigned short *V_Palette16 = NULL;
-unsigned int *V_Palette32 = NULL;
-static unsigned short *Palettes15 = NULL;
-static unsigned short *Palettes16 = NULL;
-static unsigned int *Palettes32 = NULL;
 static int currentPaletteIndex = 0;
 
-//
-// V_UpdateTrueColorPalette
-//
-void V_UpdateTrueColorPalette(video_mode_t mode) {
-  int i, w, p;
-  byte r,g,b;
-  int nr,ng,nb;
-  float t;
-  int paletteNum = (V_GetMode() == VID_MODEGL ? 0 : currentPaletteIndex);
-  static int usegammaOnLastPaletteGeneration = -1;
-  
-  int pplump = W_GetNumForName("PLAYPAL");
-  int gtlump = (W_CheckNumForName)("GAMMATBL",ns_prboom);
-  const byte *pal = W_CacheLumpNum(pplump);
-  // opengl doesn't use the gamma
-  const byte *const gtable = 
-    (const byte *)W_CacheLumpNum(gtlump) + 
-    (V_GetMode() == VID_MODEGL ? 0 : 256*(usegamma))
-  ;
-
-  int numPals = W_LumpLength(pplump) / (3*256);
-  const float dontRoundAbove = 220;
-  float roundUpR, roundUpG, roundUpB;
-  
-  if (usegammaOnLastPaletteGeneration != usegamma) {
-    if (Palettes15) free(Palettes15);
-    if (Palettes16) free(Palettes16);
-    if (Palettes32) free(Palettes32);
-    Palettes15 = NULL;
-    Palettes16 = NULL;
-    Palettes32 = NULL;
-    usegammaOnLastPaletteGeneration = usegamma;      
-  }
-  
-  if (mode == VID_MODE32) {
-    if (!Palettes32) {
-      // set int palette
-      Palettes32 = malloc(numPals*256*sizeof(int)*VID_NUMCOLORWEIGHTS);
-      for (p=0; p<numPals; p++) {
-        for (i=0; i<256; i++) {
-          r = gtable[pal[(256*p+i)*3+0]];
-          g = gtable[pal[(256*p+i)*3+1]];
-          b = gtable[pal[(256*p+i)*3+2]];
-          
-          // ideally, we should always round up, but very bright colors
-          // overflow the blending adds, so they don't get rounded.
-          roundUpR = (r > dontRoundAbove) ? 0 : 0.5f;
-          roundUpG = (g > dontRoundAbove) ? 0 : 0.5f;
-          roundUpB = (b > dontRoundAbove) ? 0 : 0.5f;
-                  
-          for (w=0; w<VID_NUMCOLORWEIGHTS; w++) {
-            t = (float)(w)/(float)(VID_NUMCOLORWEIGHTS-1);
-            nr = (int)(r*t+roundUpR);
-            ng = (int)(g*t+roundUpG);
-            nb = (int)(b*t+roundUpB);
-            Palettes32[((p*256+i)*VID_NUMCOLORWEIGHTS)+w] = (
-              (nr<<16) | (ng<<8) | nb
-            );
-          }
-        }
-      }
-    }
-    V_Palette32 = Palettes32 + paletteNum*256*VID_NUMCOLORWEIGHTS;
-  }
-  else if (mode == VID_MODE16) {
-    if (!Palettes16) {
-      // set short palette
-      Palettes16 = malloc(numPals*256*sizeof(short)*VID_NUMCOLORWEIGHTS);
-      for (p=0; p<numPals; p++) {
-        for (i=0; i<256; i++) {
-          r = gtable[pal[(256*p+i)*3+0]];
-          g = gtable[pal[(256*p+i)*3+1]];
-          b = gtable[pal[(256*p+i)*3+2]];
-          
-          // ideally, we should always round up, but very bright colors
-          // overflow the blending adds, so they don't get rounded.
-          roundUpR = (r > dontRoundAbove) ? 0 : 0.5f;
-          roundUpG = (g > dontRoundAbove) ? 0 : 0.5f;
-          roundUpB = (b > dontRoundAbove) ? 0 : 0.5f;
-                   
-          for (w=0; w<VID_NUMCOLORWEIGHTS; w++) {
-            t = (float)(w)/(float)(VID_NUMCOLORWEIGHTS-1);
-            nr = (int)((r>>3)*t+roundUpR);
-            ng = (int)((g>>2)*t+roundUpG);
-            nb = (int)((b>>3)*t+roundUpB);
-            Palettes16[((p*256+i)*VID_NUMCOLORWEIGHTS)+w] = (
-              (nr<<11) | (ng<<5) | nb
-            );
-          }
-        }
-      }
-    }
-    V_Palette16 = Palettes16 + paletteNum*256*VID_NUMCOLORWEIGHTS;
-  }
-  else if (mode == VID_MODE15) {
-    if (!Palettes15) {
-      // set short palette
-      Palettes15 = malloc(numPals*256*sizeof(short)*VID_NUMCOLORWEIGHTS);
-      for (p=0; p<numPals; p++) {
-        for (i=0; i<256; i++) {
-          r = gtable[pal[(256*p+i)*3+0]];
-          g = gtable[pal[(256*p+i)*3+1]];
-          b = gtable[pal[(256*p+i)*3+2]];
-          
-          // ideally, we should always round up, but very bright colors
-          // overflow the blending adds, so they don't get rounded.
-          roundUpR = (r > dontRoundAbove) ? 0 : 0.5f;
-          roundUpG = (g > dontRoundAbove) ? 0 : 0.5f;
-          roundUpB = (b > dontRoundAbove) ? 0 : 0.5f;
-                   
-          for (w=0; w<VID_NUMCOLORWEIGHTS; w++) {
-            t = (float)(w)/(float)(VID_NUMCOLORWEIGHTS-1);
-            nr = (int)((r>>3)*t+roundUpR);
-            ng = (int)((g>>3)*t+roundUpG);
-            nb = (int)((b>>3)*t+roundUpB);
-            Palettes15[((p*256+i)*VID_NUMCOLORWEIGHTS)+w] = (
-              (nr<<10) | (ng<<5) | nb
-            );
-          }
-        }
-      }
-    }
-    V_Palette15 = Palettes15 + paletteNum*256*VID_NUMCOLORWEIGHTS;
-  }       
-   
-  W_UnlockLumpNum(pplump);
-  W_UnlockLumpNum(gtlump);
-}
-
-
-//---------------------------------------------------------------------------
-// V_DestroyTrueColorPalette
-//---------------------------------------------------------------------------
-static void V_DestroyTrueColorPalette(video_mode_t mode) {
-  if (mode == VID_MODE15) {
-    if (Palettes15) free(Palettes15);
-    Palettes15 = NULL;
-    V_Palette15 = NULL;
-  }
-  if (mode == VID_MODE16) {
-    if (Palettes16) free(Palettes16);
-    Palettes16 = NULL;
-    V_Palette16 = NULL;
-  }
-  if (mode == VID_MODE32) {
-    if (Palettes32) free(Palettes32);
-    Palettes32 = NULL;
-    V_Palette32 = NULL;
-  }
-}
-
-void V_DestroyUnusedTrueColorPalettes(void) {
-  if (V_GetMode() != VID_MODE15) V_DestroyTrueColorPalette(VID_MODE15);
-  if (V_GetMode() != VID_MODE16) V_DestroyTrueColorPalette(VID_MODE16);
-  if (V_GetMode() != VID_MODE32) V_DestroyTrueColorPalette(VID_MODE32);  
+void V_TouchPalette(void)
+{
+  V_SetPalette(currentPaletteIndex);
 }
 
 //
 // V_SetPalette
 //
 // CPhipps - New function to set the palette to palette number pal.
-// Handles loading of PLAYPAL
+// Handles loading of PLAYPAL and calls I_SetPalette
 
 void V_SetPalette(int pal)
 {
   currentPaletteIndex = pal;
 
-  if (V_GetMode() == VID_MODEGL) {
-#ifdef GL_DOOM
+  if (V_IsOpenGLMode()) {
     gld_SetPalette(pal);
-#endif
   } else {
-    if (V_GetMode() == VID_MODE15 || V_GetMode() == VID_MODE16 || V_GetMode() == VID_MODE32) {
-      // V_SetPalette can be called as part of the gamma setting before
-      // we've loaded any wads, which prevents us from reading the palette - POPE
-      if (W_CheckNumForName("PLAYPAL") >= 0) {
-        V_UpdateTrueColorPalette(V_GetMode());
-      }
-    }
+    I_SetPalette(pal);
+  }
+}
+
+void V_SetPlayPal(int playpal_i)
+{
+  dsda_SetPlayPal(playpal_i);
+  R_UpdatePlayPal();
+  V_SetPalette(currentPaletteIndex);
+
+  if (V_IsOpenGLMode())
+  {
+    gld_FlushTextures();
   }
 }
 
@@ -837,56 +713,45 @@ void V_SetPalette(int pal)
 // V_FillRect
 //
 // CPhipps - New function to fill a rectangle with a given colour
-static void V_FillRect15(int scrn, int x, int y, int width, int height, byte colour)
+static void V_FillRect8(int scrn, int x, int y, int width, int height, byte colour)
 {
-  unsigned short* dest = (unsigned short *)screens[scrn].data + x + y*screens[scrn].short_pitch;
-  int w;
-  short c = VID_PAL15(colour, VID_COLORWEIGHTMASK);
+  byte* dest = screens[scrn].data + x + y*screens[scrn].pitch;
   while (height--) {
-    for (w=0; w<width; w++) {
-      dest[w] = c;
-    }
-    dest += screens[scrn].short_pitch;
-  }
-}
-
-static void V_FillRect16(int scrn, int x, int y, int width, int height, byte colour)
-{
-  unsigned short* dest = (unsigned short *)screens[scrn].data + x + y*screens[scrn].short_pitch;
-  int w;
-  short c = VID_PAL16(colour, VID_COLORWEIGHTMASK);
-  while (height--) {
-    for (w=0; w<width; w++) {
-      dest[w] = c;
-    }
-    dest += screens[scrn].short_pitch;
-  }
-}
-
-static void V_FillRect32(int scrn, int x, int y, int width, int height, byte colour)
-{
-  unsigned int* dest = (unsigned int *)screens[scrn].data + x + y*screens[scrn].int_pitch;
-  int w;
-  int c = VID_PAL32(colour, VID_COLORWEIGHTMASK);
-  while (height--) {
-    for (w=0; w<width; w++) {
-      dest[w] = c;
-    }
-    dest += screens[scrn].int_pitch;
+    memset(dest, colour, width);
+    dest += screens[scrn].pitch;
   }
 }
 
 static void WRAP_V_DrawLine(fline_t* fl, int color);
-static void V_PlotPixel15(int scrn, int x, int y, byte color);
-static void V_PlotPixel16(int scrn, int x, int y, byte color);
-static void V_PlotPixel32(int scrn, int x, int y, byte color);
+static void V_PlotPixel8(int scrn, int x, int y, byte color);
 
 static void WRAP_V_DrawLineWu(fline_t* fl, int color);
-static void V_PlotPixelWu15(int scrn, int x, int y, byte color, int weight);
-static void V_PlotPixelWu16(int scrn, int x, int y, byte color, int weight);
-static void V_PlotPixelWu32(int scrn, int x, int y, byte color, int weight);
+static void V_PlotPixelWu8(int scrn, int x, int y, byte color, int weight);
 
-#ifdef GL_DOOM
+static void WRAP_gld_BeginUIDraw(void)
+{
+  gld_BeginUIDraw();
+}
+static void WRAP_gld_EndUIDraw(void)
+{
+  gld_EndUIDraw();
+}
+static void WRAP_gld_BeginAutomapDraw(void)
+{
+  gld_BeginAutomapDraw();
+}
+static void WRAP_gld_EndAutomapDraw(void)
+{
+  gld_EndAutomapDraw();
+}
+static void WRAP_gld_BeginMenuDraw(void)
+{
+  gld_BeginMenuDraw();
+}
+static void WRAP_gld_EndMenuDraw(void)
+{
+  gld_EndMenuDraw();
+}
 static void WRAP_gld_FillRect(int scrn, int x, int y, int width, int height, byte colour)
 {
   gld_FillBlock(x,y,width,height,colour);
@@ -896,7 +761,7 @@ static void WRAP_gld_CopyRect(int srcscrn, int destscrn, int x, int y, int width
 }
 static void WRAP_gld_DrawBackground(const char *flatname, int n)
 {
-  gld_FillFlatName(flatname, 0, 0, SCREENWIDTH, SCREENHEIGHT, VPT_NONE);
+  gld_FillFlatName(flatname, 0, 0, SCREENWIDTH, SCREENHEIGHT, VPT_STRETCH);
 }
 static void WRAP_gld_FillFlat(int lump, int n, int x, int y, int width, int height, enum patch_translation_e flags)
 {
@@ -906,16 +771,13 @@ static void WRAP_gld_FillPatch(int lump, int n, int x, int y, int width, int hei
 {
   gld_FillPatch(lump, x, y, width, height, flags);
 }
-static void WRAP_gld_DrawNumPatch(int x, int y, int scrn, int lump, int cm, enum patch_translation_e flags)
+static void WRAP_gld_DrawNumPatch(int x, int y, int scrn, int lump, dboolean center, int cm, enum patch_translation_e flags)
 {
-  gld_DrawNumPatch(x,y,lump,cm,flags);
+  gld_DrawNumPatch(x,y,lump,center,cm,flags);
 }
-static void WRAP_gld_DrawNumPatchPrecise(float x, float y, int scrn, int lump, int cm, enum patch_translation_e flags)
+static void WRAP_gld_DrawNumPatchPrecise(float x, float y, int scrn, int lump, dboolean center, int cm, enum patch_translation_e flags)
 {
-  gld_DrawNumPatch_f(x,y,lump,cm,flags);
-}
-static void WRAP_gld_DrawBlock(int x, int y, int scrn, int width, int height, const byte *src, enum patch_translation_e flags)
-{
+  gld_DrawNumPatch_f(x,y,lump,center,cm,flags);
 }
 static void V_PlotPixelGL(int scrn, int x, int y, byte color) {
   gld_DrawLine(x-1, y, x+1, y, color);
@@ -928,28 +790,42 @@ static void WRAP_gld_DrawLine(fline_t* fl, int color)
 {
   gld_DrawLine_f(fl->a.fx, fl->a.fy, fl->b.fx, fl->b.fy, color);
 }
-#endif
+static void WRAP_gld_DrawShaded(int scrn, int x, int y, int width, int height, int shade)
+{
+  gld_DrawShaded(x, y, width, height, shade);
+}
 
+static void NULL_BeginUIDraw(void) {}
+static void NULL_EndUIDraw(void) {}
+static void NULL_BeginAutomapDraw(void) {}
+static void NULL_EndAutomapDraw(void) {}
+static void NULL_BeginMenuDraw(void) {}
+static void NULL_EndMenuDraw(void) {}
 static void NULL_FillRect(int scrn, int x, int y, int width, int height, byte colour) {}
 static void NULL_CopyRect(int srcscrn, int destscrn, int x, int y, int width, int height, enum patch_translation_e flags) {}
 static void NULL_FillFlat(int lump, int n, int x, int y, int width, int height, enum patch_translation_e flags) {}
 static void NULL_FillPatch(int lump, int n, int x, int y, int width, int height, enum patch_translation_e flags) {}
 static void NULL_DrawBackground(const char *flatname, int n) {}
-static void NULL_DrawNumPatch(int x, int y, int scrn, int lump, int cm, enum patch_translation_e flags) {}
-static void NULL_DrawNumPatchPrecise(float x, float y, int scrn, int lump, int cm, enum patch_translation_e flags) {}
-static void NULL_DrawBlock(int x, int y, int scrn, int width, int height, const byte *src, enum patch_translation_e flags) {}
+static void NULL_DrawNumPatch(int x, int y, int scrn, int lump, dboolean center, int cm, enum patch_translation_e flags) {}
+static void NULL_DrawNumPatchPrecise(float x, float y, int scrn, int lump, dboolean center, int cm, enum patch_translation_e flags) {}
 static void NULL_PlotPixel(int scrn, int x, int y, byte color) {}
 static void NULL_PlotPixelWu(int scrn, int x, int y, byte color, int weight) {}
 static void NULL_DrawLine(fline_t* fl, int color) {}
 static void NULL_DrawLineWu(fline_t* fl, int color) {}
+static void NULL_DrawShaded(int scrn, int x, int y, int width, int height, int shade) {}
 
-const char *default_videomode;
-static video_mode_t current_videomode = VID_MODE32;
+static video_mode_t current_videomode = VID_MODESW;
 
+V_BeginUIDraw_f V_BeginUIDraw = NULL_BeginUIDraw;
+V_EndUIDraw_f V_EndUIDraw = NULL_EndUIDraw;
+V_BeginUIDraw_f V_BeginAutomapDraw = NULL_BeginAutomapDraw;
+V_EndUIDraw_f V_EndAutomapDraw = NULL_EndAutomapDraw;
+V_BeginUIDraw_f V_BeginMenuDraw = NULL_BeginMenuDraw;
+V_EndUIDraw_f V_EndMenuDraw = NULL_EndMenuDraw;
 V_CopyRect_f V_CopyRect = NULL_CopyRect;
 V_FillRect_f V_FillRect = NULL_FillRect;
-V_DrawNumPatch_f V_DrawNumPatch = NULL_DrawNumPatch;
-V_DrawNumPatchPrecise_f V_DrawNumPatchPrecise = NULL_DrawNumPatchPrecise;
+V_DrawNumPatchGen_f V_DrawNumPatchGen = NULL_DrawNumPatch;
+V_DrawNumPatchGenPrecise_f V_DrawNumPatchGenPrecise = NULL_DrawNumPatchPrecise;
 V_FillFlat_f V_FillFlat = NULL_FillFlat;
 V_FillPatch_f V_FillPatch = NULL_FillPatch;
 V_DrawBackground_f V_DrawBackground = NULL_DrawBackground;
@@ -957,64 +833,47 @@ V_PlotPixel_f V_PlotPixel = NULL_PlotPixel;
 V_PlotPixelWu_f V_PlotPixelWu = NULL_PlotPixelWu;
 V_DrawLine_f V_DrawLine = NULL_DrawLine;
 V_DrawLineWu_f V_DrawLineWu = NULL_DrawLineWu;
+V_DrawShaded_f V_DrawShaded = NULL_DrawShaded;
 
 //
 // V_InitMode
 //
 void V_InitMode(video_mode_t mode) {
   switch (mode) {
-    case VID_MODE15:
-      lprintf(LO_INFO, "V_InitMode: using 15 bit video mode\n");
+    case VID_MODESW:
+      lprintf(LO_DEBUG, "V_InitMode: using software video mode\n");
+      V_BeginUIDraw = NULL_BeginUIDraw; // [XA] no-op in software
+      V_EndUIDraw = NULL_EndUIDraw; // [XA] ditto for the other begin/ends
+      V_BeginAutomapDraw = NULL_BeginAutomapDraw;
+      V_EndAutomapDraw = NULL_EndAutomapDraw;
+      V_BeginMenuDraw = NULL_BeginMenuDraw;
+      V_EndMenuDraw = NULL_EndMenuDraw;
       V_CopyRect = FUNC_V_CopyRect;
-      V_FillRect = V_FillRect15;
-      V_DrawNumPatch = FUNC_V_DrawNumPatch;
-      V_DrawNumPatchPrecise = FUNC_V_DrawNumPatchPrecise;
+      V_FillRect = V_FillRect8;
+      V_DrawNumPatchGen = FUNC_V_DrawNumPatch;
+      V_DrawNumPatchGenPrecise = FUNC_V_DrawNumPatchPrecise;
       V_FillFlat = FUNC_V_FillFlat;
       V_FillPatch = FUNC_V_FillPatch;
       V_DrawBackground = FUNC_V_DrawBackground;
-      V_PlotPixel = V_PlotPixel15;
-      V_PlotPixelWu = V_PlotPixelWu15;
+      V_PlotPixel = V_PlotPixel8;
+      V_PlotPixelWu = V_PlotPixelWu8;
       V_DrawLine = WRAP_V_DrawLine;
       V_DrawLineWu = WRAP_V_DrawLineWu;
-      current_videomode = VID_MODE15;
+      V_DrawShaded = FUNC_V_DrawShaded;
+      current_videomode = VID_MODESW;
       break;
-    case VID_MODE16:
-      lprintf(LO_INFO, "V_InitMode: using 16 bit video mode\n");
-      V_CopyRect = FUNC_V_CopyRect;
-      V_FillRect = V_FillRect16;
-      V_DrawNumPatch = FUNC_V_DrawNumPatch;
-      V_DrawNumPatchPrecise = FUNC_V_DrawNumPatchPrecise;
-      V_FillFlat = FUNC_V_FillFlat;
-      V_FillPatch = FUNC_V_FillPatch;
-      V_DrawBackground = FUNC_V_DrawBackground;
-      V_PlotPixel = V_PlotPixel16;
-      V_PlotPixelWu = V_PlotPixelWu16;
-      V_DrawLine = WRAP_V_DrawLine;
-      V_DrawLineWu = WRAP_V_DrawLineWu;
-      current_videomode = VID_MODE16;
-      break;
-    case VID_MODE32:
-      lprintf(LO_INFO, "V_InitMode: using 32 bit video mode\n");
-      V_CopyRect = FUNC_V_CopyRect;
-      V_FillRect = V_FillRect32;
-      V_DrawNumPatch = FUNC_V_DrawNumPatch;
-      V_DrawNumPatchPrecise = FUNC_V_DrawNumPatchPrecise;
-      V_FillFlat = FUNC_V_FillFlat;
-      V_FillPatch = FUNC_V_FillPatch;
-      V_DrawBackground = FUNC_V_DrawBackground;
-      V_PlotPixel = V_PlotPixel32;
-      V_PlotPixelWu = V_PlotPixelWu32;
-      V_DrawLine = WRAP_V_DrawLine;
-      V_DrawLineWu = WRAP_V_DrawLineWu;
-      current_videomode = VID_MODE32;
-      break;
-#ifdef GL_DOOM
     case VID_MODEGL:
-      lprintf(LO_INFO, "V_InitMode: using OpenGL video mode\n");
+      lprintf(LO_DEBUG, "V_InitMode: using OpenGL video mode\n");
+      V_BeginUIDraw = WRAP_gld_BeginUIDraw;
+      V_EndUIDraw = WRAP_gld_EndUIDraw;
+      V_BeginAutomapDraw = WRAP_gld_BeginAutomapDraw;
+      V_EndAutomapDraw = WRAP_gld_EndAutomapDraw;
+      V_BeginMenuDraw = WRAP_gld_BeginMenuDraw;
+      V_EndMenuDraw = WRAP_gld_EndMenuDraw;
       V_CopyRect = WRAP_gld_CopyRect;
       V_FillRect = WRAP_gld_FillRect;
-      V_DrawNumPatch = WRAP_gld_DrawNumPatch;
-      V_DrawNumPatchPrecise = WRAP_gld_DrawNumPatchPrecise;
+      V_DrawNumPatchGen = WRAP_gld_DrawNumPatch;
+      V_DrawNumPatchGenPrecise = WRAP_gld_DrawNumPatchPrecise;
       V_FillFlat = WRAP_gld_FillFlat;
       V_FillPatch = WRAP_gld_FillPatch;
       V_DrawBackground = WRAP_gld_DrawBackground;
@@ -1022,49 +881,35 @@ void V_InitMode(video_mode_t mode) {
       V_PlotPixelWu = V_PlotPixelWuGL;
       V_DrawLine = WRAP_gld_DrawLine;
       V_DrawLineWu = WRAP_gld_DrawLine;
+      V_DrawShaded = WRAP_gld_DrawShaded;
       current_videomode = VID_MODEGL;
       break;
-#endif
-  }
-  R_FilterInit();
-}
-
-//
-// V_GetMode
-//
-video_mode_t V_GetMode(void) {
-  return current_videomode;
-}
-
-//
-// V_GetModePixelDepth
-//
-int V_GetModePixelDepth(video_mode_t mode) {
-  switch (mode) {
-    case VID_MODE15: return 2;
-    case VID_MODE16: return 2;
-    case VID_MODE32: return 4;
-    default: return 0;
   }
 }
 
-//
-// V_GetNumPixelBits
-//
-int V_GetNumPixelBits(void) {
-  switch (current_videomode) {
-    case VID_MODE15: return 15;
-    case VID_MODE16: return 16;
-    case VID_MODE32: return 32;
-    default: return 0;
-  }
+dboolean V_IsSoftwareMode(void) {
+  return current_videomode == VID_MODESW;
 }
 
-//
-// V_GetPixelDepth
-//
-int V_GetPixelDepth(void) {
-  return V_GetModePixelDepth(current_videomode);
+dboolean V_IsOpenGLMode(void) {
+  return current_videomode == VID_MODEGL;
+}
+
+dboolean V_IsUILightmodeIndexed(void) {
+  return gl_ui_lightmode_indexed;
+}
+
+dboolean V_IsAutomapLightmodeIndexed(void) {
+  return gl_automap_lightmode_indexed;
+}
+
+dboolean V_IsMenuLightmodeIndexed(void) {
+  return gl_menu_lightmode_indexed;
+}
+
+void V_CopyScreen(int srcscrn, int destscrn)
+{
+  V_CopyRect(srcscrn, destscrn, 0, 0, SCREENWIDTH, SCREENHEIGHT, VPT_NONE);
 }
 
 //
@@ -1072,9 +917,9 @@ int V_GetPixelDepth(void) {
 //
 void V_AllocScreen(screeninfo_t *scrn) {
   if (!scrn->not_on_heap)
-    if ((scrn->byte_pitch * scrn->height) > 0)
+    if ((scrn->pitch * scrn->height) > 0)
       //e6y: Clear the screen to black.
-      scrn->data = calloc(scrn->byte_pitch*scrn->height, 1);
+      scrn->data = Z_Calloc(scrn->pitch*scrn->height, 1);
 }
 
 //
@@ -1092,7 +937,7 @@ void V_AllocScreens(void) {
 //
 void V_FreeScreen(screeninfo_t *scrn) {
   if (!scrn->not_on_heap) {
-    free(scrn->data);
+    Z_Free(scrn->data);
     scrn->data = NULL;
   }
 }
@@ -1107,16 +952,8 @@ void V_FreeScreens(void) {
     V_FreeScreen(&screens[i]);
 }
 
-static void V_PlotPixel15(int scrn, int x, int y, byte color) {
-  ((unsigned short *)screens[scrn].data)[x+screens[scrn].short_pitch*y] = VID_PAL15(color, VID_COLORWEIGHTMASK);
-}
-
-static void V_PlotPixel16(int scrn, int x, int y, byte color) {
-  ((unsigned short *)screens[scrn].data)[x+screens[scrn].short_pitch*y] = VID_PAL16(color, VID_COLORWEIGHTMASK);
-}
-
-static void V_PlotPixel32(int scrn, int x, int y, byte color) {
-  ((unsigned int *)screens[scrn].data)[x+screens[scrn].int_pitch*y] = VID_PAL32(color, VID_COLORWEIGHTMASK);
+static void V_PlotPixel8(int scrn, int x, int y, byte color) {
+  screens[scrn].data[x+screens[scrn].pitch*y] = color;
 }
 
 #define PUTDOT(xx,yy,cc) V_PlotPixel(0,xx,yy,(byte)cc)
@@ -1205,20 +1042,11 @@ static void WRAP_V_DrawLine(fline_t* fl, int color)
   }
 }
 
-#define RGB2COLOR15(r, g, b)\
-  ((r >> 3) << 11) |\
-  ((g >> 3) << 6) |\
-  ((b >> 3) << 1)\
-
-#define RGB2COLOR16(r, g, b)\
-  ((r >> 4) << 12) |\
-  ((g >> 4) << 8) |\
-  ((b >> 4) << 4)\
-
-#define RGB2COLOR32(r, g, b)\
-  (r << 24) |\
-  (g << 16) |\
-  (b << 8)\
+extern SDL_Surface *screen;
+#define RGB2COLOR(r, g, b)\
+  ((r >> screen->format->Rloss) << screen->format->Rshift) |\
+  ((g >> screen->format->Gloss) << screen->format->Gshift) |\
+  ((b >> screen->format->Bloss) << screen->format->Bshift)\
 
 // Given 65536, we need 2048; 65536 / 2048 == 32 == 2^5
 // Why 2048? ANG90 == 0x40000000 which >> 19 == 0x800 == 2048.
@@ -1235,38 +1063,16 @@ static void WRAP_V_DrawLine(fline_t* fl, int color)
 //
 // haleyjd 06/13/09: Pixel plotter for Wu line drawing.
 //
-static void V_PlotPixelWu15(int scrn, int x, int y, byte color, int weight)
+static void V_PlotPixelWu8(int scrn, int x, int y, byte color, int weight)
 {
-  const unsigned char *rgb = V_GetPlaypal() + color * 3;
+  unsigned int bg_color = screens[scrn].data[x+screens[scrn].pitch*y];
+  unsigned int *fg2rgb = Col2RGB8[weight];
+  unsigned int *bg2rgb = Col2RGB8[64 - weight];
+  unsigned int fg = fg2rgb[color];
+  unsigned int bg = bg2rgb[bg_color];
 
-  byte r = (*(rgb + 0) * weight) >> wu_weightbits;
-  byte g = (*(rgb + 1) * weight) >> wu_weightbits;
-  byte b = (*(rgb + 2) * weight) >> wu_weightbits;
-  
-  ((unsigned short *)screens[scrn].data)[x+screens[scrn].short_pitch*y] =
-    (unsigned short)RGB2COLOR15(r, g, b);
-}
-static void V_PlotPixelWu16(int scrn, int x, int y, byte color, int weight)
-{
-  const unsigned char *rgb = V_GetPlaypal() + color * 3;
-
-  byte r = (*(rgb + 0) * weight) >> wu_weightbits;
-  byte g = (*(rgb + 1) * weight) >> wu_weightbits;
-  byte b = (*(rgb + 2) * weight) >> wu_weightbits;
-  
-  ((unsigned short *)screens[scrn].data)[x+screens[scrn].short_pitch*y] =
-    (unsigned short)RGB2COLOR16(r, g, b);
-}
-static void V_PlotPixelWu32(int scrn, int x, int y, byte color, int weight)
-{
-  const unsigned char *rgb = V_GetPlaypal() + color * 3;
-
-  byte r = (*(rgb + 0) * weight) >> wu_weightbits;
-  byte g = (*(rgb + 1) * weight) >> wu_weightbits;
-  byte b = (*(rgb + 2) * weight) >> wu_weightbits;
-  
-  ((unsigned int *)screens[scrn].data)[x+screens[scrn].int_pitch*y] =
-    (unsigned int)RGB2COLOR32(r, g, b);
+  fg = (fg + bg) | 0x1f07c1f;
+  V_PlotPixel(scrn, x, y, RGB32k[0][0][fg & (fg >> 15)]);
 }
 
 //
@@ -1280,7 +1086,7 @@ void WRAP_V_DrawLineWu(fline_t *fl, int color)
 {
   unsigned short erroracc, erroradj, erroracctmp;
   int dx, dy, xdir = 1;
-  int x, y;   
+  int x, y;
 
   // swap end points if necessary
   if(fl->a.y > fl->b.y)
@@ -1298,8 +1104,8 @@ void WRAP_V_DrawLineWu(fline_t *fl, int color)
   if(dx < 0)
   {
     dx   = -dx;
-    xdir = -xdir;      
-  }   
+    xdir = -xdir;
+  }
 
   // detect special cases -- horizontal, vertical, and 45 degrees;
   // revert to Bresenham
@@ -1318,7 +1124,7 @@ void WRAP_V_DrawLineWu(fline_t *fl, int color)
   if(dy > dx)
   {
     // line is y-axis major.
-    erroracc = 0; 
+    erroracc = 0;
     erroradj = (unsigned short)(((unsigned int)dx << 16) / (unsigned int)dy);
 
     while(--dy)
@@ -1334,9 +1140,9 @@ void WRAP_V_DrawLineWu(fline_t *fl, int color)
       y += 1; // advance y
 
       // the trick is in the trig!
-      V_PlotPixelWu(0, x, y, (byte)color, 
+      V_PlotPixelWu(0, x, y, (byte)color,
         finecosine[erroracc >> wu_fineshift] >> wu_fixedshift);
-      V_PlotPixelWu(0, x + xdir, y, (byte)color, 
+      V_PlotPixelWu(0, x + xdir, y, (byte)color,
         finesine[erroracc >> wu_fineshift] >> wu_fixedshift);
     }
   }
@@ -1359,9 +1165,9 @@ void WRAP_V_DrawLineWu(fline_t *fl, int color)
       x += xdir; // advance x
 
       // the trick is in the trig!
-      V_PlotPixelWu(0, x, y, (byte)color, 
+      V_PlotPixelWu(0, x, y, (byte)color,
         finecosine[erroracc >> wu_fineshift] >> wu_fixedshift);
-      V_PlotPixelWu(0, x, y + 1, (byte)color, 
+      V_PlotPixelWu(0, x, y + 1, (byte)color,
         finesine[erroracc >> wu_fineshift] >> wu_fixedshift);
     }
   }
@@ -1371,36 +1177,100 @@ void WRAP_V_DrawLineWu(fline_t *fl, int color)
 }
 
 
-static unsigned char *playpal_data = NULL;
 const unsigned char* V_GetPlaypal(void)
 {
-  if (!playpal_data)
+  dsda_playpal_t* playpal_data;
+
+  playpal_data = dsda_PlayPalData(playpal_index);
+
+  if (!playpal_data->lump)
   {
-    int lump = W_GetNumForName("PLAYPAL");
-    int len = W_LumpLength(lump);
-    const byte *data = W_CacheLumpNum(lump);
-    playpal_data = malloc(len);
-    memcpy(playpal_data, data, len);
-    W_UnlockLumpNum(lump);
+    int lump = W_GetNumForName(playpal_data->lump_name);
+    const byte *data = W_LumpByNum(lump);
+    playpal_data->length = W_LumpLength(lump);
+    playpal_data->lump = Z_Malloc(playpal_data->length);
+    memcpy(playpal_data->lump, data, playpal_data->length);
   }
 
-  return playpal_data;
+  return playpal_data->lump;
 }
 
 void V_FreePlaypal(void)
 {
-  if (playpal_data)
-  {
-    free(playpal_data);
-    playpal_data = NULL;
-  }
+  dsda_FreeAllPlayPals();
 }
 
-void V_FillBorder(int lump, byte color)
+int V_GetPlaypalCount(void)
+{
+  V_GetPlaypal(); // ensure playpal data is initialized
+  return (dsda_PlayPalData(playpal_index)->length / PALETTE_SIZE);
+}
+
+//
+// V_GetPatchColor
+// Get the color of a Doom-Format
+// graphic via lumpnum
+//
+
+SDL_Color V_GetPatchColor (int lumpnum)
+{
+  SDL_Color col = {0,0,0,0};
+  int r = 0, g = 0, b = 0;
+  const unsigned char *playpal = V_GetPlaypal();
+  int x, y, pixel_cnt = 0;
+  const byte* lump;
+  short width;
+
+  lump = W_LumpByNum(lumpnum);
+
+  width = *((const int16_t *) lump);
+  width = LittleShort(width);
+
+  for (x = 0; x < width; ++x) {
+    byte length;
+    byte entry;
+    const byte* p;
+    int32_t offset;
+
+    // Only calculate for the leftmost and rightmost 16 columns
+    if (width > 32 && x > 16 && x < width - 16)
+      continue;
+
+    // Skip irrelevant data in the doom patch header
+    p = lump + 8 + 4 * x;
+    offset = *((const int32_t *) p);
+    p = lump + LittleLong(offset);
+
+    while (*p != 0xff) {
+      p++;
+      length = *p++;
+      p++;
+
+      // Get RGB values per pixel
+      for (y = 0; y < length; ++y) {
+        entry = *p++;
+        r += playpal[3 * entry + 0];
+        g += playpal[3 * entry + 1];
+        b += playpal[3 * entry + 2];
+        pixel_cnt++;
+      }
+      p++;
+    }
+  }
+
+  // Average RGB values
+  col.r = r / pixel_cnt;
+  col.g = g / pixel_cnt;
+  col.b = b / pixel_cnt;
+
+  return col;
+}
+
+void V_ClearBorder(void)
 {
   int bordtop, bordbottom, bordleft, bordright;
 
-  if (render_stretch_hud == patch_stretch_full)
+  if (render_stretch_hud == patch_stretch_fit_to_width)
     return;
 
   bordleft = wide_offsetx;
@@ -1408,39 +1278,20 @@ void V_FillBorder(int lump, byte color)
   bordtop = wide_offsety;
   bordbottom = wide_offset2y - wide_offsety;
 
-  if (lump >= 0)
+  if (bordtop > 0)
   {
-    if (bordtop > 0)
-    {
-      // Top
-      V_FillFlat(lump, 0, 0, 0, SCREENWIDTH, bordtop, VPT_NONE);
-      // Bottom
-      V_FillFlat(lump, 0, 0, SCREENHEIGHT - bordbottom, SCREENWIDTH, bordbottom, VPT_NONE);
-    }
-    if (bordleft > 0)
-    {
-      // Left
-      V_FillFlat(lump, 0, 0, bordtop, bordleft, SCREENHEIGHT - bordbottom - bordtop, VPT_NONE);
-      // Right
-      V_FillFlat(lump, 0, SCREENWIDTH - bordright, bordtop, bordright, SCREENHEIGHT - bordbottom - bordtop, VPT_NONE);
-    }
+    // Top
+    V_FillRect(0, 0, 0, SCREENWIDTH, bordtop, 0);
+    // Bottom
+    V_FillRect(0, 0, SCREENHEIGHT - bordbottom, SCREENWIDTH, bordbottom, 0);
   }
-  else
+
+  if (bordleft > 0)
   {
-    if (bordtop > 0)
-    {
-      // Top
-      V_FillRect(0, 0, 0, SCREENWIDTH, bordtop, color);
-      // Bottom
-      V_FillRect(0, 0, SCREENHEIGHT - bordbottom, SCREENWIDTH, bordbottom, color);
-    }
-    if (bordleft > 0)
-    {
-      // Left
-      V_FillRect(0, 0, bordtop, bordleft, SCREENHEIGHT - bordbottom - bordtop, color);
-      // Right
-      V_FillRect(0, SCREENWIDTH - bordright, bordtop, bordright, SCREENHEIGHT - bordbottom - bordtop, color);
-    }
+    // Left
+    V_FillRect(0, 0, bordtop, bordleft, SCREENHEIGHT - bordbottom - bordtop, 0);
+    // Right
+    V_FillRect(0, SCREENWIDTH - bordright, bordtop, bordright, SCREENHEIGHT - bordbottom - bordtop, 0);
   }
 }
 
@@ -1475,7 +1326,7 @@ static void swap(unsigned int *num1, unsigned int *num2)
 // Set global variables for video scaling.
 void SetRatio(int width, int height)
 {
-  lprintf(LO_INFO, "SetRatio: width/height parameters %dx%d\n", width, height);
+  lprintf(LO_DEBUG, "SetRatio: width/height parameters %dx%d\n", width, height);
 
   ratio_multiplier = width;
   ratio_scale = height;
@@ -1483,60 +1334,62 @@ void SetRatio(int width, int height)
 
   // The terms storage aspect ratio, pixel aspect ratio, and display aspect
   // ratio came from Wikipedia.  SAR x PAR = DAR
-  lprintf(LO_INFO, "SetRatio: storage aspect ratio %u:%u\n", ratio_multiplier, ratio_scale);
-  if (height == 200 || height == 400)
+  lprintf(LO_DEBUG, "SetRatio: storage aspect ratio %u:%u\n", ratio_multiplier, ratio_scale);
+  if (height == 200 || height == 400 || !dsda_IntConfig(dsda_config_aspect_ratio_correction))
   {
-    lprintf(LO_INFO, "SetRatio: recognized VGA mode with pixel aspect ratio 5:6\n");
+    lprintf(LO_DEBUG, "SetRatio: recognized VGA mode with pixel aspect ratio 5:6\n");
     ratio_multiplier = width * 5;
     ratio_scale = height * 6;
     ReduceFraction(&ratio_multiplier, &ratio_scale);
   }
   else
   {
-    lprintf(LO_INFO, "SetRatio: assuming square pixels\n");
+    lprintf(LO_DEBUG, "SetRatio: assuming square pixels\n");
   }
-  lprintf(LO_INFO, "SetRatio: display aspect ratio %u:%u\n", ratio_multiplier, ratio_scale);
+  lprintf(LO_DEBUG, "SetRatio: display aspect ratio %u:%u\n", ratio_multiplier, ratio_scale);
 
   // If user wants to force aspect ratio, let them.
   {
     unsigned int new_multiplier = ratio_multiplier;
     unsigned int new_scale = ratio_scale;
+    int render_aspect = dsda_IntConfig(dsda_config_render_aspect);
+
     // Hardcoded to match render_aspects_list
     switch (render_aspect)
     {
-    case 0:
-      break;
-    case 1:
-      new_multiplier = 16;
-      new_scale = 9;
-      break;
-    case 2:
-      new_multiplier = 16;
-      new_scale = 10;
-      break;
-    case 3:
-      new_multiplier = 4;
-      new_scale = 3;
-      break;
-    case 4:
-      new_multiplier = 5;
-      new_scale = 4;
-      break;
-    default:
-      lprintf(LO_ERROR, "SetRatio: render_aspect has invalid value %d\n", render_aspect);
+      case 0:
+        break;
+      case 1:
+        new_multiplier = 16;
+        new_scale = 9;
+        break;
+      case 2:
+        new_multiplier = 16;
+        new_scale = 10;
+        break;
+      case 3:
+        new_multiplier = 4;
+        new_scale = 3;
+        break;
+      case 4:
+        new_multiplier = 5;
+        new_scale = 4;
+        break;
+      default:
+        lprintf(LO_ERROR, "SetRatio: render_aspect has invalid value %d\n", render_aspect);
     }
 
     if (ratio_multiplier != new_multiplier || ratio_scale != new_scale)
     {
-      lprintf(LO_INFO, "SetRatio: overruled by user configuration setting\n");
+      lprintf(LO_DEBUG, "SetRatio: overruled by user configuration setting\n");
       ratio_multiplier = new_multiplier;
       ratio_scale = new_scale;
-      lprintf(LO_INFO, "SetRatio: revised display aspect ratio %u:%u\n", ratio_multiplier, ratio_scale);
+      lprintf(LO_DEBUG, "SetRatio: revised display aspect ratio %u:%u\n", ratio_multiplier, ratio_scale);
     }
   }
-  
+
   gl_ratio = RMUL * ratio_multiplier / ratio_scale;
-  lprintf(LO_INFO, "SetRatio: gl_ratio %f\n", gl_ratio);
+  lprintf(LO_DEBUG, "SetRatio: gl_ratio %f\n", gl_ratio);
 
   // Calculate modified multiplier following the pattern of the old
   // BaseRatioSizes table in PrBoom-Plus 2.5.1.3.
@@ -1548,15 +1401,18 @@ void SetRatio(int width, int height)
   tallscreen = (ratio_scale < ratio_multiplier);
   if (tallscreen)
   {
-    lprintf(LO_INFO, "SetRatio: tallscreen aspect recognized; flipping multiplier\n");
+    float ratio_quotient = (float)ratio_multiplier/ratio_scale;
+    float ratio_percentage = (ratio_quotient - 1) * 100.0;
+    psprite_offset = (int)(ratio_percentage*FRACUNIT);
+
+    lprintf(LO_DEBUG, "SetRatio: tallscreen aspect recognized; flipping multiplier\n");
     swap(&ratio_multiplier, &ratio_scale);
-    psprite_offset = (int)(6.5*FRACUNIT);
   }
   else
   {
     psprite_offset = 0;
   }
-  lprintf(LO_INFO, "SetRatio: multiplier %u/%u\n", ratio_multiplier, ratio_scale);
+  lprintf(LO_DEBUG, "SetRatio: multiplier %u/%u\n", ratio_multiplier, ratio_scale);
 
   // The rest is carried over from CheckRatio in PrBoom-Plus 2.5.1.3.
   if (tallscreen)
@@ -1575,55 +1431,7 @@ void SetRatio(int width, int height)
 
   yaspectmul = Scale((320<<FRACBITS), WIDE_SCREENHEIGHT, 200 * WIDE_SCREENWIDTH);
 
-  patches_scalex = MIN(SCREENWIDTH / 320, SCREENHEIGHT / 200);
-  patches_scalex = MAX(1, patches_scalex);
-  patches_scaley = patches_scalex;
-
-  //custom scaling when "not adjusted" is used
-  if (render_patches_scalex > 0)
-  {
-    patches_scalex = MIN(render_patches_scalex, patches_scalex);
-  }
-  if (render_patches_scaley > 0)
-  {
-    patches_scaley = MIN(render_patches_scaley, patches_scaley);
-  }
-
-  ST_SCALED_HEIGHT = ST_HEIGHT * patches_scaley;
-
-  if (SCREENWIDTH < 320 || WIDE_SCREENWIDTH < 320 ||
-      SCREENHEIGHT < 200 || WIDE_SCREENHEIGHT < 200)
-  {
-    render_stretch_hud = patch_stretch_full; 
-  }
-
-  switch (render_stretch_hud)
-  {
-  case patch_stretch_16x10:
-    ST_SCALED_Y = (200 * patches_scaley - ST_SCALED_HEIGHT);
-
-    wide_offset2x = (SCREENWIDTH - patches_scalex * 320);
-    wide_offset2y = (SCREENHEIGHT - patches_scaley * 200);
-    break;
-  case patch_stretch_4x3:
-    ST_SCALED_HEIGHT = ST_HEIGHT * WIDE_SCREENHEIGHT / 200;
-
-    ST_SCALED_Y = SCREENHEIGHT - ST_SCALED_HEIGHT;
-    
-    wide_offset2x = (SCREENWIDTH - WIDE_SCREENWIDTH);
-    wide_offset2y = (SCREENHEIGHT - WIDE_SCREENHEIGHT);
-    break;
-  case patch_stretch_full:
-    ST_SCALED_HEIGHT = ST_HEIGHT * SCREENHEIGHT / 200;
-
-    ST_SCALED_Y = SCREENHEIGHT - ST_SCALED_HEIGHT;
-    wide_offset2x = 0;
-    wide_offset2y = 0;
-    break;
-  }
-
-  wide_offsetx = wide_offset2x / 2;
-  wide_offsety = wide_offset2y / 2;
+  dsda_EvaluatePatchScale();
 
   SCREEN_320x200 =
     (SCREENWIDTH == 320) && (SCREENHEIGHT == 200) &&
@@ -1635,7 +1443,7 @@ void SetRatio(int width, int height)
 
 void V_GetWideRect(int *x, int *y, int *w, int *h, enum patch_translation_e flags)
 {
-  stretch_param_t *params = &stretch_params[flags & VPT_ALIGN_MASK];
+  stretch_param_t *params = dsda_StretchParams(flags);
   int sx = *x;
   int sy = *y;
 
@@ -1647,7 +1455,7 @@ void V_GetWideRect(int *x, int *y, int *w, int *h, enum patch_translation_e flag
   *y += params->deltay1;
 }
 
-// 
+//
 // V_BestColor
 //
 // Adapted from zdoom -- thanks to Randy Heit.
@@ -1660,7 +1468,7 @@ void V_GetWideRect(int *x, int *y, int *w, int *h, enum patch_translation_e flag
 int V_BestColor(const unsigned char *palette, int r, int g, int b)
 {
   int color;
-  
+
   // use color 0 as a worst-case match for any color
   int bestcolor = 0;
   int bestdist = 257 * 257 + 257 * 257 + 257 * 257;
@@ -1688,3 +1496,247 @@ int V_BestColor(const unsigned char *palette, int r, int g, int b)
 
   return bestcolor;
 }
+
+// Alt-Enter: fullscreen <-> windowed
+void V_ToggleFullscreen(void)
+{
+  dsda_UpdateIntConfig(dsda_config_use_fullscreen, !desired_fullscreen, true);
+}
+
+void V_ChangeScreenResolution(void)
+{
+  I_UpdateVideoMode();
+
+  if (V_IsOpenGLMode())
+  {
+    gld_PreprocessLevel();
+  }
+}
+
+void V_FillRectVPT(int scrn, int x, int y, int width, int height, byte color, enum patch_translation_e flags)
+{
+  V_GetWideRect(&x, &y, &width, &height, flags);
+  V_FillRect(scrn, x, y, width, height, color);
+}
+
+int V_FillHeightVPT(int scrn, int y, int height, byte color, enum patch_translation_e flags)
+{
+  stretch_param_t *params = dsda_StretchParams(flags);
+  int sy = y;
+
+  y = params->video->y1lookup[y];
+  height = params->video->y2lookup[sy + height - 1] - y + 1;
+  y += params->deltay1;
+  V_FillRect(scrn, 0, y, SCREENWIDTH, height, color);
+
+  return height;
+}
+
+// heretic
+
+// heretic_note: is something already implemented to handle this?
+void V_DrawRawScreen(const char *lump_name)
+{
+  V_DrawRawScreenSection(lump_name, 0, 0, 200);
+}
+
+void V_DrawRawScreenSection(const char *lump_name, int source_offset, int dest_y_offset, int dest_y_limit)
+{
+  int i, j;
+  float x_factor = 0, y_factor = 0;
+  int x_offset, y_offset;
+  const byte* raw;
+  int lump_num = W_CheckNumForName(lump_name);
+  int lump_width = W_LumpLength(lump_num) / 200;
+
+  // e6y: wide-res
+  // NOTE: the size isn't quite right on all resolutions,
+  // which causes the black bars on the edge of heretic E3's
+  // bottom endscreen to overlap the top screen during scrolling.
+  // this happens in both software and GL at the time of writing.
+  V_ClearBorder();
+
+  // custom widescreen assets are a different format
+  if (R_IsPatchLump(lump_num))
+  {
+    V_DrawNamePatchFS(0, 0, 0, lump_name, CR_DEFAULT, VPT_STRETCH);
+    return;
+  }
+
+  // aspect ratio correction
+  switch (render_stretch_hud) {
+    case patch_stretch_not_adjusted:
+      x_factor = (float)SCREENWIDTH / 320;
+      y_factor = (float)SCREENHEIGHT / 200;
+      if (y_factor < x_factor)
+        x_factor = y_factor;
+      break;
+    case patch_stretch_doom_format:
+      x_factor = (float)WIDE_SCREENWIDTH / 320;
+      y_factor = (float)WIDE_SCREENHEIGHT / 200;
+      if (y_factor < x_factor)
+        x_factor = y_factor;
+      break;
+    case patch_stretch_fit_to_width:
+      x_factor = (float)SCREENWIDTH / 320;
+      y_factor = (float)SCREENHEIGHT / 200;
+      break;
+  }
+
+  x_offset = (int)((SCREENWIDTH - (x_factor * lump_width)) / 2);
+  y_offset = (int)((dest_y_offset * y_factor) - (source_offset * y_factor / lump_width));
+
+  // TODO: create a V_FillRaw alias and call that instead of the gld_ func directly,
+  // though that means there needs to be a software version too (that's ideally a
+  // bit more efficient than the current code's thousands-of-little-boxes approach)
+  if (V_IsOpenGLMode()) {
+    gld_FillRawName(lump_name, x_offset, y_offset, lump_width, 200, lump_width * x_factor, 200 * y_factor, VPT_STRETCH_REAL);
+    return;
+  }
+
+  raw = (const byte *)W_LumpByName(lump_name) + source_offset;
+
+  for (j = dest_y_offset; j < dest_y_offset + dest_y_limit; ++j)
+    for (i = 0; i < lump_width; ++i, ++raw)
+    {
+      int x, y, width, height, x_pos;
+
+      x = (int)(i * x_factor);
+      y = (int)(j * y_factor);
+      width = (int)((i + 1) * x_factor) - x;
+      height = (int)((j + 1) * y_factor) - y;
+
+      x_pos = x_offset + x;
+
+      // Don't draw pixels outside screen
+      if ((x_pos < 0) || (x_pos > SCREENWIDTH - width))
+        continue;
+
+      V_FillRect(0, x_pos, y, width, height, *raw);
+    }
+}
+
+void V_DrawShadowedNumPatch(int x, int y, int lump)
+{
+  V_DrawNumPatch(x, y, 0, lump, CR_DEFAULT, VPT_STRETCH);
+}
+
+void V_DrawShadowedNamePatch(int x, int y, const char* name)
+{
+  V_DrawNamePatch(x, y, 0, name, CR_DEFAULT, VPT_STRETCH);
+}
+
+void V_DrawTLNumPatch(int x, int y, int lump)
+{
+  V_DrawNumPatch(x, y, 0, lump, CR_DEFAULT, VPT_STRETCH);
+}
+
+void V_DrawTLNamePatch(int x, int y, const char* name)
+{
+  V_DrawNamePatch(x, y, 0, name, CR_DEFAULT, VPT_STRETCH);
+}
+
+void V_DrawAltTLNumPatch(int x, int y, int lump)
+{
+  V_DrawNumPatch(x, y, 0, lump, CR_DEFAULT, VPT_STRETCH);
+}
+
+// void V_DrawShadowedPatch(int x, int y, patch_t *patch)
+// {
+//     int count, col;
+//     column_t *column;
+//     pixel_t *desttop, *dest;
+//     byte *source;
+//     pixel_t *desttop2, *dest2;
+//     int w;
+//
+//     y -= SHORT(patch->topoffset);
+//     x -= SHORT(patch->leftoffset);
+//
+//     if (x < 0
+//      || x + SHORT(patch->width) > ORIGWIDTH
+//      || y < 0
+//      || y + SHORT(patch->height) > ORIGHEIGHT)
+//     {
+//         I_Error("Bad V_DrawShadowedPatch");
+//     }
+//
+//     col = 0;
+//     desttop = dest_screen + ((y * dy) >> FRACBITS) * SCREENWIDTH + ((x * dx) >> FRACBITS);
+//     desttop2 = dest_screen + (((y + 2) * dy) >> FRACBITS) * SCREENWIDTH + (((x + 2) * dx) >> FRACBITS);
+//
+//     w = SHORT(patch->width);
+//     for (; col < w << FRACBITS; x++, col+=dxi, desttop++, desttop2++)
+//     {
+//         column = (column_t *) ((byte *) patch + LONG(patch->columnofs[col >> FRACBITS]));
+//
+//         // step through the posts in a column
+//
+//         while (column->topdelta != 0xff)
+//         {
+//             int srccol = 0;
+//             source = (byte *) column + 3;
+//             dest = desttop + ((column->topdelta * dy) >> FRACBITS) * SCREENWIDTH;
+//             dest2 = desttop2 + ((column->topdelta * dy) >> FRACBITS) * SCREENWIDTH;
+//             count = (column->length * dy) >> FRACBITS;
+//
+//             while (count--)
+//             {
+//                 *dest2 = tinttable[((*dest2) << 8)];
+//                 dest2 += SCREENWIDTH;
+//                 *dest = source[srccol >> FRACBITS];
+//                 srccol += dyi;
+//                 dest += SCREENWIDTH;
+//
+//             }
+//             column = (column_t *) ((byte *) column + column->length + 4);
+//         }
+//     }
+// }
+
+// void V_DrawTLPatch(int x, int y, patch_t * patch)
+// {
+//     int count, col;
+//     column_t *column;
+//     pixel_t *desttop, *dest;
+//     byte *source;
+//     int w;
+//
+//     y -= SHORT(patch->topoffset);
+//     x -= SHORT(patch->leftoffset);
+//
+//     if (x < 0
+//      || x + SHORT(patch->width) > ORIGWIDTH
+//      || y < 0
+//      || y + SHORT(patch->height) > ORIGHEIGHT)
+//     {
+//         I_Error("Bad V_DrawTLPatch");
+//     }
+//
+//     col = 0;
+//     desttop = dest_screen + ((y * dy) >> FRACBITS) * SCREENWIDTH + ((x * dx) >> FRACBITS);
+//
+//     w = SHORT(patch->width);
+//     for (; col < w << FRACBITS; x++, col+=dxi, desttop++)
+//     {
+//         column = (column_t *) ((byte *) patch + LONG(patch->columnofs[col >> FRACBITS]));
+//
+//         // step through the posts in a column
+//
+//         while (column->topdelta != 0xff)
+//         {
+//             int srccol = 0;
+//             source = (byte *) column + 3;
+//             dest = desttop + ((column->topdelta * dy) >> FRACBITS) * SCREENWIDTH;
+//             count = (column->length * dy) >> FRACBITS;
+//
+//             while (count--)
+//             {
+//                 *dest = tinttable[((*dest) << 8) + source[srccol >> FRACBITS]];
+//                 srccol += dyi;
+//                 dest += SCREENWIDTH;
+//             }
+//             column = (column_t *) ((byte *) column + column->length + 4);
+//         }
+//     }
+// }

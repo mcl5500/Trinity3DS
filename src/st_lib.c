@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -40,9 +40,8 @@
 #include "r_main.h"
 #include "lprintf.h"
 
-int sts_always_red;      //jff 2/18/98 control to disable status color changes
+int sts_colored_numbers; //jff 2/18/98 control to enable status color changes
 int sts_pct_always_gray; // killough 2/21/98: always gray %'s? bug or feature?
-int sts_armorcolor_type; // control to enable armor color depending on type
 
 //
 // STlib_init()
@@ -104,6 +103,7 @@ static void STlib_drawNum
   int   w = n->p[0].width;
   int   h = n->p[0].height;
   int   x = n->x;
+  int   clear_x, clear_y;
 
   int   neg;
 
@@ -127,27 +127,21 @@ static void STlib_drawNum
   }
 
   // clear the area
-  x = n->x - numdigits*w;
+  clear_x = n->x - LittleShort(n->p[0].leftoffset) - numdigits * w;
+  clear_y = n->y - LittleShort(n->p[0].topoffset);
 
-#ifdef RANGECHECK
-  if (n->y - ST_Y < 0)
-    I_Error("STlib_drawNum: n->y - ST_Y < 0");
-#endif
-
-  V_CopyRect(BG, FG, x, n->y, w * numdigits, h, VPT_STRETCH | VPT_ALIGN_BOTTOM);
+  V_CopyRect(BG, FG, clear_x, clear_y, w * numdigits, h, VPT_STRETCH | VPT_ALIGN_BOTTOM);
 
   // if non-number, do not draw it
   if (num == 1994)
     return;
-
-  x = n->x;
 
   //jff 2/16/98 add color translation to digit output
   // in the special case of 0, you draw 0
   if (!num)
     // CPhipps - patch drawing updated, reformatted
     V_DrawNumPatch(x - w, n->y, FG, n->p[0].lumpnum, cm,
-       (((cm!=CR_DEFAULT) && !sts_always_red) ? VPT_TRANS : VPT_NONE) | VPT_ALIGN_BOTTOM);
+       (((cm!=CR_DEFAULT) && sts_colored_numbers) ? VPT_TRANS : VPT_NONE) | VPT_ALIGN_BOTTOM);
 
   // draw the new number
   //jff 2/16/98 add color translation to digit output
@@ -155,7 +149,7 @@ static void STlib_drawNum
     // CPhipps - patch drawing updated, reformatted
     x -= w;
     V_DrawNumPatch(x, n->y, FG, n->p[num % 10].lumpnum, cm,
-       (((cm!=CR_DEFAULT) && !sts_always_red) ? VPT_TRANS : VPT_NONE) | VPT_ALIGN_BOTTOM);
+       (((cm!=CR_DEFAULT) && sts_colored_numbers) ? VPT_TRANS : VPT_NONE) | VPT_ALIGN_BOTTOM);
     num /= 10;
   }
 
@@ -164,7 +158,7 @@ static void STlib_drawNum
   // cph - patch drawing updated, load by name instead of acquiring pointer earlier
   if (neg)
     V_DrawNamePatch(x - w, n->y, FG, "STTMINUS", cm,
-       (((cm!=CR_DEFAULT) && !sts_always_red) ? VPT_TRANS : VPT_NONE) | VPT_ALIGN_BOTTOM);
+       (((cm!=CR_DEFAULT) && sts_colored_numbers) ? VPT_TRANS : VPT_NONE) | VPT_ALIGN_BOTTOM);
 }
 
 /*
@@ -232,7 +226,7 @@ void STlib_updatePercent
     // CPhipps - patch drawing updated
     V_DrawNumPatch(per->n.x, per->n.y, FG, per->p->lumpnum,
        sts_pct_always_gray ? CR_GRAY : cm,
-       (sts_always_red ? VPT_NONE : VPT_TRANS) | VPT_ALIGN_BOTTOM);
+       (sts_colored_numbers || sts_pct_always_gray ? VPT_TRANS : VPT_NONE) | VPT_ALIGN_BOTTOM);
   }
 
   STlib_updateNum(&per->n, cm, refresh);
@@ -302,74 +296,5 @@ void STlib_updateMultIcon
     if (*mi->inum != -1)  // killough 2/16/98: redraw only if != -1
       V_DrawNumPatch(mi->x, mi->y, FG, mi->p[*mi->inum].lumpnum, CR_DEFAULT, VPT_ALIGN_BOTTOM);
     mi->oldinum = *mi->inum;
-  }
-}
-
-//
-// STlib_initBinIcon()
-//
-// Initialize a st_binicon_t widget, used for a multinumber display
-// like the status bar's weapons, that are present or not.
-//
-// Passed a st_binicon_t widget, the position, the digit patches, a pointer
-// to the flags representing what is displayed, and pointer to the enable flag
-// Returns nothing.
-//
-void STlib_initBinIcon
-( st_binicon_t* b,
-  int x,
-  int y,
-  const patchnum_t* i,
-  dboolean* val,
-  dboolean* on )
-{
-  b->x  = x;
-  b->y  = y;
-  b->oldval = 0;
-  b->val  = val;
-  b->on = on;
-  b->p  = i;
-}
-
-//
-// STlib_updateBinIcon()
-//
-// DInitialize a st_binicon_t widget, used for a multinumber display
-// like the status bar's weapons, that are present or not.
-//
-// Draw a st_binicon_t widget, used for a multinumber display
-// like the status bar's weapons that are present or not. Displays each
-// when the control flag changes or refresh is true
-//
-// Passed a st_binicon_t widget, and a refresh flag
-// Returns nothing.
-//
-void STlib_updateBinIcon
-( st_binicon_t*   bi,
-  dboolean   refresh )
-{
-  int     x;
-  int     y;
-  int     w;
-  int     h;
-
-  if (*bi->on && (bi->oldval != *bi->val || refresh))
-  {
-    x = bi->x - bi->p->leftoffset;
-    y = bi->y - bi->p->topoffset;
-    w = bi->p->width;
-    h = bi->p->height;
-
-#ifdef RANGECHECK
-    if (y - ST_Y < 0)
-      I_Error("STlib_updateBinIcon: y - ST_Y < 0");
-#endif
-
-    if (*bi->val)
-      V_DrawNumPatch(bi->x, bi->y, FG, bi->p->lumpnum, CR_DEFAULT, VPT_STRETCH);
-    else
-      V_CopyRect(BG, FG, x, y, w, h, VPT_STRETCH);
-
-    bi->oldval = *bi->val;
   }
 }

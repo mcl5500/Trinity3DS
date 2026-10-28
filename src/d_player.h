@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -35,6 +35,7 @@
 #ifndef __D_PLAYER__
 #define __D_PLAYER__
 
+#include "dsda/pclass.h"
 
 // The player data structure depends on a number
 // of other structs: items (internal inventory),
@@ -52,11 +53,6 @@
 // as commands per game tick.
 #include "d_ticcmd.h"
 
-#ifdef __GNUG__
-#pragma interface
-#endif
-
-
 //
 // Player states.
 //
@@ -71,25 +67,75 @@ typedef enum
 
 } playerstate_t;
 
+#define CF_NOCLIP        0x01 // no clipping
+#define CF_GODMODE       0x02 // immune to damage
+#define CF_INFINITE_AMMO 0x04 // infinite ammo
+#define CF_NOTARGET      0x08 // monsters don't target
+#define CF_FLY           0x10 // flying player
 
-//
-// Player internal flags, for cheats and debug.
-//
+// heretic
+typedef struct
+{
+    int type;
+    int count;
+} inventory_t;
+
+// heretic
 typedef enum
 {
-  // No clipping, walk through barriers.
-  CF_NOCLIP           = 1,
-  // No damage, no health loss.
-  CF_GODMODE          = 2,
-  // Not really a cheat, just a debug aid.
-  CF_NOMOMENTUM       = 4,
+    arti_none,
+    arti_invulnerability,
+    arti_invisibility,
+    arti_health,
+    arti_superhealth,
+    arti_tomeofpower,
+    arti_torch,
+    arti_firebomb,
+    arti_egg,
+    arti_fly,
+    arti_teleport,
+    NUMARTIFACTS,
 
-  // [RH] Monsters don't target
-  CF_NOTARGET         = 8,
-  // [RH] Flying player
-  CF_FLY              = 16,
-} cheat_t;
+    // hexen
+    hexen_arti_none = arti_none,
+    hexen_arti_invulnerability,
+    hexen_arti_health,
+    hexen_arti_superhealth,
+    hexen_arti_healingradius,
+    hexen_arti_summon,
+    hexen_arti_torch,
+    hexen_arti_egg,
+    hexen_arti_fly,
+    hexen_arti_blastradius,
+    hexen_arti_poisonbag,
+    hexen_arti_teleportother,
+    hexen_arti_speed,
+    hexen_arti_boostmana,
+    hexen_arti_boostarmor,
+    hexen_arti_teleport,
+    // Puzzle artifacts
+    hexen_arti_firstpuzzitem,
+    hexen_arti_puzzskull = hexen_arti_firstpuzzitem,
+    hexen_arti_puzzgembig,
+    hexen_arti_puzzgemred,
+    hexen_arti_puzzgemgreen1,
+    hexen_arti_puzzgemgreen2,
+    hexen_arti_puzzgemblue1,
+    hexen_arti_puzzgemblue2,
+    hexen_arti_puzzbook1,
+    hexen_arti_puzzbook2,
+    hexen_arti_puzzskull2,
+    hexen_arti_puzzfweapon,
+    hexen_arti_puzzcweapon,
+    hexen_arti_puzzmweapon,
+    hexen_arti_puzzgear1,
+    hexen_arti_puzzgear2,
+    hexen_arti_puzzgear3,
+    hexen_arti_puzzgear4,
+    HEXEN_NUMARTIFACTS
+} artitype_t;
 
+#define NUMINVENTORYSLOTS	HEXEN_NUMARTIFACTS
 
 //
 // Extended player object info: player_t
@@ -114,7 +160,7 @@ typedef struct player_s
   // This is only used between levels,
   // mo->health is used during levels.
   int                 health;
-  int                 armorpoints;
+  int                 armorpoints[NUMARMOR];
   // Armor type is 0-2.
   int                 armortype;
 
@@ -124,7 +170,7 @@ typedef struct player_s
   dboolean           backpack;
 
   // Frags, kills of other players.
-  int                 frags[MAXPLAYERS];
+  int                 frags[MAX_MAXPLAYERS];
   weapontype_t        readyweapon;
 
   // Is wp_nochange if not changing.
@@ -138,8 +184,7 @@ typedef struct player_s
   int                 attackdown;
   int                 usedown;
 
-  // Bit flags, for cheats and debug.
-  // See cheat_t, above.
+  // See CF flags above.
   int                 cheats;
 
   // Refired shots are less accurate.
@@ -149,9 +194,6 @@ typedef struct player_s
   int                 killcount;
   int                 itemcount;
   int                 secretcount;
-
-  // Hint messages. // CPhipps - const
-  const char*         message;
 
   // For screen flashing (red or bright).
   int                 damagecount;
@@ -189,14 +231,40 @@ typedef struct player_s
   fixed_t            momx, momy;      // killough 10/98
 
   //e6y
-  int                 resurectedkillcount;
-  //not used, not removed because of savagame compatibility
-  const char*         centermessage;
+  int                 maxkilldiscount;
 
   fixed_t prev_viewz;
   angle_t prev_viewangle;
   angle_t prev_viewpitch;
-  fixed_t jumpTics;      // delay the next jump for a moment
+
+  // heretic
+  int flyheight;
+  int lookdir;
+  dboolean centering;
+  inventory_t inventory[NUMINVENTORYSLOTS];
+  artitype_t readyArtifact;
+  int artifactCount;
+  int inventorySlotNum;
+  int flamecount;             // for flame thrower duration
+  int chickenTics;            // player is a chicken if > 0
+  int chickenPeck;            // chicken peck countdown
+  mobj_t *rain1;              // active rain maker 1
+  mobj_t *rain2;              // active rain maker 2
+
+  // hexen
+  pclass_t pclass;            // player class type
+  int morphTics;              // player is a pig if > 0
+  int pieces;                 // Fourth Weapon pieces
+  int ravenkeys;              // Track statusbar keys
+  short yellowMessage;
+  int poisoncount;            // screen flash for poison damage
+  mobj_t *poisoner;           // NULL for non-player mobjs
+  unsigned int jumpTics;      // delay the next jump for a moment
+  unsigned int worldTimer;    // total time the player's been playing
+
+  // zdoom
+  int hazardcount;
+  byte hazardinterval;
 } player_t;
 
 
@@ -221,7 +289,6 @@ typedef struct
 typedef struct
 {
   int         epsd;   // episode # (0-2)
-  struct MapEntry *lastmapinfo;
 
   // if true, splash the secret level
   dboolean   didsecret;
@@ -230,7 +297,6 @@ typedef struct
   int         last;
   int         next;
   int         nextep;	// for when MAPINFO progression crosses into another episode.
-  struct MapEntry *nextmapinfo;
 
   int         maxkills;
   int         maxitems;
@@ -239,16 +305,19 @@ typedef struct
 
   // the par time
   int         partime;
+  int         fake_partime;
+  dboolean    modified_partime;
 
   // index of this player in game
   int         pnum;
 
-  wbplayerstruct_t    plyr[MAXPLAYERS];
+  wbplayerstruct_t    plyr[MAX_MAXPLAYERS];
 
   // CPhipps - total game time for completed levels so far
   int         totaltimes;
 
 } wbstartstruct_t;
 
+fixed_t P_PlayerSpeed(player_t* player);
 
 #endif

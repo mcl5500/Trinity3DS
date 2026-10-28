@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -31,7 +31,6 @@
  *  Sliders and icons. Kinda widget stuff.
  *  Setup Menus.
  *  Extended HELP screens.
- *  Dynamic HELP screen.
  *
  *-----------------------------------------------------------------------------*/
 
@@ -39,8 +38,16 @@
 #include "config.h"
 #endif
 
+#ifdef _MSC_VER
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
+
 #include <stdio.h>
-#include <fcntl.h>
+#include <time.h>
+
+#include "SDL.h"
 
 #include "doomdef.h"
 #include "doomstat.h"
@@ -56,84 +63,143 @@
 #include "sounds.h"
 #include "m_menu.h"
 #include "d_deh.h"
+#include "m_file.h"
 #include "m_misc.h"
 #include "lprintf.h"
 #include "am_map.h"
+#include "i_glob.h"
 #include "i_main.h"
 #include "i_system.h"
 #include "i_video.h"
 #include "i_sound.h"
-#include "r_demo.h"
+#include "smooth.h"
 #include "r_fps.h"
+#include "r_main.h"
+#include "r_patch.h"
+#include "r_segs.h"
+#include "f_finale.h"
 #include "e6y.h"//e6y
-#include "m_io.h"
 
-extern patchnum_t hu_font[HU_FONTSIZE];
-extern dboolean  message_dontfuckwithme;
+#include "dsda/episode.h"
+#include "dsda/exhud.h"
+#include "dsda/features.h"
+#include "dsda/font.h"
+#include "dsda/game_controller.h"
+#include "dsda/global.h"
+#include "dsda/mapinfo.h"
+#include "dsda/messenger.h"
+#include "dsda/settings.h"
+#include "dsda/key_frame.h"
+#include "dsda/input.h"
+#include "dsda/palette.h"
+#include "dsda/save.h"
+#include "dsda/skill_info.h"
+#include "dsda/skip.h"
+#include "dsda/time.h"
+#include "dsda/console.h"
+#include "dsda/stretch.h"
+#include "dsda/text_color.h"
+#include "dsda/utility.h"
+#include "dsda/wad_stats.h"
 
-extern dboolean chat_on;          // in heads-up code
+#include "heretic/mn_menu.h"
+#include "heretic/sb_bar.h"
+#include "heretic/dstrings.h"
 
+/****************************
+ *
+ *  The following #defines are for the m_flags field of each item on every
+ *  Setup Screen. They can be OR'ed together where appropriate
+ */
+
+#define S_HILITE   0x00000001 // Cursor is sitting on this item
+#define S_SELECT   0x00000002 // We're changing this item
+#define S_TITLE    0x00000004 // Title item
+#define S_YESNO    0x00000008 // Yes or No item
+#define S_CRITEM   0x00000010 // Message color
+#define S_COLOR    0x00000020 // Automap color
+#define S_LABEL    0x00000040
+#define S_TC_SEL   0x00000080
+#define S_PREV     0x00000100 // Previous menu exists
+#define S_NEXT     0x00000200 // Next menu exists
+#define S_INPUT    0x00000400 // Composite input binding
+#define S_WEAP     0x00000800 // Weapon #
+#define S_NUM      0x00001000 // Numerical item
+#define S_SKIP     0x00002000 // Cursor can't land here
+#define S_KEEP     0x00004000 // Don't swap key out
+#define S_END      0x00008000 // Last item in list (dummy)
+#define S_LEVWARN  0x00010000 // killough 8/30/98: Always warn about pending change
+#define S_NOSELECT 0x00020000
+#define S_CENTER   0x00040000
+#define S_FILE     0x00080000 // killough 10/98: Filenames
+#define S_LEFTJUST 0x00100000 // killough 10/98: items which are left-justified
+#define S_CREDIT   0x00200000 // killough 10/98: credit
+#define S_THERMO   0x00400000 // Slider for choosing a value
+#define S_CHOICE   0x00800000 // this item has several values
+#define S_NAME     0x01000000
+#define S_RESET_Y  0x02000000
+#define S_STR      0x04000000 // need to refactor things...
+#define S_NOCLEAR  0x08000000
+#define S_DISABLED 0x10000000 // disabled / darken options
+// #define S_      0x20000000
+// #define S_      0x40000000
+// #define S_      0x80000000
+
+/* S_SHOWDESC  = the set of items whose description should be displayed
+ * S_SHOWSET   = the set of items whose setting should be displayed
+ * S_STRING    = the set of items whose settings are strings -- killough 10/98:
+ * S_HASDEFPTR = the set of items whose var field points to default array
+ */
+
+#define S_SHOWDESC (S_LABEL|S_TITLE|S_YESNO|S_CRITEM|S_COLOR|S_PREV|S_NEXT|S_INPUT|S_WEAP|S_NUM|S_FILE|S_CREDIT|S_CHOICE|S_THERMO|S_NAME)
+
+#define S_SHOWSET  (S_YESNO|S_CRITEM|S_COLOR|S_INPUT|S_WEAP|S_NUM|S_FILE|S_CHOICE|S_THERMO|S_NAME)
+
+#define S_STRING (S_FILE|S_NAME)
+
+#define S_HASDEFPTR (S_STRING|S_YESNO|S_NUM|S_WEAP|S_COLOR|S_CRITEM|S_CHOICE)
+
+/////////////////////////////
 //
-// defaulted values
-//
+// booleans for setup screens
+// these tell you what state the setup screens are in, and whether any of
+// the overlay screens (automap colors, reset button message) should be
+// displayed
 
-int mouseSensitivity_horiz; // has default   //  killough
-int mouseSensitivity_vert;  // has default
+static dboolean setup_active      = false; // in one of the setup screens
+static dboolean set_general_active = false;
+static dboolean set_keybnd_active = false; // in key binding setup screens
+static dboolean set_display_active = false;
+static dboolean set_demos_active = false; // in demos setup screen
+static dboolean set_compatibility_active = false;
+static dboolean set_weapon_active = false; // in weapons setup screen
+static dboolean set_auto_active   = false; // in automap setup screen
+static dboolean level_table_active = false;
+static dboolean setup_select      = false; // changing an item
+static dboolean setup_gather      = false; // gathering keys for value
+static dboolean colorbox_active   = false; // color palette being shown
 
-int showMessages;    // Show messages has default, 0 = off, 1 = on
 
-int hide_setup=1; // killough 5/15/98
+extern const char* g_menu_flat;
+extern int g_menu_save_page_size;
+extern int g_menu_font_spacing;
 
-// Blocky mode, has default, 0 = high, 1 = normal
-//int     detailLevel;    obsolete -- killough
-int screenblocks;    // has default
+#define QUICKSAVESLOT 0
 
-int screenSize;      // temp for screenblocks (0-9)
-
-int quickSaveSlot;   // -1 = no quicksave slot picked!
-
-int messageToPrint;  // 1 = message to be printed
+static int messageToPrint;  // 1 = message to be printed
 
 // CPhipps - static const
 static const char* messageString; // ...and here is the message string!
 
-// message x & y
-int     messx;
-int     messy;
-int     messageLastMenuActive;
+static int messageLastMenuActive;
 
-dboolean messageNeedsInput; // timed message = no input from user
+static dboolean messageNeedsInput; // timed message = no input from user
 
-void (*messageRoutine)(int response);
-
-#define SAVESTRINGSIZE  24
-
-/* killough 8/15/98: when changes are allowed to sync-critical variables */
-static int allow_changes(void)
-{
- return !(demoplayback || demorecording || netgame);
-}
-
-static void M_UpdateCurrent(default_t* def)
-{
-  /* cph - requires rewrite of m_misc.c */
-  if (def->current) {
-    if (allow_changes())  /* killough 8/15/98 */
-  *def->current = *def->location.pi;
-    else if (*def->current != *def->location.pi)
-  warn_about_changes(S_LEVWARN); /* killough 8/15/98 */
-  }
-}
-
-int warning_about_changes, print_warning_about_changes;
-
-/* cphipps - M_DrawBackground renamed and moved to v_video.c */
-
-dboolean menu_background = 1; // do Boom fullscreen menus have backgrounds?
+static void (*messageRoutine)(int response);
 
 static void M_DrawBackground(const char *flat, int scrn)
 {
-  if (menu_background)
+  if (dsda_IntConfig(dsda_config_menu_background) == 2)
     V_DrawBackground(flat, scrn);
 }
 
@@ -143,71 +209,35 @@ int saveStringEnter;
 int saveSlot;        // which slot to save in
 int saveCharIndex;   // which char we're editing
 // old save description before edit
-char saveOldString[SAVESTRINGSIZE];
+static char saveOldString[SAVESTRINGSIZE];
 
 dboolean inhelpscreens; // indicates we are in or just left a help screen
 
 dboolean BorderNeedRefresh;
 
-enum menuactive_e menuactive;    // The menus are up
+menuactive_t menuactive;    // The menus are up
 
 #define SKULLXOFF  -32
 #define LINEHEIGHT  16
 
 char savegamestrings[10][SAVESTRINGSIZE];
 
-//
-// MENU TYPEDEFS
-//
-
-typedef struct
-{
-  short status; // 0 = no cursor here, 1 = ok, 2 = arrows ok
-  char  name[10];
-
-  // choice = menu item #.
-  // if status = 2,
-  //   choice=0:leftarrow,1:rightarrow
-  void  (*routine)(int choice);
-  char  alphaKey; // hotkey in menu
-  const char *alttext;
-} menuitem_t;
-
-typedef struct menu_s
-{
-  short           numitems;     // # of menu items
-  struct menu_s*  prevMenu;     // previous menu
-  menuitem_t*     menuitems;    // menu items
-  void            (*routine)(); // draw routine
-  short           x;
-  short           y;            // x,y of menu
-  short           lastOn;       // last item user was on in menu
-} menu_t;
-
-short itemOn;           // menu item skull is on (for Big Font menus)
-short skullAnimCounter; // skull animation counter
-short whichSkull;       // which skull to draw (he blinks)
+short itemOn;                  // menu item skull is on (for Big Font menus)
+static short skullAnimCounter; // skull animation counter
+static short whichSkull;       // which skull to draw (he blinks)
 
 // graphic name of skulls
 
-const char skullName[2][/*8*/9] = {"M_SKULL1","M_SKULL2"};
+static const char skullName[2][/*8*/9] = {"M_SKULL1","M_SKULL2"};
 
 menu_t* currentMenu; // current menudef
 
-// phares 3/30/98
-// externs added for setup menus
+extern menu_t InfoDef1;
+extern menu_t InfoDef4;
+extern menuitem_t InfoMenu4[];
 
-int mapcolor_me;    // cph
-
-extern int map_point_coordinates; // killough 10/98
-extern int map_level_stat;
-
-extern char* chat_macros[];  // chat macros
-extern const char* shiftxform;
-extern default_t defaults[];
-extern int numdefaults;
-
-// end of externs added for setup menus
+static int current_page;
+static int previous_page;
 
 //
 // PROTOTYPES
@@ -223,92 +253,167 @@ void M_ReadThis(int choice);
 void M_ReadThis2(int choice);
 void M_QuitDOOM(int choice);
 
-void M_ChangeMessages(int choice);
-void M_ChangeSensitivity(int choice);
-void M_SfxVol(int choice);
-void M_MusicVol(int choice);
-/* void M_ChangeDetail(int choice);  unused -- killough */
-void M_SizeDisplay(int choice);
-void M_StartGame(int choice);
-void M_Sound(int choice);
+static void M_SfxVol(int choice);
+static void M_MusicVol(int choice);
+static void M_SizeDisplay(int choice);
+static void M_Sound(int choice);
 
-void M_Mouse(int choice, int *sens);      /* killough */
-void M_MouseVert(int choice);
-void M_MouseHoriz(int choice);
-void M_DrawMouse(void);
+static void M_FinishReadThis(int choice);
+static void M_FinishHelp(int choice);            // killough 10/98
+static void M_LoadSelect(int choice);
+static void M_SaveSelect(int choice);
+static void M_ReadSaveStrings(void);
+static void M_QuickSave(void);
+static void M_QuickLoad(void);
 
-void M_FinishReadThis(int choice);
-void M_FinishHelp(int choice);            // killough 10/98
-void M_LoadSelect(int choice);
-void M_SaveSelect(int choice);
-void M_ReadSaveStrings(void);
-void M_QuickSave(void);
-void M_QuickLoad(void);
+static void M_DrawMainMenu(void);
+static void M_DrawReadThis1(void);
+static void M_DrawReadThis2(void);
+static void M_DrawSkillMenu(void);
+static void M_DrawEpisode(void);
+static void M_DrawOptions(void);
+static void M_DrawSound(void);
+static void M_DrawLoad(void);
+static void M_DrawSave(void);
+static void M_DrawHelp (void);                                     // phares 5/04/98
+static void M_DrawAd(void);
 
-void M_DrawMainMenu(void);
-void M_DrawReadThis1(void);
-void M_DrawReadThis2(void);
-void M_DrawNewGame(void);
-void M_DrawEpisode(void);
-void M_DrawOptions(void);
-void M_DrawSound(void);
-void M_DrawLoad(void);
-void M_DrawSave(void);
-void M_DrawSetup(void);                                     // phares 3/21/98
-void M_DrawHelp (void);                                     // phares 5/04/98
+static void M_DrawSaveLoadBorder(int x,int y,dboolean selected);
+static void M_DrawThermo(int x,int y,int thermWidth,int thermRange,int thermDot,int color);
+static void M_DrawThermoSmall(int x, int y, int thermWidth, int thermRange, int thermDot, const setup_menu_t *setup_item);
+static void M_DrawEmptyCell(menu_t *menu,int item);
+static void M_DrawSelCell(menu_t *menu,int item);
+static void M_WriteText(int x, int y, const char *string, int cm);
+static int  M_StringWidth(const char *string);
+static int  M_StringHeight(const char *string);
+static void M_DrawTitle(int y, const char *text, int cm);
+static dboolean M_MenuHasMissingRequiredLumps(const menu_t *menu);
+static void M_StartMessage(const char *string,void *routine,dboolean input);
+static void M_StopMessage(void);
 
-void M_DrawSaveLoadBorder(int x,int y);
-void M_SetupNextMenu(menu_t *menudef);
-void M_DrawThermo(int x,int y,int thermWidth,int thermDot);
-void M_DrawEmptyCell(menu_t *menu,int item);
-void M_DrawSelCell(menu_t *menu,int item);
-void M_WriteText(int x, int y, const char *string, int cm);
-int  M_StringWidth(const char *string);
-int  M_StringHeight(const char *string);
-void M_DrawTitle(int x, int y, const char *patch, int cm,
-                 const char *alttext, int altcm);
-void M_StartMessage(const char *string,void *routine,dboolean input);
-void M_StopMessage(void);
+void M_ChangeMenu(menu_t *menu, menuactive_t mnact);
 void M_ClearMenus (void);
+
+static dboolean M_MouseTabHovered(int page);
 
 // phares 3/30/98
 // prototypes added to support Setup Menus and Extended HELP screens
 
-int  M_GetKeyString(int,int);
-void M_Setup(int choice);
-void M_KeyBindings(int choice);
-void M_Weapons(int);
-void M_StatusBar(int);
-void M_Automap(int);
-void M_Enemy(int);
-void M_Messages(int);
-void M_ChatStrings(int);
-void M_InitExtendedHelp(void);
-void M_ExtHelpNextScreen(int);
-void M_ExtHelp(int);
+static void M_General(int);      // killough 10/98
+static void M_KeyBindings(int choice);
+static void M_Display(int);
+static void M_Demos(int);
+static void M_Compatibility(int);
+static void M_Weapons(int);
+static void M_Automap(int);
+static void M_LevelTable(int);
+static void M_DrawGeneral(void); // killough 10/98
+static void M_DrawKeybnd(void);
+static void M_DrawDisplay(void);
+static void M_DrawDemos(void);
+static void M_DrawCompatibility(void);
+static void M_DrawWeapons(void);
+static void M_DrawAutoMap(void);
+static void M_DrawLevelTable(void);
+static void M_DrawExtHelp(void);
+
 static int M_GetPixelWidth(const char*);
-void M_DrawKeybnd(void);
-void M_DrawWeapons(void);
 static void M_DrawString(int cx, int cy, int color, const char* ch);
 static void M_DrawMenuString(int,int,int);
 static void M_DrawStringCentered(int,int,int,const char*);
-void M_DrawStatusHUD(void);
-void M_DrawExtHelp(void);
-void M_DrawAutoMap(void);
-void M_DrawEnemy(void);
-void M_DrawMessages(void);
-void M_DrawChatStrings(void);
-void M_Compat(int);       // killough 10/98
-void M_ChangeDemoSmoothTurns(void);
-void M_ChangeTextureParams(void);
-void M_General(int);      // killough 10/98
-void M_DrawCompat(void);  // killough 10/98
-void M_DrawGeneral(void); // killough 10/98
-void M_ChangeApplyPalette(void);
 
-menu_t NewDef;                                              // phares 5/04/98
+static void M_InitExtendedHelp(void);
+static void M_ExtHelpNextScreen(int);
+static void M_ExtHelp(int);
+static int  M_GetKeyString(int,int);
+
+void M_ChangeDemoSmoothTurns(void);
+void M_ChangeFullScreen(void);
+void M_ChangeVideoMode(void);
+void M_ChangeUseGLSurface(void);
+
+menu_t SkillDef;                                              // phares 5/04/98
 
 // end of prototypes added to support Setup Menus and Extended HELP screens
+
+static const char shiftxform[] =
+{
+  0,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+  11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+  21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+  31,
+  ' ', '!', '"', '#', '$', '%', '&',
+  '"', // shift-'
+  '(', ')', '*', '+',
+  '<', // shift-,
+  '_', // shift--
+  '>', // shift-.
+  '?', // shift-/
+  ')', // shift-0
+  '!', // shift-1
+  '@', // shift-2
+  '#', // shift-3
+  '$', // shift-4
+  '%', // shift-5
+  '^', // shift-6
+  '&', // shift-7
+  '*', // shift-8
+  '(', // shift-9
+  ';',
+  ':', // shift-;
+  '<',
+  '+', // shift-=
+  '>', '?', '@',
+  'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
+  'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+  '{', // shift-[
+  '|', // shift-backslash
+  '}', // shift-]
+  '"', '_',
+  '~', // shift-`
+  'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
+  'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+  '{', '|', '}', '~', 127
+};
+
+static int cr_title;
+static int cr_tab;
+static int cr_tab_highlight;
+static int cr_label;
+static int cr_label_highlight;
+static int cr_label_edit;
+static int cr_value;
+static int cr_value_highlight;
+static int cr_value_edit;
+static int cr_info_highlight;
+static int cr_info_edit;
+static int cr_warning;
+static int cr_scrollbar;
+
+static void M_LoadTextColors(void)
+{
+  cr_title = dsda_TextCR(dsda_tc_menu_title);
+  cr_tab = dsda_TextCR(dsda_tc_menu_tab);
+  cr_tab_highlight = dsda_TextCR(dsda_tc_menu_tab_highlight);
+  cr_label = dsda_TextCR(dsda_tc_menu_label);
+  cr_label_highlight = dsda_TextCR(dsda_tc_menu_label_highlight);
+  cr_label_edit = dsda_TextCR(dsda_tc_menu_label_edit);
+  cr_value = dsda_TextCR(dsda_tc_menu_value);
+  cr_value_highlight = dsda_TextCR(dsda_tc_menu_value_highlight);
+  cr_value_edit = dsda_TextCR(dsda_tc_menu_value_edit);
+  cr_info_highlight = dsda_TextCR(dsda_tc_menu_info_highlight);
+  cr_info_edit = dsda_TextCR(dsda_tc_menu_info_edit);
+  cr_warning = dsda_TextCR(dsda_tc_menu_warning);
+  cr_scrollbar = dsda_TextCR(dsda_tc_menu_scrollbar);
+}
+
+static const dsda_font_t *menu_font;
+
+static void M_LoadMenuFont(void)
+{
+  menu_font = &hud_font;
+}
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -317,12 +422,20 @@ menu_t NewDef;                                              // phares 5/04/98
 
 /////////////////////////////
 //
+// The menu_buffer is used to construct strings for display on the screen.
+
+#define MENU_BUFFER_SIZE 128
+
+static char menu_buffer[MENU_BUFFER_SIZE];
+
+/////////////////////////////
+//
 // MAIN MENU
 //
 
 // main_e provides numerical values for which Big Font screen you're on
 
-enum
+enum main_e
 {
   newgame = 0,
   loadgame,
@@ -331,7 +444,7 @@ enum
   readthis,
   quitdoom,
   main_end
-} main_e;
+};
 
 //
 // MainMenu is the definition of what the main menu Screen should look
@@ -341,15 +454,14 @@ enum
 // associated with the item.
 //
 
-menuitem_t MainMenu[]=
+static menuitem_t MainMenu[]=
 {
-  {1,"M_NGAME", M_NewGame, 'n'},
-  {1,"M_OPTION",M_Options, 'o'},
-  {1,"M_LOADG", M_LoadGame,'l'},
-  {1,"M_SAVEG", M_SaveGame,'s'},
-  // Another hickup with Special edition.
-  {1,"M_RDTHIS",M_ReadThis,'r'},
-  {1,"M_QUITG", M_QuitDOOM,'q'}
+  {M_ITEM_ACTION,"M_NGAME", M_NewGame, 'n', "NEW GAME"},
+  {M_ITEM_ACTION,"M_OPTION",M_Options, 'o', "OPTIONS"},
+  {M_ITEM_ACTION,"M_LOADG", M_LoadGame,'l', "LOAD GAME"},
+  {M_ITEM_ACTION,"M_SAVEG", M_SaveGame,'s', "SAVE GAME"},
+  {M_ITEM_ACTION,"M_RDTHIS",M_ReadThis,'r', "READ THIS"},
+  {M_ITEM_ACTION,"M_QUITG", M_QuitDOOM,'q', "QUIT GAME"}
 };
 
 menu_t MainDef =
@@ -366,8 +478,10 @@ menu_t MainDef =
 // M_DrawMainMenu
 //
 
-void M_DrawMainMenu(void)
+static void M_DrawMainMenu(void)
 {
+  if (raven) return MN_DrawMainMenu();
+
   // CPhipps - patch drawing updated
   V_DrawNamePatch(94, 2, 0, "M_DOOM", CR_DEFAULT, VPT_STRETCH);
 }
@@ -380,43 +494,43 @@ void M_DrawMainMenu(void)
 // There are no menu items on the Read This! screens, so read_e just
 // provides a placeholder to maintain structure.
 
-enum
+enum read_e
 {
   rdthsempty1,
   read1_end
-} read_e;
+};
 
-enum
+enum read_e2
 {
   rdthsempty2,
   read2_end
-} read_e2;
+};
 
-enum               // killough 10/98
+enum help_e        // killough 10/98
 {
   helpempty,
   help_end
-} help_e;
+};
 
 
 // The definitions of the Read This! screens
 
-menuitem_t ReadMenu1[] =
+static menuitem_t ReadMenu1[] =
 {
-  {1,"",M_ReadThis2,0}
+  {M_ITEM_ACTION,"",M_ReadThis2,0}
 };
 
-menuitem_t ReadMenu2[]=
+static menuitem_t ReadMenu2[]=
 {
-  {1,"",M_FinishReadThis,0}
+  {M_ITEM_ACTION,"",M_FinishReadThis,0}
 };
 
-menuitem_t HelpMenu[]=    // killough 10/98
+static menuitem_t HelpMenu[]=    // killough 10/98
 {
-  {1,"",M_FinishHelp,0}
+  {M_ITEM_ACTION,"",M_FinishHelp,0}
 };
 
-menu_t ReadDef1 =
+static menu_t ReadDef1 =
 {
   read1_end,
   &MainDef,
@@ -427,7 +541,7 @@ menu_t ReadDef1 =
   0
 };
 
-menu_t ReadDef2 =
+static menu_t ReadDef2 =
 {
   read2_end,
   &ReadDef1,
@@ -437,7 +551,7 @@ menu_t ReadDef2 =
   0
 };
 
-menu_t HelpDef =           // killough 10/98
+static menu_t HelpDef =           // killough 10/98
 {
   help_end,
   &HelpDef,
@@ -461,12 +575,12 @@ void M_ReadThis2(int choice)
   M_SetupNextMenu(&ReadDef2);
 }
 
-void M_FinishReadThis(int choice)
+static void M_FinishReadThis(int choice)
 {
   M_SetupNextMenu(&MainDef);
 }
 
-void M_FinishHelp(int choice)        // killough 10/98
+static void M_FinishHelp(int choice)        // killough 10/98
 {
   M_SetupNextMenu(&MainDef);
 }
@@ -477,15 +591,12 @@ void M_FinishHelp(int choice)        // killough 10/98
 //
 // killough 10/98: updated with new screens
 
-void M_DrawReadThis1(void)
+static void M_DrawReadThis1(void)
 {
   inhelpscreens = true;
-  if (gamemode == shareware)
-  {
-    // e6y: wide-res
-    V_FillBorder(-1, 0);
-    V_DrawNamePatch(0, 0, 0, "HELP2", CR_DEFAULT, VPT_STRETCH);
-  }
+
+  if (pwad_help2_check || gamemode == shareware)
+    M_DrawAd();
   else
     M_DrawCredits();
 }
@@ -495,17 +606,19 @@ void M_DrawReadThis1(void)
 //
 // killough 10/98: updated with new screens
 
-void M_DrawReadThis2(void)
+static void M_DrawReadThis2(void)
 {
+  const char* helplump = (gamemode == commercial) ? "HELP" : "HELP1";
+  int pwadmaps = W_PWADMapsExist(); // show help screen for IWAD
+
   inhelpscreens = true;
-  if (gamemode == shareware)
+
+  if (W_PWADLumpNameExists(helplump) || !pwadmaps)
+    M_DrawHelp();
+  else if (W_PWADLumpNameExists("CREDIT"))
     M_DrawCredits();
   else
-  {
-    // e6y: wide-res
-    V_FillBorder(-1, 0);
-    V_DrawNamePatch(0, 0, 0, "CREDIT", CR_DEFAULT, VPT_STRETCH);
-  }
+    M_DrawCreditsDynamic();
 }
 
 /////////////////////////////
@@ -513,193 +626,86 @@ void M_DrawReadThis2(void)
 // EPISODE SELECT
 //
 
-//
-// episodes_e provides numbers for the episode menu items. The default is
-// 4, to accomodate Ultimate Doom. If the user is running anything else,
-// this is accounted for in the code.
-//
-
-enum
-{
-  ep1,
-  ep2,
-  ep3,
-  ep4,
-  ep_end
-} episodes_e;
-
 // The definitions of the Episodes menu
-
-menuitem_t EpisodeMenu[]=	// added a few free entries for UMAPINFO
-{
-  {1,"M_EPI1", M_Episode,'k'},
-  {1,"M_EPI2", M_Episode,'t'},
-  {1,"M_EPI3", M_Episode,'i'},
-  {1,"M_EPI4", M_Episode,'t'},
-  {1,"", M_Episode,'0'},
-  {1,"", M_Episode,'0'},
-  {1,"", M_Episode,'0'},
-  {1,"", M_Episode,'0'}
-};
 
 menu_t EpiDef =
 {
-  ep_end,        // # of menu items
-  &MainDef,      // previous menu
-  EpisodeMenu,   // menuitem_t ->
-  M_DrawEpisode, // drawing routine ->
-  48,63,         // x,y
-  ep1            // lastOn
+  .prevMenu = &MainDef,
+  .routine = M_DrawEpisode,
+  .x = 48,
+  .y = 63,
 };
-
-// This is for customized episode menus
-int EpiCustom;
-short EpiMenuMap[8] = { 1, 1, 1, 1, -1, -1, -1, -1 }, EpiMenuEpi[8] = { 1,2,3,4,-1,-1,-1,-1 };
 
 //
 //    M_Episode
 //
-int epiChoice;
 
-void M_ClearEpisodes(void)
+static int chosen_episode;
+
+static void M_DrawEpisode(void)
 {
-	EpiDef.numitems = 0;
-}
+  if (raven) return MN_DrawEpisode();
 
-void M_AddEpisode(const char *map, const char *gfx, const char *txt, const char *alpha)
-{
-	if (!EpiCustom)
-	{
-		EpiCustom = true;
-		NewDef.prevMenu = &EpiDef;
-
-		if (gamemode == commercial || gamemission == chex)
-			EpiDef.numitems = 0;
-	}
-
-	{
-		int epi, mapnum;
-		if (EpiDef.numitems >= 8) return;
-		G_ValidateMapName(map, &epi, &mapnum);
-		EpiMenuEpi[EpiDef.numitems] = epi;
-		EpiMenuMap[EpiDef.numitems] = mapnum;
-		strncpy(EpisodeMenu[EpiDef.numitems].name, gfx, 8);
-		EpisodeMenu[EpiDef.numitems].name[8] = 0;
-		EpisodeMenu[EpiDef.numitems].alttext = txt ? strdup(txt) : NULL;
-		EpisodeMenu[EpiDef.numitems].alphaKey = alpha ? *alpha : 0;
-		EpiDef.numitems++;
-	}
-	if (EpiDef.numitems <= 4)
-	{
-		EpiDef.y = 63;
-	}
-	else
-	{
-		EpiDef.y = 63 - (EpiDef.numitems - 4) * (LINEHEIGHT / 2);
-	}
-}
-
-void M_DrawEpisode(void)
-{
   // CPhipps - patch drawing updated
   V_DrawNamePatch(54, EpiDef.y - 25, 0, "M_EPISOD", CR_DEFAULT, VPT_STRETCH);
 }
 
 void M_Episode(int choice)
 {
-	if (!EpiCustom)
-	{
-		if ((gamemode == shareware) && choice) {
-			M_StartMessage(s_SWSTRING, NULL, false); // Ty 03/27/98 - externalized
-			M_SetupNextMenu(&ReadDef1);
-			return;
-		}
+  if (gamemode == shareware && choice && !episodes[choice].vanilla) {
+    M_StartMessage(s_SWSTRING, NULL, false); // Ty 03/27/98 - externalized
+    M_SetupNextMenu(&ReadDef1);
+    return;
+  }
 
-		// Yet another hack...
-		if ((gamemode == registered) && (choice > 2) && !EpiCustom)
-		{
-			lprintf(LO_WARN,
-				"M_Episode: 4th episode requires UltimateDOOM\n");
-			choice = 0;
-		}
-	}
-	epiChoice = choice;
-	M_SetupNextMenu(&NewDef);
+  // Heretic shareware is different than Doom shareware in that it shows
+  // the episode select, but will display a message when selecting
+  // other episodes. This code shows that message and avoids a crash.
+  //
+  if (heretic && gamemode == shareware && choice && episodes[choice].vanilla) {
+    M_StartMessage(HERETIC_SWSTRING, NULL, false); // externalized
+    M_SetupNextMenu(&InfoDef1);
+    return;
+  }
+
+  chosen_episode = choice;
+
+  if (hexen) // hack hexen class as "episode menu"
+    MN_UpdateClass(chosen_episode);
+
+  M_SetupNextMenu(&SkillDef);
 }
 
 /////////////////////////////
 //
-// NEW GAME
+// SKILL SELECT
 //
 
-// numerical values for the New Game menu items
+// The definitions of the Skill Select menu
 
-enum
+menu_t SkillDef =
 {
-  killthings,
-  toorough,
-  hurtme,
-  violence,
-  nightmare,
-  newg_end
-} newgame_e;
-
-// The definitions of the New Game menu
-
-menuitem_t NewGameMenu[]=
-{
-  {1,"M_JKILL", M_ChooseSkill, 'i'},
-  {1,"M_ROUGH", M_ChooseSkill, 'h'},
-  {1,"M_HURT",  M_ChooseSkill, 'h'},
-  {1,"M_ULTRA", M_ChooseSkill, 'u'},
-  {1,"M_NMARE", M_ChooseSkill, 'n'}
-};
-
-menu_t NewDef =
-{
-  newg_end,       // # of menu items
-  &EpiDef,        // previous menu
-  NewGameMenu,    // menuitem_t ->
-  M_DrawNewGame,  // drawing routine ->
-  48,63,          // x,y
-  hurtme          // lastOn
+  .prevMenu = &EpiDef,
+  .routine = M_DrawSkillMenu,
+  .x = 48,
+  .y = 63,
 };
 
 //
 // M_NewGame
 //
 
-void M_DrawNewGame(void)
+static void M_DrawSkillMenu(void)
 {
+  if (raven) return MN_DrawSkillMenu();
+
   // CPhipps - patch drawing updated
   V_DrawNamePatch(96, 14, 0, "M_NEWG", CR_DEFAULT, VPT_STRETCH);
   V_DrawNamePatch(54, 38, 0, "M_SKILL",CR_DEFAULT, VPT_STRETCH);
 }
 
-/* cph - make `New Game' restart the level in a netgame */
-static void M_RestartLevelResponse(int ch)
-{
-  if (ch != 'y')
-    return;
-
-  if (demorecording)
-    I_SafeExit(0);
-
-  currentMenu->lastOn = itemOn;
-  M_ClearMenus ();
-  G_RestartLevel ();
-}
-
 void M_NewGame(int choice)
 {
-  if (netgame && !demoplayback) {
-    if (compatibility_level < lxdoom_1_compatibility)
-      M_StartMessage(s_NEWGAME,NULL,false); // Ty 03/27/98 - externalized
-    else // CPhipps - query restarting the level
-      M_StartMessage(s_RESTARTLEVEL,M_RestartLevelResponse,true);
-    return;
-  }
-
   if (demorecording) {  /* killough 5/26/98: exclude during demo recordings */
     M_StartMessage("you can't start a new game\n"
        "while recording a demo!\n\n"PRESSKEY,
@@ -708,36 +714,68 @@ void M_NewGame(int choice)
   }
 
   // Chex Quest disabled the episode select screen, as did Doom II.
-  if (((gamemode == commercial || gamemission == chex) && !EpiCustom) || EpiDef.numitems == 1)
-    M_SetupNextMenu(&NewDef);
+  if (num_episodes <= 1 && !hexen)
+    M_SetupNextMenu(&SkillDef);
+  else
+    M_SetupNextMenu(&EpiDef);
+}
+
+static int chosen_skill;
+
+static void M_FinishGameSelection(void)
+{
+  int episode, map;
+
+  if (num_episodes)
+  {
+    episode = episodes[chosen_episode].start_episode;
+    map = episodes[chosen_episode].start_map;
+  }
   else
   {
-	  epiChoice = 0;
-	  M_SetupNextMenu(&EpiDef);
+    episode = 1;
+    map = 1;
   }
+
+  G_DeferedInitNew(chosen_skill, episode, map);
+
+  if (hexen)
+    SB_SetClassData();
+
+  M_ClearMenus();
 }
 
 // CPhipps - static
-static void M_VerifyNightmare(int ch)
+static void M_VerifySkill(dboolean affirmative)
 {
-  if (ch != 'y')
+  if (!affirmative)
     return;
 
-  G_DeferedInitNew(nightmare,EpiMenuEpi[epiChoice], EpiMenuMap[epiChoice]);
-  M_ClearMenus ();
+  M_FinishGameSelection();
 }
 
 void M_ChooseSkill(int choice)
 {
-  if (choice == nightmare)
-    {   // Ty 03/27/98 - externalized
-      M_StartMessage(s_NIGHTMARE,M_VerifyNightmare,true);
-      return;
-    }
-  if (EpiMenuEpi[epiChoice] == -1 || EpiMenuMap[epiChoice] == -1) return;	// There is no map to start here.
+  extern skill_info_t *skill_infos;
 
-  G_DeferedInitNew(choice, EpiMenuEpi[epiChoice], EpiMenuMap[epiChoice]);
-  M_ClearMenus ();
+  chosen_skill = choice;
+
+  if (choice < num_skills && skill_infos[choice].flags & SI_MUST_CONFIRM)
+  {
+    const char* message;
+
+    if (skill_infos[choice].must_confirm)
+      message = skill_infos[choice].must_confirm;
+    else
+      message = s_NIGHTMARE; // Ty 03/27/98 - externalized
+
+    M_StartMessage(message, M_VerifySkill, true);
+    M_SetupNextMenu(&ReadDef1); // Clear in-menu variables when "no" or "ESC"
+
+    return;
+  }
+
+  M_FinishGameSelection();
 }
 
 /////////////////////////////
@@ -747,7 +785,7 @@ void M_ChooseSkill(int choice)
 
 // numerical values for the Load Game slots
 
-enum
+enum load_e
 {
   load1,
   load2,
@@ -755,23 +793,35 @@ enum
   load4,
   load5,
   load6,
-  load7, //jff 3/15/98 extend number of slots
-  load8,
+  load7,
   load_end
-} load_e;
+};
+
+static int current_save_page = 1; // 0 is the quicksaves page
+static int current_save_item = 0;
+
+const int save_page_limit = 17;
+const char *saves_pages[] =
+{
+  "Q", "1", "2", "3",
+  "4", "5", "6", "7",
+  "8", "9", "10", "11",
+  "12", "13", "14", "15",
+  "16", NULL
+};
 
 // The definitions of the Load Game screen
 
 menuitem_t LoadMenue[]=
 {
-  {1,"", M_LoadSelect,'1'},
-  {1,"", M_LoadSelect,'2'},
-  {1,"", M_LoadSelect,'3'},
-  {1,"", M_LoadSelect,'4'},
-  {1,"", M_LoadSelect,'5'},
-  {1,"", M_LoadSelect,'6'},
-  {1,"", M_LoadSelect,'7'}, //jff 3/15/98 extend number of slots
-  {1,"", M_LoadSelect,'8'},
+  {M_ITEM_ACTION,"", M_LoadSelect,'1'},
+  {M_ITEM_ACTION,"", M_LoadSelect,'2'},
+  {M_ITEM_ACTION,"", M_LoadSelect,'3'},
+  {M_ITEM_ACTION,"", M_LoadSelect,'4'},
+  {M_ITEM_ACTION,"", M_LoadSelect,'5'},
+  {M_ITEM_ACTION,"", M_LoadSelect,'6'},
+  {M_ITEM_ACTION,"", M_LoadSelect,'7'}, //jff 3/15/98 extend number of slots
+  {M_ITEM_ACTION,"", M_LoadSelect,'8'},
 };
 
 menu_t LoadDef =
@@ -788,39 +838,99 @@ menu_t LoadDef =
 
 // [FG] delete a savegame
 
-static dboolean delete_verify = false;
+dboolean delete_verify = false;
 
-static void M_DrawDelVerify(void);
-
-static void M_DeleteGame(int i)
+static void M_DeleteSaveGame(int slot)
 {
   char *name;
-  int len;
 
-  len = G_SaveGameName(NULL, 0, i, false);
-  name = malloc(len+1);
-  G_SaveGameName(name, len+1, i, false);
-  M_remove(name);
-  free(name);
+  if (dsda_LastSaveSlot() == slot)
+    dsda_ResetLastSaveSlot();
+
+  name = dsda_SaveGameName(slot, false);
+  remove(name);
+  Z_Free(name);
 
   M_ReadSaveStrings();
+}
+
+//
+// Load/Save Highlight
+//
+
+static dboolean M_FileSlotEnabled(int menu, int item)
+{
+  // Disable unsaved slots
+  if (menu == MN_LOAD)
+    return LoadMenue[item].status == M_ITEM_ACTION;
+
+  // Disable quicksave page items
+  if (menu == MN_SAVE)
+    return current_page != 0;
+
+  return false;
+}
+
+dboolean M_FileBoxSelected(int menu, int item)
+{
+  // Disabled slots -> never highlight
+  if (!M_FileSlotEnabled(menu, item))
+    return false;
+
+  // Mouse highlight
+  if (M_MouseHovered(item))
+    return true;
+
+  return false;
+}
+
+int M_FileTextColor(int menu, int item)
+{
+  return M_FileSlotEnabled(menu, item) ? CR_DEFAULT : CR_DARKEN;
+}
+
+//
+// Highlight functions
+//
+
+int M_HighlightColor(dboolean highlight, int color)
+{
+  if (highlight &&
+      color >= CR_DEFAULT && color < CR_HUD_LIMIT)
+    return CR_BRIGHT + color;
+
+  return color;
+}
+
+int M_AddColorFlag(int color)
+{
+  return color != CR_DEFAULT ? VPT_TRANS : VPT_NONE;
 }
 
 //
 // M_LoadGame & Cie.
 //
 
-void M_DrawLoad(void)
+static void M_DrawLoad(void)
 {
   int i;
+  current_save_page = current_page;
+  current_save_item = itemOn;
+
+  if (raven) return MN_DrawLoad();
 
   //jff 3/15/98 use symbolic load position
   // CPhipps - patch drawing updated
   V_DrawNamePatch(72 ,LOADGRAPHIC_Y, 0, "M_LOADG", CR_DEFAULT, VPT_STRETCH);
   for (i = 0 ; i < load_end ; i++) {
-    M_DrawSaveLoadBorder(LoadDef.x,LoadDef.y+LINEHEIGHT*i);
-    M_WriteText(LoadDef.x,LoadDef.y+LINEHEIGHT*i,savegamestrings[i], CR_DEFAULT);
+    dboolean selected   = M_FileBoxSelected(MN_LOAD, i);
+    int textcolor       = M_HighlightColor(selected, M_FileTextColor(MN_LOAD, i));
+
+    M_DrawSaveLoadBorder(LoadDef.x,LoadDef.y+LINEHEIGHT*i,selected);
+    M_WriteText(LoadDef.x,LoadDef.y+LINEHEIGHT*i,savegamestrings[i],textcolor);
   }
+
+  M_DrawTabs(saves_pages, 5, 145);
 
   if (delete_verify)
     M_DrawDelVerify();
@@ -830,19 +940,21 @@ void M_DrawLoad(void)
 // Draw border for the savegame description
 //
 
-void M_DrawSaveLoadBorder(int x,int y)
+static void M_DrawSaveLoadBorder(int x,int y,dboolean selected)
 {
   int i;
+  int color = M_HighlightColor(selected, CR_DEFAULT);
+  int flags = VPT_STRETCH | M_AddColorFlag(color);
 
-  V_DrawNamePatch(x-8, y+7, 0, "M_LSLEFT", CR_DEFAULT, VPT_STRETCH);
+  V_DrawNamePatch(x-8, y+7, 0, "M_LSLEFT", color, flags);
 
   for (i = 0 ; i < 24 ; i++)
     {
-      V_DrawNamePatch(x, y+7, 0, "M_LSCNTR", CR_DEFAULT, VPT_STRETCH);
+      V_DrawNamePatch(x, y+7, 0, "M_LSCNTR", color, flags);
       x += 8;
     }
 
-  V_DrawNamePatch(x, y+7, 0, "M_LSRGHT", CR_DEFAULT, VPT_STRETCH);
+  V_DrawNamePatch(x, y+7, 0, "M_LSRGHT", color, flags);
 }
 
 //
@@ -851,12 +963,21 @@ void M_DrawSaveLoadBorder(int x,int y)
 
 void M_LoadSelect(int choice)
 {
+  if (!dsda_AllowMenuLoad(choice + current_page * g_menu_save_page_size))
+  {
+    M_StartMessage(
+      "you can't load this game\n"
+      "under these conditions!\n\n"PRESSKEY,
+      NULL, false); // killough 5/26/98: not externalized
+    return;
+  }
+
   // CPhipps - Modified so savegame filename is worked out only internal
   //  to g_game.c, this only passes the slot.
 
-  G_LoadGame(choice, false); // killough 3/16/98, 5/15/98: add slot, cmd
-
-  M_ClearMenus ();
+  // killough 3/16/98, 5/15/98: add slot, cmd
+  G_LoadGame(choice + current_page * g_menu_save_page_size, false);
+  M_ClearMenus();
 }
 
 //
@@ -865,17 +986,17 @@ void M_LoadSelect(int choice)
 
 static char *forced_loadgame_message;
 
-static void M_VerifyForcedLoadGame(int ch)
+static void M_VerifyForcedLoadGame(dboolean affirmative)
 {
-  if (ch=='y')
+  if (affirmative)
     G_ForcedLoadGame();
-  free(forced_loadgame_message);    // free the message strdup()'ed below
+  Z_Free(forced_loadgame_message);    // free the message Z_Strdup()'ed below
   M_ClearMenus();
 }
 
 void M_ForcedLoadGame(const char *msg)
 {
-  forced_loadgame_message = strdup(msg); // free()'d above
+  forced_loadgame_message = Z_Strdup(msg); // Z_Free()'d above
   M_StartMessage(forced_loadgame_message, M_VerifyForcedLoadGame, true);
 }
 
@@ -887,17 +1008,18 @@ void M_LoadGame (int choice)
 {
   delete_verify = false;
 
-  /* killough 5/26/98: exclude during demo recordings
-   * cph - unless a new demo */
-  if (demorecording && (compatibility_level < prboom_2_compatibility))
-    {
-    M_StartMessage("you can't load a game\n"
-       "while recording an old demo!\n\n"PRESSKEY,
-       NULL, false); // killough 5/26/98: not externalized
+  if (!dsda_AllowAnyMenuLoad())
+  {
+    M_StartMessage(
+      "you can't load a game\n"
+      "under these conditions!\n\n"PRESSKEY,
+      NULL, false); // killough 5/26/98: not externalized
     return;
-    }
+  }
 
   M_SetupNextMenu(&LoadDef);
+  current_page = current_save_page;
+  itemOn = current_save_item;
   M_ReadSaveStrings();
 }
 
@@ -908,16 +1030,16 @@ void M_LoadGame (int choice)
 
 // The definitions of the Save Game screen
 
-menuitem_t SaveMenu[]=
+static menuitem_t SaveMenu[]=
 {
-  {1,"", M_SaveSelect,'1'},
-  {1,"", M_SaveSelect,'2'},
-  {1,"", M_SaveSelect,'3'},
-  {1,"", M_SaveSelect,'4'},
-  {1,"", M_SaveSelect,'5'},
-  {1,"", M_SaveSelect,'6'},
-  {1,"", M_SaveSelect,'7'}, //jff 3/15/98 extend number of slots
-  {1,"", M_SaveSelect,'8'},
+  {M_ITEM_ACTION,"", M_SaveSelect,'1'},
+  {M_ITEM_ACTION,"", M_SaveSelect,'2'},
+  {M_ITEM_ACTION,"", M_SaveSelect,'3'},
+  {M_ITEM_ACTION,"", M_SaveSelect,'4'},
+  {M_ITEM_ACTION,"", M_SaveSelect,'5'},
+  {M_ITEM_ACTION,"", M_SaveSelect,'6'},
+  {M_ITEM_ACTION,"", M_SaveSelect,'7'}, //jff 3/15/98 extend number of slots
+  {M_ITEM_ACTION,"", M_SaveSelect,'8'},
 };
 
 menu_t SaveDef =
@@ -934,53 +1056,133 @@ menu_t SaveDef =
 // M_ReadSaveStrings
 //  read the strings from the savegame files
 //
-void M_ReadSaveStrings(void)
+static void M_ReadSaveStrings(void)
 {
   int i;
 
   for (i = 0 ; i < load_end ; i++) {
     char *name;               // killough 3/22/98
-    int len;
     FILE *fp;  // killough 11/98: change to use stdio
 
-    /* killough 3/22/98
-     * cph - add not-demoplayback parameter */
-    len = G_SaveGameName(NULL, 0, i, false);
-    name = malloc(len+1);
-    G_SaveGameName(name, len+1, i, false);
-    fp = M_fopen(name,"rb");
-    free(name);
-    if (!fp) {   // Ty 03/27/98 - externalized:
-      strcpy(&savegamestrings[i][0],s_EMPTYSTRING);
-      LoadMenue[i].status = 0;
-      continue;
+    // killough 3/22/98
+    name = dsda_SaveGameName(i + current_page * g_menu_save_page_size, false);
+
+    fp = M_OpenFile(name,"rb");
+    Z_Free(name);
+
+    if (!fp || !fread(&savegamestrings[i], SAVESTRINGSIZE, 1, fp))
+    {
+      strcpy(&savegamestrings[i][0],s_EMPTYSTRING); // Ty 03/27/98 - externalized
+      LoadMenue[i].status = M_ITEM_INACTIVE;
     }
-    fread(&savegamestrings[i], SAVESTRINGSIZE, 1, fp);
-    fclose(fp);
-    LoadMenue[i].status = 1;
+    else
+    {
+      LoadMenue[i].status = M_ITEM_ACTION;
+    }
+
+    if (fp)
+    {
+      fclose(fp);
+    }
   }
+}
+
+#define SLOT_SCAN_MAX 112
+
+static int M_AutoSaveSlot(const char *target_name)
+{
+  char name_in_file[SAVESTRINGSIZE];
+  char slots[SLOT_SCAN_MAX] = { 0 };
+  int return_slot = -1;
+  glob_t *glob;
+  FILE *fp;
+  const char *file_name;
+  int i;
+
+  // First page is reserved to quicksaves
+  for (i = 0; i < g_menu_save_page_size; i++)
+    slots[i] = 1;
+
+  glob = I_StartGlob(dsda_SaveDir(), "*savegame*.dsg", 0);
+  while (return_slot < 0)
+  {
+    file_name = I_NextGlob(glob);
+    if (!file_name)
+      break;
+
+    fp = M_OpenFile(file_name, "rb");
+    if (fp)
+    {
+      int slot;
+
+      if (sscanf(dsda_BaseName(file_name), "%*[^0-9]%d.dsg", &slot))
+      {
+        if (slot < SLOT_SCAN_MAX)
+          slots[slot] = 1;
+
+        if (fread(name_in_file, SAVESTRINGSIZE, 1, fp) && !strcmp(name_in_file, target_name))
+        {
+          return_slot = slot;
+          slots[slot] = 0;
+        }
+      }
+
+      fclose(fp);
+    }
+  }
+
+  I_EndGlob(glob);
+
+  if (return_slot < 0)
+    return_slot = strnlen(slots, SLOT_SCAN_MAX);
+
+  if (slots[return_slot] == 1)
+    return_slot = -1;
+
+  return return_slot;
+}
+
+void M_AutoSave(void)
+{
+  int slot;
+  char target_name[SAVESTRINGSIZE];
+
+  snprintf(target_name, SAVESTRINGSIZE, "auto-%s", dsda_MapLumpName(gameepisode, gamemap));
+
+  slot = M_AutoSaveSlot(target_name);
+  G_SaveGame(slot, target_name);
+  doom_printf("autosave");
 }
 
 //
 //  M_SaveGame & Cie.
 //
-void M_DrawSave(void)
+static void M_DrawSave(void)
 {
   int i;
+  current_save_page = current_page;
+  current_save_item = itemOn;
+
+  if (raven) return MN_DrawSave();
 
   //jff 3/15/98 use symbolic load position
   // CPhipps - patch drawing updated
   V_DrawNamePatch(72, LOADGRAPHIC_Y, 0, "M_SAVEG", CR_DEFAULT, VPT_STRETCH);
   for (i = 0 ; i < load_end ; i++)
     {
-    M_DrawSaveLoadBorder(LoadDef.x,LoadDef.y+LINEHEIGHT*i);
-    M_WriteText(LoadDef.x,LoadDef.y+LINEHEIGHT*i,savegamestrings[i], CR_DEFAULT);
+    dboolean selected   = M_FileBoxSelected(MN_SAVE, i);
+    int textcolor       = M_HighlightColor(selected, M_FileTextColor(MN_SAVE, i));
+
+    M_DrawSaveLoadBorder(SaveDef.x,SaveDef.y+LINEHEIGHT*i,selected);
+    M_WriteText(SaveDef.x,SaveDef.y+LINEHEIGHT*i,savegamestrings[i],textcolor);
     }
+
+  M_DrawTabs(saves_pages, 5, 145);
 
   if (saveStringEnter)
     {
     i = M_StringWidth(savegamestrings[saveSlot]);
-    M_WriteText(LoadDef.x + i,LoadDef.y+LINEHEIGHT*saveSlot,"_", CR_DEFAULT);
+    M_WriteText(SaveDef.x + i,SaveDef.y+LINEHEIGHT*saveSlot,"_", CR_DEFAULT);
     }
 
   if (delete_verify)
@@ -990,61 +1192,25 @@ void M_DrawSave(void)
 //
 // M_Responder calls this when user is finished
 //
-static void M_DoSave(int slot)
+static void M_DoSave(int choice)
 {
-  G_SaveGame (slot,savegamestrings[slot]);
-  M_ClearMenus ();
-
-  // PICK QUICKSAVE SLOT YET?
-  if (quickSaveSlot == -2)
-    quickSaveSlot = slot;
+  G_SaveGame(choice + current_page * g_menu_save_page_size, savegamestrings[choice]);
+  M_ClearMenus();
 }
 
-// [FG] generate a default save slot name if the user saves to an empty slot
-static void SetDefaultSaveName (int slot)
+//
+// User wants to save. Start string input for M_Responder
+//
+static inline dboolean IsMapName(char *str)
 {
-    // map from IWAD or PWAD?
-    if (lumpinfo[maplumpnum].source == source_iwad)
-    {
-        snprintf(savegamestrings[itemOn], SAVESTRINGSIZE,
-                   "%s", lumpinfo[maplumpnum].name);
-    }
-    else
-    {
-        char *wadname = (strdup)(lumpinfo[maplumpnum].wadfile->name);
-        char *ext = strrchr(wadname, '.');
-        char *basename = wadname + strlen(wadname) - 1;
-
-        if (ext != NULL)
-            *ext = '\0';
-
-        while (basename > wadname && *basename != '/' && *basename != '\\')
-          basename--;
-        if (*basename == '/' || *basename == '\\')
-          basename++;
-
-        snprintf(savegamestrings[itemOn], SAVESTRINGSIZE,
-                   "%s (%s)", lumpinfo[maplumpnum].name,
-                   basename);
-        (free)(wadname);
-    }
-
-    M_Strupr(savegamestrings[itemOn]);
-}
-
-// [FG] override savegame name if it already starts with a map identifier
-static dboolean StartsWithMapIdentifier (char *str)
-{
-    M_Strupr(str);
-
-    if (strlen(str) >= 4 &&
+    if (strlen(str) == 4 &&
         str[0] == 'E' && isdigit(str[1]) &&
         str[2] == 'M' && isdigit(str[3]))
     {
         return true;
     }
 
-    if (strlen(str) >= 5 &&
+    if (strlen(str) == 5 &&
         str[0] == 'M' && str[1] == 'A' && str[2] == 'P' &&
         isdigit(str[3]) && isdigit(str[4]))
     {
@@ -1054,44 +1220,23 @@ static dboolean StartsWithMapIdentifier (char *str)
     return false;
 }
 
-//
-// User wants to save. Start string input for M_Responder
-//
-void M_SaveSelect(int choice)
+static void M_SaveSelect(int choice)
 {
+  if (current_save_page == 0)
+    return;
+
   // we are going to be intercepting all chars
   saveStringEnter = 1;
 
   saveSlot = choice;
   strcpy(saveOldString,savegamestrings[choice]);
   if (!strcmp(savegamestrings[choice],s_EMPTYSTRING) || // Ty 03/27/98 - externalized
-      StartsWithMapIdentifier(savegamestrings[choice]))
+      IsMapName(savegamestrings[choice]))
   {
-    savegamestrings[choice][0] = 0;
-    SetDefaultSaveName(choice);
+    snprintf(savegamestrings[choice], SAVESTRINGSIZE, "%s", dsda_MapLumpName(gameepisode, gamemap));
+    savegamestrings[choice][SAVESTRINGSIZE - 1] = 0;
   }
   saveCharIndex = strlen(savegamestrings[choice]);
-
-#ifdef __3DS__
-  {
-    char entered[SAVESTRINGSIZE];
-    memset(entered, 0, sizeof(entered));
-    if (I_SoftwareKeyboard("Enter save name...", savegamestrings[choice], entered, SAVESTRINGSIZE - 1))
-    {
-      if (entered[0] != '\0')
-      {
-        strncpy(savegamestrings[choice], entered, SAVESTRINGSIZE - 1);
-        savegamestrings[choice][SAVESTRINGSIZE - 1] = '\0';
-        saveStringEnter = 0;
-        M_DoSave(choice);
-        return;
-      }
-    }
-    strcpy(savegamestrings[choice], saveOldString);
-    saveStringEnter = 0;
-    return;
-  }
-#endif
 }
 
 //
@@ -1101,17 +1246,21 @@ void M_SaveGame (int choice)
 {
   delete_verify = false;
 
-  // killough 10/6/98: allow savegames during single-player demo playback
-  if (!usergame && (!demoplayback || netgame))
-    {
-    M_StartMessage(s_SAVEDEAD,NULL,false); // Ty 03/27/98 - externalized
-    return;
-    }
-
   if (gamestate != GS_LEVEL)
     return;
 
+  if (!dsda_AllowAnyMenuSave())
+  {
+    M_StartMessage(
+      "you can't save the game\n"
+      "under these conditions!\n\n"PRESSKEY,
+      NULL, false); // killough 5/26/98: not externalized
+    return;
+  }
+
   M_SetupNextMenu(&SaveDef);
+  current_page = current_save_page;
+  itemOn = current_save_item;
   M_ReadSaveStrings();
 }
 
@@ -1122,37 +1271,33 @@ void M_SaveGame (int choice)
 
 // numerical values for the Options menu items
 
-enum
+enum options_e
 {
-  general, // killough 10/98
-  // killough 4/6/98: move setup to be a sub-menu of OPTIONs
-  setup,                                                    // phares 3/21/98
-  endgame,
-  messages,
-  /*    detail, obsolete -- killough */
-  scrnsize,
-  option_empty1,
-  mousesens,
-  /* option_empty2, submenu now -- killough */
-  soundvol,
+  opt_general, // killough 10/98
+  opt_bindings,
+  opt_display,
+  opt_demos,
+  opt_compatibility,
+  opt_weapons,
+  opt_automap,
+  // opt_soundvol,
+  opt_level_table,
   opt_end
-} options_e;
+};
 
 // The definitions of the Options menu
 
-menuitem_t OptionsMenu[]=
+static menuitem_t OptionsMenu[]=
 {
-  // killough 4/6/98: move setup to be a sub-menu of OPTIONs
-  {1,"M_GENERL", M_General, 'g', "GENERAL"},      // killough 10/98
-  {1,"M_SETUP",  M_Setup,   's', "SETUP"},        // phares 3/21/98
-  {1,"M_ENDGAM", M_EndGame,'e',  "END GAME"},
-  {1,"M_MESSG",  M_ChangeMessages,'m', "MESSAGES:"},
-  /*    {1,"M_DETAIL",  M_ChangeDetail,'g'},  unused -- killough */
-  {2,"M_SCRNSZ", M_SizeDisplay,'s', "SCREEN SIZE"},
-  {-1,"",0},
-  {1,"M_MSENS",  M_ChangeSensitivity,'m', "MOUSE SENSITIVITY"},
-  /* {-1,"",0},  replaced with submenu -- killough */
-  {1,"M_SVOL",   M_Sound,'s', "SOUND VOLUME"},
+  { M_ITEM_ACTION, "M_GENERL", M_General, 'g', "GENERAL" }, // killough 10/98
+  { M_ITEM_ACTION, "M_KEYBND", M_KeyBindings,'k', "KEY BINDINGS" },
+  { M_ITEM_ACTION, "M_DSPLAY", M_Display, 'd', "DISPLAY" },
+  { M_ITEM_ACTION, "M_DEMOS", M_Demos, 'm', "DEMOS" },
+  { M_ITEM_ACTION, "M_COMP", M_Compatibility, 'c', "COMPATIBILITY" },
+  { M_ITEM_ACTION, "M_WEAP", M_Weapons, 'w', "WEAPONS" },
+  { M_ITEM_ACTION, "M_AUTO", M_Automap, 'a', "AUTOMAP" },
+  // { M_ITEM_ACTION, "M_SVOL", M_Sound, 's', "SOUND VOLUME" }, only available using the keybind
+  { M_ITEM_ACTION, "M_LVLTBL", M_LevelTable, 'l', "LEVEL TABLE" },
 };
 
 menu_t OptionsDef =
@@ -1168,30 +1313,14 @@ menu_t OptionsDef =
 //
 // M_Options
 //
-char detailNames[2][9] = {"M_GDHIGH","M_GDLOW"};
-char msgNames[2][9]  = {"M_MSGOFF","M_MSGON"};
 
-
-void M_DrawOptions(void)
+static void M_DrawOptions(void)
 {
+  if (raven) return MN_DrawOptions();
+
   // CPhipps - patch drawing updated
   // proff/nicolas 09/20/98 -- changed for hi-res
   V_DrawNamePatch(108, 15, 0, "M_OPTTTL", CR_DEFAULT, VPT_STRETCH);
-
-  if ((W_CheckNumForName("M_GENERL") < 0) || (W_CheckNumForName("M_SETUP") < 0))
-  {
-    M_WriteText(OptionsDef.x + M_StringWidth("MESSAGES: "),
-      OptionsDef.y+8-(M_StringHeight("ONOFF")/2)+LINEHEIGHT*messages,
-      showMessages ? "ON" : "OFF", CR_DEFAULT);
-  }
-  else
-  {
-    V_DrawNamePatch(OptionsDef.x + 120, OptionsDef.y+LINEHEIGHT*messages, 0,
-      msgNames[showMessages], CR_DEFAULT, VPT_STRETCH);
-  }
-
-  M_DrawThermo(OptionsDef.x,OptionsDef.y+LINEHEIGHT*(scrnsize+1),
-   9,screenSize);
 }
 
 void M_Options(int choice)
@@ -1227,31 +1356,32 @@ int quitsounds2[8] =
   sfx_sgtatk
 };
 
-static void M_QuitResponse(int ch)
+static void M_QuitResponse(dboolean affirmative)
 {
-  if (ch != 'y')
+  if (!affirmative)
     return;
-  
-  //e6y: Optional removal of a quit sound
-  if ((!netgame && showendoom) // killough 12/98
-      && !nosfxparm && snd_card) // avoid delay if no sound card
+
+  if (!netgame // killough 12/98
+      && !nosfxparm
+      && dsda_IntConfig(dsda_config_quit_sounds))
   {
     int i;
 
     if (gamemode == commercial)
-      S_StartSound(NULL,quitsounds2[(gametic>>2)&7]);
+      S_StartOptionalSound(quitsounds2[(gametic>>2)&7], -1, true);
     else
-      S_StartSound(NULL,quitsounds[(gametic>>2)&7]);
+      S_StartOptionalSound(quitsounds[(gametic>>2)&7], -1, true);
 
     // wait till all sounds stopped or 3 seconds are over
     i = 30;
-    while (i>0) {
+    while (i > 0) {
       I_uSleep(100000); // CPhipps - don't thrash cpu in this loop
       if (!I_AnySoundStillPlaying())
         break;
       i--;
     }
   }
+
   //e6y: I_SafeExit instead of exit - prevent recursive exits
   I_SafeExit(0); // killough
 }
@@ -1259,16 +1389,21 @@ static void M_QuitResponse(int ch)
 void M_QuitDOOM(int choice)
 {
   static char endstring[160];
+  setup_active = false;
+  currentMenu = NULL;
 
   // We pick index 0 which is language sensitive,
   // or one at random, between 1 and maximum number.
   // Ty 03/27/98 - externalized DOSY as a string s_DOSY that's in the sprintf
   if (language != english)
-    sprintf(endstring,"%s\n\n%s",s_DOSY, endmsg[0] );
+    snprintf(endstring, sizeof(endstring), "%s\n\n%s",s_DOSY, *endmsg[0] );
   else         // killough 1/18/98: fix endgame message calculation:
-    sprintf(endstring,"%s\n\n%s", endmsg[gametic%(NUM_QUITMESSAGES-1)+1], s_DOSY);
+    snprintf(endstring, sizeof(endstring), "%s\n\n%s", *endmsg[gametic%(NUM_QUITMESSAGES-1)+1], s_DOSY);
 
-  M_StartMessage(endstring,M_QuitResponse,true);
+  if (dsda_SkipQuitPrompt())
+    M_QuitResponse(true);
+  else
+    M_StartMessage(endstring,M_QuitResponse,true);
 }
 
 /////////////////////////////
@@ -1279,23 +1414,23 @@ void M_QuitDOOM(int choice)
 // numerical values for the Sound Volume menu items
 // The 'empty' slots are where the sliding scales appear.
 
-enum
+enum sound_e
 {
   sfx_vol,
   sfx_empty1,
   music_vol,
   sfx_empty2,
   sound_end
-} sound_e;
+};
 
 // The definitions of the Sound Volume menu
 
 menuitem_t SoundMenu[]=
 {
-  {2,"M_SFXVOL",M_SfxVol,'s'},
-  {-1,"",0},
-  {2,"M_MUSVOL",M_MusicVol,'m'},
-  {-1,"",0}
+  { M_ITEM_THERMO,"M_SFXVOL",M_SfxVol,'s' },
+  { M_ITEM_SKIP,"",0 },
+  { M_ITEM_THERMO,"M_MUSVOL",M_MusicVol,'m' },
+  { M_ITEM_SKIP,"",0 }
 };
 
 menu_t SoundDef =
@@ -1312,179 +1447,65 @@ menu_t SoundDef =
 // Change Sfx & Music volumes
 //
 
-void M_DrawSound(void)
+static void M_DrawSound(void)
 {
+  char num[4];
+
+  if (raven) return MN_DrawSound();
+
   // CPhipps - patch drawing updated
   V_DrawNamePatch(60, 38, 0, "M_SVOL", CR_DEFAULT, VPT_STRETCH);
 
-  M_DrawThermo(SoundDef.x,SoundDef.y+LINEHEIGHT*(sfx_vol+1),16,snd_SfxVolume);
+  M_DrawThermoBig(SoundDef.x,SoundDef.y+LINEHEIGHT*(sfx_vol+1),16,16,snd_SfxVolume,sfx_vol);
+  snprintf(num, sizeof(num), "%3d", snd_SfxVolume);
+  strcpy(menu_buffer, num);
+  M_DrawMenuString(SoundDef.x + 150, SoundDef.y+LINEHEIGHT*(sfx_vol+1) + 3, cr_value_edit);
 
-  M_DrawThermo(SoundDef.x,SoundDef.y+LINEHEIGHT*(music_vol+1),16,snd_MusicVolume);
+  M_DrawThermoBig(SoundDef.x,SoundDef.y+LINEHEIGHT*(music_vol+1),16,16,snd_MusicVolume,music_vol);
+  snprintf(num, sizeof(num), "%3d", snd_MusicVolume);
+  strcpy(menu_buffer, num);
+  M_DrawMenuString(SoundDef.x + 150, SoundDef.y+LINEHEIGHT*(music_vol+1) + 3, cr_value_edit);
 }
 
-void M_Sound(int choice)
+static void M_Sound(int choice)
 {
   M_SetupNextMenu(&SoundDef);
 }
 
-void M_SfxVol(int choice)
+static void M_SfxVol(int choice)
 {
   switch(choice)
-    {
-    case 0:
-      if (snd_SfxVolume)
-        snd_SfxVolume--;
-      break;
-    case 1:
-      if (snd_SfxVolume < 15)
-        snd_SfxVolume++;
-      break;
-    }
-
-  S_SetSfxVolume(snd_SfxVolume /* *8 */);
-}
-
-void M_MusicVol(int choice)
-{
-  switch(choice)
-    {
-    case 0:
-      if (snd_MusicVolume)
-        snd_MusicVolume--;
-      break;
-    case 1:
-      if (snd_MusicVolume < 15)
-        snd_MusicVolume++;
-      break;
-    }
-
-  S_SetMusicVolume(snd_MusicVolume /* *8 */);
-}
-
-/////////////////////////////
-//
-// MOUSE SENSITIVITY MENU -- killough
-//
-
-// numerical values for the Mouse Sensitivity menu items
-// The 'empty' slots are where the sliding scales appear.
-
-enum
-{
-  mouse_horiz,
-  mouse_empty1,
-  mouse_vert,
-  mouse_empty2,
-
-//e6y
-  mouse_mlook,
-  mouse_empty3,
-  mouse_accel,
-  mouse_empty4,
-
-  mouse_end
-} mouse_e;
-
-// The definitions of the Mouse Sensitivity menu
-
-menuitem_t MouseMenu[]=
-{
-  {2,"M_HORSEN",M_MouseHoriz,'h', "HORIZONTAL"},
-  {-1,"",0},
-  {2,"M_VERSEN",M_MouseVert,'v', "VERTICAL"},
-  {-1,"",0}
-
-  //e6y
-  ,
-  {2,"M_LOKSEN",M_MouseMLook,'l', "MOUSE LOOK"},
-  {-1,"",0},
-  {2,"M_ACCEL",M_MouseAccel,'a', "ACCELERATION"},
-  {-1,"",0}
-};
-
-menu_t MouseDef =
-{
-  mouse_end,
-  &OptionsDef,
-  MouseMenu,
-  M_DrawMouse,
-  60,37,//e6y
-  0
-};
-
-
-// I'm using a scale of 100 since I don't know what's normal -- killough.
-
-#define MOUSE_SENS_MAX 100
-
-//
-// Change Mouse Sensitivities -- killough
-//
-
-void M_DrawMouse(void)
-{
-  int mhmx,mvmx; /* jff 4/3/98 clamp drawn position    99max mead */
-
-  // CPhipps - patch drawing updated
-  V_DrawNamePatch(60, 15, 0, "M_MSENS", CR_DEFAULT, VPT_STRETCH);//e6y
-
-  //jff 4/3/98 clamp horizontal sensitivity display
-  mhmx = mouseSensitivity_horiz>99? 99 : mouseSensitivity_horiz; /*mead*/
-  M_DrawThermo(MouseDef.x,MouseDef.y+LINEHEIGHT*(mouse_horiz+1),100,mhmx);
-  //jff 4/3/98 clamp vertical sensitivity display
-  mvmx = mouseSensitivity_vert>99? 99 : mouseSensitivity_vert; /*mead*/
-  M_DrawThermo(MouseDef.x,MouseDef.y+LINEHEIGHT*(mouse_vert+1),100,mvmx);
-
-  //e6y
   {
-    int mpmx;
-    mpmx = mouseSensitivity_mlook>99? 99 : mouseSensitivity_mlook;
-    M_DrawThermo(MouseDef.x,MouseDef.y+LINEHEIGHT*(mouse_mlook+1),100,mpmx);
-    mpmx = mouse_acceleration>99? 99 : mouse_acceleration;
-    M_DrawThermo(MouseDef.x,MouseDef.y+LINEHEIGHT*(mouse_accel+1),100,mpmx);
-  }
-}
-
-void M_ChangeSensitivity(int choice)
-{
-  M_SetupNextMenu(&MouseDef);      // killough
-
-  //  switch(choice)
-  //      {
-  //    case 0:
-  //      if (mouseSensitivity)
-  //        mouseSensitivity--;
-  //      break;
-  //    case 1:
-  //      if (mouseSensitivity < 9)
-  //        mouseSensitivity++;
-  //      break;
-  //      }
-}
-
-void M_MouseHoriz(int choice)
-{
-  M_Mouse(choice, &mouseSensitivity_horiz);
-}
-
-void M_MouseVert(int choice)
-{
-  M_Mouse(choice, &mouseSensitivity_vert);
-}
-
-void M_Mouse(int choice, int *sens)
-{
-  switch(choice)
-    {
     case 0:
-      if (*sens)
-        --*sens;
+      if (dsda_IntConfig(dsda_config_sfx_volume) > 0)
+        dsda_DecrementIntConfig(dsda_config_sfx_volume, true);
       break;
     case 1:
-      if (*sens < 99)
-        ++*sens;              /*mead*/
+      dsda_IncrementIntConfig(dsda_config_sfx_volume, true);
       break;
-    }
+  }
+
+  // Unmute the sfx if we are adjusting the volume
+  if (dsda_IntConfig(dsda_config_mute_sfx))
+    dsda_ToggleConfig(dsda_config_mute_sfx, true);
+}
+
+static void M_MusicVol(int choice)
+{
+  switch(choice)
+  {
+    case 0:
+      if (dsda_IntConfig(dsda_config_music_volume) > 0)
+        dsda_DecrementIntConfig(dsda_config_music_volume, true);
+      break;
+    case 1:
+      dsda_IncrementIntConfig(dsda_config_music_volume, true);
+      break;
+  }
+
+  // Unmute the music if we are adjusting the volume
+  if (dsda_IntConfig(dsda_config_mute_music))
+    dsda_ToggleConfig(dsda_config_mute_music, true);
 }
 
 /////////////////////////////
@@ -1492,35 +1513,47 @@ void M_Mouse(int choice, int *sens)
 //    M_QuickSave
 //
 
-char tempstring[80];
-
-static void M_QuickSaveResponse(int ch)
+static void M_QuickSave(void)
 {
-  if (ch == 'y')  {
-    M_DoSave(quickSaveSlot);
-    S_StartSound(NULL,sfx_swtchx);
-  }
-}
-
-void M_QuickSave(void)
-{
-  if (!usergame && (!demoplayback || netgame)) { /* killough 10/98 */
-    S_StartSound(NULL,sfx_oof);
-    return;
-  }
+  int i;
+  char description[SAVESTRINGSIZE];
+  time_t now;
+  struct tm *timeinfo;
 
   if (gamestate != GS_LEVEL)
     return;
 
-  if (quickSaveSlot < 0) {
-    M_StartControlPanel();
-    M_ReadSaveStrings();
-    M_SetupNextMenu(&SaveDef);
-    quickSaveSlot = -2; // means to pick a slot now
+  if (!dsda_AllowAnyMenuSave())
+  {
+    M_StartMessage(
+      "you can't save the game\n"
+      "under these conditions!\n\n"PRESSKEY,
+      NULL, false); // killough 5/26/98: not externalized
     return;
   }
-  sprintf(tempstring,s_QSPROMPT,savegamestrings[quickSaveSlot]); // Ty 03/27/98 - externalized
-  M_StartMessage(tempstring,M_QuickSaveResponse,true);
+
+  // Move all quicksaves downwards to make space for a new one
+  M_DeleteSaveGame(g_menu_save_page_size - 1);
+  for (i = g_menu_save_page_size - 2; i >= 0; i--)
+  {
+    char *oldname = dsda_SaveGameName(i, false);
+    char *newname = dsda_SaveGameName(i + 1, false);
+
+    rename(oldname, newname);
+
+    Z_Free(oldname);
+    Z_Free(newname);
+  }
+
+  time (&now);
+  timeinfo = localtime (&now);
+
+  strftime(description, sizeof(description), "%x %X", timeinfo);
+
+  G_SaveGame(QUICKSAVESLOT, description);
+  doom_printf("%s", description);
+
+  M_ReadSaveStrings();
 }
 
 /////////////////////////////
@@ -1528,31 +1561,41 @@ void M_QuickSave(void)
 // M_QuickLoad
 //
 
-static void M_QuickLoadResponse(int ch)
+static void M_QuickLoad(void)
 {
-  if (ch == 'y') {
-    M_LoadSelect(quickSaveSlot);
-    S_StartSound(NULL,sfx_swtchx);
-  }
-}
+  char *name;
 
-void M_QuickLoad(void)
-{
-  // cph - removed restriction against quickload in a netgame
-
-  if (demorecording) {  // killough 5/26/98: exclude during demo recordings
-    M_StartMessage("you can't quickload\n"
-       "while recording a demo!\n\n"PRESSKEY,
-       NULL, false); // killough 5/26/98: not externalized
+  if (!dsda_AllowAnyMenuLoad())
+  {
+    M_StartMessage(
+      "you can't load a game\n"
+      "under these conditions!\n\n"PRESSKEY,
+      NULL, false); // killough 5/26/98: not externalized
     return;
   }
 
-  if (quickSaveSlot < 0) {
-    M_StartMessage(s_QSAVESPOT,NULL,false); // Ty 03/27/98 - externalized
+  if (!dsda_AllowMenuLoad(QUICKSAVESLOT))
+  {
+    M_StartMessage(
+      "you can't load this game\n"
+      "under these conditions!\n\n"PRESSKEY,
+      NULL, false); // killough 5/26/98: not externalized
     return;
   }
-  sprintf(tempstring,s_QLPROMPT,savegamestrings[quickSaveSlot]); // Ty 03/27/98 - externalized
-  M_StartMessage(tempstring,M_QuickLoadResponse,true);
+
+  name = dsda_SaveGameName(QUICKSAVESLOT, false);
+
+  if (M_FileExists(name))
+  {
+    G_LoadGame(QUICKSAVESLOT, false);
+    doom_printf("quickload");
+  }
+  else
+  {
+    doom_printf("no save file");
+  }
+
+  Z_Free(name);
 }
 
 /////////////////////////////
@@ -1560,13 +1603,13 @@ void M_QuickLoad(void)
 // M_EndGame
 //
 
-static void M_EndGameResponse(int ch)
+static void M_EndGameResponse(dboolean affirmative)
 {
-  if (ch != 'y')
+  if (!affirmative)
     return;
 
   // killough 5/26/98: make endgame quit if recording or playing back demo
-  if (demorecording || singledemo)
+  if (demorecording || userplayback)
     G_CheckDemoStatus();
 
   currentMenu->lastOn = itemOn;
@@ -1584,23 +1627,12 @@ void M_EndGame(int choice)
   M_StartMessage(s_ENDGAME,M_EndGameResponse,true); // Ty 03/27/98 - externalized
 }
 
-/////////////////////////////
-//
-//    Toggle messages on/off
-//
-
-void M_ChangeMessages(int choice)
+void M_ChangeMessages(void)
 {
-  // warning: unused parameter `int choice'
-  choice = 0;
-  showMessages = 1 - showMessages;
-
-  if (!showMessages)
-    players[consoleplayer].message = s_MSGOFF; // Ty 03/27/98 - externalized
+  if (!dsda_ShowMessages())
+    dsda_AddUnblockableMessage(s_MSGOFF);
   else
-    players[consoleplayer].message = s_MSGON ; // Ty 03/27/98 - externalized
-
-  message_dontfuckwithme = true;
+    dsda_AddMessage(s_MSGON);
 }
 
 /////////////////////////////
@@ -1612,26 +1644,31 @@ void M_ChangeMessages(int choice)
 // hud_displayed is toggled by + or = in fullscreen
 // hud_displayed is cleared by -
 
-void M_SizeDisplay(int choice)
+static void M_SizeDisplay(int choice)
 {
   switch(choice) {
-  case 0:
-    if (screenSize > 0) {
-      screenblocks--;
-      screenSize--;
-      hud_displayed = 0;
-    }
-    break;
-  case 1:
-    if (screenSize < 8) {
-      screenblocks++;
-      screenSize++;
-    }
-    else
-      hud_displayed = !hud_displayed;
-    break;
+    case 0:
+      if (R_FullView())
+        dsda_DecrementIntConfig(dsda_config_screenblocks, true);
+      break;
+    case 1:
+      if (R_PartialView())
+        dsda_IncrementIntConfig(dsda_config_screenblocks, true);
+      else
+        dsda_ToggleConfig(dsda_config_hud_displayed, true);
+      break;
+    case 2:
+      if (R_PartialView()) {
+        dsda_UpdateIntConfig(dsda_config_screenblocks, 11, true);
+        dsda_UpdateIntConfig(dsda_config_hud_displayed, true, true);
+      }
+      else {
+        dsda_ToggleConfig(dsda_config_hud_displayed, true);
+        if (dsda_IntConfig(dsda_config_hud_displayed))
+          dsda_DecrementIntConfig(dsda_config_screenblocks, true);
+      }
+      break;
   }
-  R_SetViewSize (screenblocks /*, detailLevel obsolete -- killough */);
 }
 
 //
@@ -1650,34 +1687,9 @@ void M_SizeDisplay(int choice)
 //    Weapons
 //    Status Bar / HUD
 //    Automap
-//    Enemies
-//    Messages
-//    Chat Strings
 //
 // killough 10/98: added Compatibility and General menus
 //
-
-/////////////////////////////
-//
-// booleans for setup screens
-// these tell you what state the setup screens are in, and whether any of
-// the overlay screens (automap colors, reset button message) should be
-// displayed
-
-dboolean setup_active      = false; // in one of the setup screens
-dboolean set_keybnd_active = false; // in key binding setup screens
-dboolean set_weapon_active = false; // in weapons setup screen
-dboolean set_status_active = false; // in status bar/hud setup screen
-dboolean set_auto_active   = false; // in automap setup screen
-dboolean set_enemy_active  = false; // in enemies setup screen
-dboolean set_mess_active   = false; // in messages setup screen
-dboolean set_chat_active   = false; // in chat string setup screen
-dboolean setup_select      = false; // changing an item
-dboolean setup_gather      = false; // gathering keys for value
-dboolean colorbox_active   = false; // color palette being shown
-dboolean default_verify    = false; // verify reset defaults decision
-dboolean set_general_active = false;
-dboolean set_compat_active = false;
 
 /////////////////////////////
 //
@@ -1688,6 +1700,34 @@ dboolean set_compat_active = false;
 
 static int set_menu_itemon; // which setup item is selected?   // phares 3/98
 static setup_menu_t* current_setup_menu; // points to current setup menu table
+
+// Negative keeps the selection-driven scroll used by keyboard navigation.
+#define KEYBOARD_NAV -1
+static int menu_mouse_setup_scroll = KEYBOARD_NAV;
+
+typedef struct
+{
+  const char **labels;
+  int visible_tabs;
+  setup_menu_t **pages;
+} setup_page_context_t;
+
+static setup_page_context_t setup_page_context;
+
+static void M_ClearSetupPageContext(void)
+{
+  setup_page_context.labels = NULL;
+  setup_page_context.visible_tabs = 0;
+  setup_page_context.pages = NULL;
+}
+
+static void M_SetSetupPageContext(const char **labels, int visible_tabs,
+                                  setup_menu_t **pages)
+{
+  setup_page_context.labels = labels;
+  setup_page_context.visible_tabs = visible_tabs;
+  setup_page_context.pages = pages;
+}
 
 // save the setup menu's itemon value in the S_END element's x coordinate
 
@@ -1719,51 +1759,16 @@ static void M_SetSetupMenuItemOn (const int x)
   }
 }
 
-/////////////////////////////
-//
-// The menu_buffer is used to construct strings for display on the screen.
-
-static char menu_buffer[66];
-
-/////////////////////////////
-//
-// The setup_e enum is used to provide a unique number for each group of Setup
-// Screens.
-
-enum
+static void M_UpdateSetupMenu(setup_menu_t *new_setup_menu)
 {
-  set_compat,
-  set_key_bindings,
-  set_weapons,
-  set_statbar,
-  set_automap,
-  set_enemy,
-  set_messages,
-  set_chatstrings,
-  set_setup_end
-} setup_e;
-
-int setup_screen; // the current setup screen. takes values from setup_e
-
-/////////////////////////////
-//
-// SetupMenu is the definition of what the main Setup Screen should look
-// like. Each entry shows that the cursor can land on each item (1), the
-// built-in graphic lump (i.e. "M_KEYBND") that should be displayed,
-// the program which takes over when an item is selected, and the hotkey
-// associated with the item.
-
-menuitem_t SetupMenu[]=
-{
-  {1,"M_COMPAT",M_Compat,     'p', "DOOM COMPATIBILITY"},
-  {1,"M_KEYBND",M_KeyBindings,'k', "KEY BINDINGS"},
-  {1,"M_WEAP"  ,M_Weapons,    'w', "WEAPONS"},
-  {1,"M_STAT"  ,M_StatusBar,  's', "STATUS BAR / HUD"},
-  {1,"M_AUTO"  ,M_Automap,    'a', "AUTOMAP"},
-  {1,"M_ENEM"  ,M_Enemy,      'e', "ENEMIES"},
-  {1,"M_MESS"  ,M_Messages,   'm', "MESSAGES"},
-  {1,"M_CHAT"  ,M_ChatStrings,'c', "CHAT STRINGS"},
-};
+  menu_mouse_setup_scroll = KEYBOARD_NAV;
+  current_setup_menu = new_setup_menu;
+  set_menu_itemon = M_GetSetupMenuItemOn();
+  if (current_setup_menu[set_menu_itemon].m_flags & S_NOSELECT)
+    return;
+  while (current_setup_menu[set_menu_itemon++].m_flags & S_SKIP);
+  current_setup_menu[--set_menu_itemon].m_flags |= S_HILITE;
+}
 
 /////////////////////////////
 //
@@ -1780,115 +1785,21 @@ static void M_DoNothing(int choice)
 // the generic_setup_e enum mimics the 'Big Font' menu structures, but
 // means nothing to the Setup Menus.
 
-enum
+enum generic_setup_e
 {
   generic_setupempty1,
   generic_setup_end
-} generic_setup_e;
+};
 
 // Generic_Setup is a do-nothing definition that the mainstream Menu code
 // can understand, while the Setup Menu code is working. Another placeholder.
 
-menuitem_t Generic_Setup[] =
+static menuitem_t Generic_Setup[] =
 {
-  {1,"",M_DoNothing,0}
+  {M_ITEM_ACTION,"",M_DoNothing,0}
 };
 
-/////////////////////////////
-//
-// SetupDef is the menu definition that the mainstream Menu code understands.
-// This is used by M_Setup (below) to define what is drawn and what is done
-// with the main Setup screen.
-
-menu_t  SetupDef =
-{
-  set_setup_end, // number of Setup Menu items (Key Bindings, etc.)
-  &OptionsDef,   // menu to return to when BACKSPACE is hit on this menu
-  SetupMenu,     // definition of items to show on the Setup Screen
-  M_DrawSetup,   // program that draws the Setup Screen
-  59,37,         // x,y position of the skull (modified when the skull is
-                 // drawn). The skull is parked on the upper-left corner
-                 // of the Setup screens, since it isn't needed as a cursor
-  0              // last item the user was on for this menu
-};
-
-/////////////////////////////
-//
-// Here are the definitions of the individual Setup Menu screens. They
-// follow the format of the 'Big Font' menu structures. See the comments
-// for SetupDef (above) to help understand what each of these says.
-
-menu_t KeybndDef =
-{
-  generic_setup_end,
-  &SetupDef,
-  Generic_Setup,
-  M_DrawKeybnd,
-  34,5,      // skull drawn here
-  0
-};
-
-menu_t WeaponDef =
-{
-  generic_setup_end,
-  &SetupDef,
-  Generic_Setup,
-  M_DrawWeapons,
-  34,5,      // skull drawn here
-  0
-};
-
-menu_t StatusHUDDef =
-{
-  generic_setup_end,
-  &SetupDef,
-  Generic_Setup,
-  M_DrawStatusHUD,
-  34,5,      // skull drawn here
-  0
-};
-
-menu_t AutoMapDef =
-{
-  generic_setup_end,
-  &SetupDef,
-  Generic_Setup,
-  M_DrawAutoMap,
-  34,5,      // skull drawn here
-  0
-};
-
-menu_t EnemyDef =                                           // phares 4/08/98
-{
-  generic_setup_end,
-  &SetupDef,
-  Generic_Setup,
-  M_DrawEnemy,
-  34,5,      // skull drawn here
-  0
-};
-
-menu_t MessageDef =                                         // phares 4/08/98
-{
-  generic_setup_end,
-  &SetupDef,
-  Generic_Setup,
-  M_DrawMessages,
-  34,5,      // skull drawn here
-  0
-};
-
-menu_t ChatStrDef =                                         // phares 4/10/98
-{
-  generic_setup_end,
-  &SetupDef,
-  Generic_Setup,
-  M_DrawChatStrings,
-  34,5,      // skull drawn here
-  0
-};
-
-menu_t GeneralDef =                                           // killough 10/98
+static menu_t GeneralDef =                                           // killough 10/98
 {
   generic_setup_end,
   &OptionsDef,
@@ -1898,81 +1809,211 @@ menu_t GeneralDef =                                           // killough 10/98
   0
 };
 
-menu_t CompatDef =                                           // killough 10/98
+static menu_t KeybndDef =
 {
   generic_setup_end,
-  &SetupDef,
+  &OptionsDef,
   Generic_Setup,
-  M_DrawCompat,
+  M_DrawKeybnd,
   34,5,      // skull drawn here
   0
 };
 
-/////////////////////////////
-//
-// Draws the Title for the main Setup screen
-
-void M_DrawSetup(void)
+static menu_t DisplayDef =                                           // killough 10/98
 {
-  // CPhipps - patch drawing updated
-  M_DrawTitle(124, 15, "M_SETUP", CR_DEFAULT, "SETUP", CR_GOLD);
-}
+  generic_setup_end,
+  &OptionsDef,
+  Generic_Setup,
+  M_DrawDisplay,
+  34,5,      // skull drawn here
+  0
+};
 
-/////////////////////////////
-//
-// Uses the SetupDef structure to draw the menu items for the main
-// Setup screen
-
-void M_Setup(int choice)
+static menu_t DemosDef =
 {
-  M_SetupNextMenu(&SetupDef);
-}
+  generic_setup_end,
+  &OptionsDef,
+  Generic_Setup,
+  M_DrawDemos,
+  34,5,      // skull drawn here
+  0
+};
 
-/////////////////////////////
-//
-// Data that's used by the Setup screen code
-//
-// Establish the message colors to be used
+static menu_t CompatibilityDef =                                           // killough 10/98
+{
+  generic_setup_end,
+  &OptionsDef,
+  Generic_Setup,
+  M_DrawCompatibility,
+  34,5,      // skull drawn here
+  0
+};
 
-#define CR_TITLE  CR_GOLD
-#define CR_SET    CR_GREEN
-#define CR_ITEM   CR_RED
-#define CR_HILITE CR_ORANGE
-#define CR_SELECT CR_GRAY
+static menu_t WeaponDef =
+{
+  generic_setup_end,
+  &OptionsDef,
+  Generic_Setup,
+  M_DrawWeapons,
+  34,5,      // skull drawn here
+  0
+};
 
-//e6y
-#define CR_DISABLE CR_GRAY
+static menu_t AutoMapDef =
+{
+  generic_setup_end,
+  &OptionsDef,
+  Generic_Setup,
+  M_DrawAutoMap,
+  34,5,      // skull drawn here
+  0
+};
+
+static menu_t LevelTableDef =
+{
+  generic_setup_end,
+  &OptionsDef,
+  Generic_Setup,
+  M_DrawLevelTable,
+  34,5,      // skull drawn here
+  0
+};
 
 // Data used by the Automap color selection code
 
-#define CHIP_SIZE 7 // size of color block for colored items
+#define CHIP_SIZE 8 // size of color block for colored items
 
-#define COLORPALXORIG ((320 - 16*(CHIP_SIZE+1))/2)
-#define COLORPALYORIG ((200 - 16*(CHIP_SIZE+1))/2)
+#define COLORPALXORIG ((320 - 16*(CHIP_SIZE))/2)
+#define COLORPALYORIG ((200 - 16*(CHIP_SIZE))/2)
 
-#define PAL_BLACK   0
-#define PAL_WHITE   4
+#define TABS_Y 20
+#define DEFAULT_LIST_Y (TABS_Y + 14)
 
-// Data used by the Chat String editing code
+// Data used by the string editing code
 
-#define CHAT_STRING_BFR_SIZE 128
+#define ENTRY_STRING_BFR_SIZE 128
 
-// chat strings must fit in this screen space
+// strings must fit in this screen space
 // killough 10/98: reduced, for more general uses
-#define MAXCHATWIDTH         272
+#define MAXENTRYWIDTH         272
 
-int   chat_index;
-char* chat_string_buffer; // points to new chat strings while editing
+static int entry_index;
+static char entry_string_index[ENTRY_STRING_BFR_SIZE]; // points to new strings while editing
+static int choice_value;
+
+//
+// Main Disable Function
+//
+
+static dboolean M_ItemDisabled(const setup_menu_t* s)
+{
+  // Strict Mode
+  if (dsda_StrictMode() && dsda_IsStrictConfig(s->config_id))
+    return true;
+
+  return false;
+}
+
+//
+// Check item selection
+//
+
+static dboolean M_ItemSelected(const setup_menu_t *s)
+{
+    int flags = s->m_flags;
+
+    if (s == current_setup_menu + set_menu_itemon && whichSkull && !(flags & S_NOSELECT))
+      return true;
+
+    return false;
+}
+
+//
+// Main text functions
+//
+
+static void M_CopyText(char *dest, size_t dest_size, const char *src)
+{
+  if (dest_size)
+    snprintf(dest, dest_size, "%s", src ? src : "");
+}
+
+static void M_AppendText(char *dest, size_t dest_size, const char *src)
+{
+  size_t len;
+
+  if (!dest_size || !src)
+    return;
+
+  len = strlen(dest);
+  if (len < dest_size)
+    snprintf(dest + len, dest_size - len, "%s", src);
+}
+
+static void M_TruncateTextToWidth(char *text, size_t text_size, int max_width)
+{
+  int len = strlen(text);
+
+  if (len == 0 || M_GetPixelWidth(text) <= max_width)
+    return;
+
+  while (len > 0 && M_GetPixelWidth(text) + M_GetPixelWidth("...") > max_width)
+    text[--len] = 0;
+
+  if (len > 0)
+    M_AppendText(text, text_size, "...");
+}
+
+static void M_TrimSetupString(char *text, dboolean update_entry_index)
+{
+  while (text[0] && M_GetPixelWidth(text) >= MAXENTRYWIDTH)
+  {
+    int len = strlen(text);
+
+    text[--len] = 0;
+    if (update_entry_index && entry_index > len)
+      entry_index--;
+  }
+}
+
+//
+// Blinking arrow
+//
+
+dboolean M_ShowBlinkingArrowRight(const setup_menu_t *s)
+{
+  return M_ItemSelected(s) && !setup_select;
+}
+
+static void M_BlinkingArrowRight(const setup_menu_t *s, char *text, size_t text_size)
+{
+  if (M_ShowBlinkingArrowRight(s))
+    M_AppendText(text, text_size, " <");
+}
 
 /////////////////////////////
 //
-// phares 4/17/98:
-// Added 'Reset to Defaults' Button to Setup Menu screens
-// This is a small button that sits in the upper-right-hand corner of
-// the first screen for each group. It blinks when selected, thus the
-// two patches, which it toggles back and forth.
+// Menu Color Item Functions
+//
+//
 
-char ResetButtonName[2][8] = {"M_BUTT1","M_BUTT2"};
+static int GetItemColor(int flags)
+{
+    return (flags & S_TITLE && flags & S_DISABLED) ? cr_title + CR_DARKEN :
+            flags & S_DISABLED ? cr_label + CR_DARKEN :
+            flags & (S_SELECT|S_TC_SEL) ? cr_label_edit :
+            flags & S_HILITE ? cr_label_highlight :
+            flags & (S_TITLE|S_NEXT|S_PREV) ? cr_title :
+            cr_label; // killough 10/98
+}
+
+static int GetOptionColor(int flags)
+{
+    return flags & S_DISABLED ? cr_value + CR_DARKEN :
+           flags & S_SELECT ? cr_value_edit :
+           flags & S_HILITE ? cr_value_highlight :
+           cr_value;
+}
 
 /////////////////////////////
 //
@@ -1984,49 +2025,40 @@ char ResetButtonName[2][8] = {"M_BUTT1","M_BUTT2"};
 // item is selected or not, or whether it's about to change.
 
 // CPhipps - static, hanging else removed, const parameter
-static void M_DrawItem(const setup_menu_t* s)
+static void M_DrawItem(const setup_menu_t* s, int y)
 {
   int x = s->m_x;
-  int y = s->m_y;
   int flags = s->m_flags;
-  if (flags & S_RESET)
+  char *p, *t;
+  int color;
 
-    // This item is the reset button
-    // Draw the 'off' version if this isn't the current menu item
-    // Draw the blinking version in tune with the blinking skull otherwise
+  if (M_ItemDisabled(s))
+    flags |= S_DISABLED;
 
-    // proff/nicolas 09/20/98 -- changed for hi-res
-    // CPhipps - Patch drawing updated, reformatted
+  color = GetItemColor(flags);
 
-    V_DrawNamePatch(x, y, 0, ResetButtonName[(flags & (S_HILITE|S_SELECT)) ? whichSkull : 0],
-        CR_DEFAULT, VPT_STRETCH);
+  /* killough 10/98:
+   * Enhance to support multiline text separated by newlines.
+   * This supports multiline items on horizontally-crowded menus.
+   */
 
-  else { // Draw the item string
-    char *p, *t;
-    int w = 0;
-    int color =
-  flags & S_DISABLE ? CR_DISABLE : //e6y
-  flags & S_SELECT ? CR_SELECT :
-  flags & S_HILITE ? CR_HILITE :
-  flags & (S_TITLE|S_NEXT|S_PREV) ? CR_TITLE : CR_ITEM; // killough 10/98
+  for (p = t = Z_Strdup(s->m_text); (p = strtok(p,"\n")); y += 8, p = NULL)
+  {      /* killough 10/98: support left-justification: */
+    int w = M_GetPixelWidth(p);
+    int offset = 0;
 
-    /* killough 10/98:
-     * Enhance to support multiline text separated by newlines.
-     * This supports multiline items on horizontally-crowded menus.
-     */
+    if (flags & S_CENTER)
+      offset = x - (BASE_WIDTH - w) / 2;
+    else if (!(flags & S_LEFTJUST))
+      offset = w + 4;
 
-    for (p = t = strdup(s->m_text); (p = strtok(p,"\n")); y += 8, p = NULL)
-      {      /* killough 10/98: support left-justification: */
-  strcpy(menu_buffer,p);
-  if (!(flags & S_LEFTJUST))
-    w = M_GetPixelWidth(menu_buffer) + 4;
-  M_DrawMenuString(x - w, y ,color);
-  // print a blinking "arrow" next to the currently highlighted menu item
-  if (s == current_setup_menu + set_menu_itemon && whichSkull)
-    M_DrawString(x - w - 8, y, color, ">");
-      }
-    free(t);
+    M_DrawString(x - offset, y, color, p);
+
+    // print a blinking "arrow" next to the currently highlighted menu item
+    if (M_ItemSelected(s))
+      M_DrawString(x - offset - 8, y, color, ">");
   }
+  Z_Free(t);
 }
 
 // If a number item is being changed, allow up to N keystrokes to 'gather'
@@ -2034,8 +2066,8 @@ static void M_DrawItem(const setup_menu_t* s)
 // of what is gathered is determined by the low/high settings for the item.
 
 #define MAXGATHER 5
-int  gather_count;
-char gather_buffer[MAXGATHER+1];  // killough 10/98: make input character-based
+static int  gather_count;
+static char gather_buffer[MAXGATHER+1];  // killough 10/98: make input character-based
 
 /////////////////////////////
 //
@@ -2048,193 +2080,228 @@ char gather_buffer[MAXGATHER+1];  // killough 10/98: make input character-based
 // displays the appropriate setting value: yes/no, a key binding, a number,
 // a paint chip, etc.
 
-static void M_DrawSetting(const setup_menu_t* s)
+static void M_SetupInputText(const setup_menu_t *s,
+                             char *text, size_t text_size)
 {
-  int x = s->m_x, y = s->m_y, flags = s->m_flags, color;
+  int i;
+  int offset = 0;
+  const char *format;
+  dboolean any_input = false;
+  dsda_input_t *input = dsda_Input(s->input);
+
+  menu_buffer[0] = '\0';
+
+  for (i = 0; i < input->num_keys; ++i)
+  {
+    if (any_input)
+    {
+      menu_buffer[offset++] = '/';
+      menu_buffer[offset] = '\0';
+    }
+
+    offset = M_GetKeyString(input->key[i], offset);
+    any_input = true;
+  }
+
+  if (input->mouseb != -1)
+  {
+    format = any_input ? "/MB%d" : "MB%d";
+    snprintf(menu_buffer + strlen(menu_buffer),
+             sizeof(menu_buffer) - strlen(menu_buffer),
+             format, input->mouseb + 1);
+    any_input = true;
+  }
+
+  if (input->joyb != -1)
+  {
+    format = any_input ? "/%s" : "%s";
+    snprintf(menu_buffer + strlen(menu_buffer),
+             sizeof(menu_buffer) - strlen(menu_buffer),
+             format, dsda_GameControllerButtonName(input->joyb));
+    any_input = true;
+  }
+
+  if (!any_input)
+    M_GetKeyString(0, 0);
+
+  M_CopyText(text, text_size, menu_buffer);
+}
+
+static dboolean M_SetupSettingText(const setup_menu_t *s,
+                                   char *text, size_t text_size,
+                                   dboolean update_entry_index)
+{
+  int flags = s->m_flags;
+
+  if (!text_size)
+    return false;
+
+  text[0] = '\0';
+
+  if (flags & S_YESNO)
+    M_CopyText(text, text_size,
+               dsda_IntConfig(s->config_id) ? "YES" : "NO");
+  else if (flags & (S_NUM | S_WEAP | S_CRITEM))
+  {
+    if ((flags & (S_HILITE | S_SELECT)) && setup_gather)
+    {
+      gather_buffer[gather_count] = 0;
+      M_CopyText(text, text_size, gather_buffer);
+    }
+    else
+      snprintf(text, text_size, "%d", dsda_IntConfig(s->config_id));
+  }
+  else if (flags & S_INPUT)
+    M_SetupInputText(s, text, text_size);
+  else if (flags & S_STRING)
+  {
+    dboolean editing = setup_select && (flags & (S_HILITE | S_SELECT));
+
+    M_CopyText(text, text_size,
+               editing ? entry_string_index : dsda_StringConfig(s->config_id));
+    if (editing)
+      M_TrimSetupString(text, update_entry_index);
+  }
+  else if (flags & S_CHOICE)
+  {
+    if (flags & S_STR)
+    {
+      M_CopyText(text, text_size,
+                 setup_select && (flags & (S_HILITE | S_SELECT)) ?
+                   entry_string_index : dsda_StringConfig(s->config_id));
+    }
+    else
+    {
+      int value = setup_select && (flags & (S_HILITE | S_SELECT)) ?
+        choice_value : dsda_IntConfig(s->config_id);
+
+      if (s->selectstrings == NULL)
+        snprintf(text, text_size, "%d", value);
+      else
+        M_CopyText(text, text_size, s->selectstrings[value]);
+    }
+  }
+  else if (flags & S_THERMO)
+    snprintf(text, text_size, "%d", dsda_IntConfig(s->config_id));
+  else
+    return false;
+
+  M_BlinkingArrowRight(s, text, text_size);
+
+  return text[0] != '\0';
+}
+
+static int M_SetupSettingColor(const setup_menu_t *s, int flags)
+{
+  int color = GetOptionColor(flags);
+  dboolean editing = setup_gather && (flags & (S_HILITE | S_SELECT));
+
+  if ((flags & S_CRITEM) && !editing)
+  {
+    color = dsda_IntConfig(s->config_id);
+
+    if (flags & S_DISABLED)
+      color += CR_DARKEN;
+  }
+
+  return color;
+}
+
+static void M_DrawSetupStringCursor(int x, int y, char *text)
+{
+  int cursor_start, char_width;
+  char c[2];
+
+  *c = text[entry_index]; // hold temporarily
+  c[1] = 0;
+  char_width = M_GetPixelWidth(c);
+  if (char_width == 1)
+    char_width = 7; // default for end of line
+  text[entry_index] = 0; // NULL to get cursor position
+  cursor_start = M_GetPixelWidth(text);
+  text[entry_index] = *c; // replace stored char
+
+  // Now draw the cursor
+  // proff 12/6/98: Drawing of cursor changed for hi-res
+  // e6y: wide-res
+  if (x + cursor_start + char_width < BASE_WIDTH)
+  {
+    int xx = x + cursor_start - 1, yy = y, ww = char_width, hh = 9;
+
+    V_GetWideRect(&xx, &yy, &ww, &hh, VPT_STRETCH);
+    V_FillRect(0, xx, yy, ww, hh, playpal_lightest);
+  }
+}
+
+static void M_DrawSetting(const setup_menu_t* s, int y)
+{
+  int x = s->m_x, flags = s->m_flags, color;
+  char text[MENU_BUFFER_SIZE];
+
+  if (M_ItemDisabled(s))
+    flags |= S_DISABLED;
 
   // Determine color of the text. This may or may not be used later,
   // depending on whether the item is a text string or not.
 
-  color =
-    flags & S_DISABLE ? CR_DISABLE : //e6y
-    flags & S_SELECT ? CR_SELECT : flags & S_HILITE ? CR_HILITE : CR_SET;
-
-  // Is the item a YES/NO item?
-
-  if (flags & S_YESNO) {
-    strcpy(menu_buffer,*s->var.def->location.pi ? "YES" : "NO");
-    if (s == current_setup_menu + set_menu_itemon && whichSkull && !setup_select)
-      strcat(menu_buffer, " <");
-    M_DrawMenuString(x,y,color);
-    return;
-  }
-
-  // Is the item a simple number?
-
-  if (flags & S_NUM) {
-    // killough 10/98: We must draw differently for items being gathered.
-    if (flags & (S_HILITE|S_SELECT) && setup_gather) {
-      gather_buffer[gather_count] = 0;
-      strcpy(menu_buffer, gather_buffer);
-    }
-    else
-      sprintf(menu_buffer,"%d",*s->var.def->location.pi);
-    if (s == current_setup_menu + set_menu_itemon && whichSkull && !setup_select)
-      strcat(menu_buffer, " <");
-    M_DrawMenuString(x,y,color);
-    return;
-  }
-
-  // Is the item a key binding?
-
-  if (flags & S_KEY) { // Key Binding
-    int *key = s->var.m_key;
-
-    // Draw the key bound to the action
-
-    if (key) {
-      M_GetKeyString(*key,0); // string to display
-
-      if (s->m_mouse && *s->m_mouse != -1)
-        sprintf(menu_buffer+strlen(menu_buffer), "/MB%d",
-          *s->m_mouse+1);
-      if (s->m_joy)
-        sprintf(menu_buffer+strlen(menu_buffer), "/JSB%d",
-          *s->m_joy+1);
-
-      if (s == current_setup_menu + set_menu_itemon && whichSkull && !setup_select)
-        strcat(menu_buffer, " <");
-      M_DrawMenuString(x,y,color);
-    }
-    return;
-  }
-
-  // Is the item a weapon number?
-  // OR, Is the item a colored text string from the Automap?
-  //
-  // killough 10/98: removed special code, since the rest of the engine
-  // already takes care of it, and this code prevented the user from setting
-  // their overall weapons preferences while playing Doom 1.
-  //
-  // killough 11/98: consolidated weapons code with color range code
-
-  if (flags & (S_WEAP|S_CRITEM)) // weapon number or color range
-    {
-      sprintf(menu_buffer,"%d", *s->var.def->location.pi);
-      if (s == current_setup_menu + set_menu_itemon && whichSkull && !setup_select)
-        M_DrawString(x + 8, y, color, " <");
-      M_DrawMenuString(x,y, flags & S_CRITEM ? *s->var.def->location.pi : color);
-      return;
-    }
+  color = M_SetupSettingColor(s, flags);
 
   // Is the item a paint chip?
 
   if (flags & S_COLOR) // Automap paint chip
+  {
+    int ch;
+
+    ch = dsda_IntConfig(s->config_id);
+    // proff 12/6/98: Drawing of colorchips completly changed for hi-res, it now uses a patch
+    // draw the paint chip
+    // e6y: wide-res
     {
-      int ch;
-
-      ch = *s->var.def->location.pi;
-      // proff 12/6/98: Drawing of colorchips completly changed for hi-res, it now uses a patch
-      // draw the paint chip
-      // e6y: wide-res
-      {
-        int xx = x, yy = y - 1, ww = 8, hh = 8;
-        V_GetWideRect(&xx, &yy, &ww, &hh, VPT_STRETCH);
-        V_FillRect(0, xx, yy, ww, hh, PAL_BLACK);
-        xx = x + 1, yy = y, ww = 6, hh = 6;
-        V_GetWideRect(&xx, &yy, &ww, &hh, VPT_STRETCH);
-        V_FillRect(0, xx, yy, ww, hh, (byte)ch);
-      }
-
-      if (!ch) // don't show this item in automap mode
-  V_DrawNamePatch(x+1,y,0,"M_PALNO", CR_DEFAULT, VPT_STRETCH);
-  if (s == current_setup_menu + set_menu_itemon && whichSkull && !setup_select)
-    M_DrawString(x + 8, y, color, " <");
-      return;
+      int xx = x, yy = y - 1, ww = 8, hh = 8;
+      V_GetWideRect(&xx, &yy, &ww, &hh, VPT_STRETCH);
+      V_FillRect(0, xx, yy, ww, hh, playpal_darkest);
+      xx = x + 1, yy = y, ww = 6, hh = 6;
+      V_GetWideRect(&xx, &yy, &ww, &hh, VPT_STRETCH);
+      V_FillRect(0, xx, yy, ww, hh, (byte)ch);
     }
 
-  // Is the item a chat string?
-  // killough 10/98: or a filename?
-
-  if (flags & S_STRING) {
-    /* cph - cast to char* as it's really a Z_Strdup'd string (see m_misc.h) */
-    union { const char **c; char **s; } u; // type punning via unions
-    char *text;
-
-    u.c = s->var.def->location.ppsz;
-    text = *(u.s);
-
-    // Are we editing this string? If so, display a cursor under
-    // the correct character.
-
-    if (setup_select && (s->m_flags & (S_HILITE|S_SELECT))) {
-      int cursor_start, char_width;
-      char c[2];
-
-      // If the string is too wide for the screen, trim it back,
-      // one char at a time until it fits. This should only occur
-      // while you're editing the string.
-
-      while (M_GetPixelWidth(text) >= MAXCHATWIDTH) {
-  int len = strlen(text);
-  text[--len] = 0;
-  if (chat_index > len)
-    chat_index--;
-      }
-
-      // Find the distance from the beginning of the string to
-      // where the cursor should be drawn, plus the width of
-      // the char the cursor is under..
-
-      *c = text[chat_index]; // hold temporarily
-      c[1] = 0;
-      char_width = M_GetPixelWidth(c);
-      if (char_width == 1)
-  char_width = 7; // default for end of line
-      text[chat_index] = 0; // NULL to get cursor position
-      cursor_start = M_GetPixelWidth(text);
-      text[chat_index] = *c; // replace stored char
-
-      // Now draw the cursor
-      // proff 12/6/98: Drawing of cursor changed for hi-res
-      // e6y: wide-res
-      if (x + cursor_start + char_width < BASE_WIDTH)
-      {
-        int xx = (x+cursor_start-1), yy = y, ww = char_width, hh = 9;
-        V_GetWideRect(&xx, &yy, &ww, &hh, VPT_STRETCH);
-        V_FillRect(0, xx, yy, ww, hh, PAL_WHITE);
-      }
-    }
-
-    // Draw the setting for the item
-
-    strcpy(menu_buffer,text);
-    if (s == current_setup_menu + set_menu_itemon && whichSkull && !setup_select)
-      strcat(menu_buffer, " <");
-    M_DrawMenuString(x,y,color);
+    if (!ch) // don't show this item in automap mode
+      V_DrawNamePatch(x+1,y,0,"M_PALNO", CR_DEFAULT, VPT_STRETCH);
+    if (M_ItemSelected(s) && !setup_select)
+      M_DrawString(x + 8, y, color, " <");
     return;
   }
 
-  // Is the item a selection of choices?
+  if (flags & S_THERMO) {
+    M_DrawThermoSmall(x, y, 8, 16, dsda_IntConfig(s->config_id), s);
 
-  if (flags & S_CHOICE) {
-    if (s->var.def->type == def_int) {
-      if (s->selectstrings == NULL) {
-        sprintf(menu_buffer,"%d",*s->var.def->location.pi);
-      } else {
-        strcpy(menu_buffer,s->selectstrings[*s->var.def->location.pi]);
-      }
-    }
-
-    if (s->var.def->type == def_str) {
-      sprintf(menu_buffer,"%s", *s->var.def->location.ppsz);
-    }
-
-    if (s == current_setup_menu + set_menu_itemon && whichSkull && !setup_select)
-      strcat(menu_buffer, " <");
-    M_DrawMenuString(x,y,color);
-    return;
+    x += 80;
+    y += 3;
   }
+
+  if (!M_SetupSettingText(s, text, sizeof(text), true))
+    return;
+
+  // bit of a jank (if not disgusting) way to do this, but it's to avoid the long strings caused by most audio outputs >:D
+  if ((flags & S_CHOICE) && (flags & S_STR))
+  {
+    size_t len = strlen(text);
+
+    if (len >= 2 && text[len - 1] == '<' && text[len - 2] == ' ')
+    {
+      text[len - 2] = 0;
+      M_TruncateTextToWidth(text, sizeof(text), BASE_WIDTH - x - M_GetPixelWidth(" <"));
+      M_AppendText(text, sizeof(text), " <");
+    }
+    else
+      M_TruncateTextToWidth(text, sizeof(text), BASE_WIDTH - x);
+  }
+
+  if ((flags & S_STRING) && setup_select && (flags & (S_HILITE | S_SELECT)))
+    M_DrawSetupStringCursor(x, y, text);
+
+  M_CopyText(menu_buffer, sizeof(menu_buffer), text);
+  M_DrawMenuString(x, y, color);
 }
 
 /////////////////////////////
@@ -2242,39 +2309,255 @@ static void M_DrawSetting(const setup_menu_t* s)
 // M_DrawScreenItems takes the data for each menu item and gives it to
 // the drawing routines above.
 
-// CPhipps - static, const parameter, formatting
-static void M_DrawScreenItems(const setup_menu_t* src)
+typedef struct
 {
-  if (print_warning_about_changes > 0) { /* killough 8/15/98: print warning */
-  //e6y
-    if (warning_about_changes & S_BADVAL) {
-  strcpy(menu_buffer, "Value out of Range");
-  M_DrawMenuString(100,176,CR_RED);
-    } else if (warning_about_changes & S_PRGWARN) {
-        strcpy(menu_buffer, "Warning: Program must be restarted to see changes");
-  M_DrawMenuString(3, 176, CR_RED);
-    } else if (warning_about_changes & S_BADVID) {
-        strcpy(menu_buffer, "Video mode not supported");
-  M_DrawMenuString(80,176,CR_RED);
-    } else {
-  strcpy(menu_buffer, "Warning: Changes are pending until next game");
-        M_DrawMenuString(18,184,CR_RED);
+  int line_height;
+  int scroll_i;
+  int max_i;
+  int limit_i;
+  int excess_i;
+} setup_menu_layout_t;
+
+static void M_GetSetupMenuLayout(const setup_menu_t *base_src, int base_y,
+                                 setup_menu_layout_t *layout)
+{
+  int i = 0;
+  int end_y;
+  int current_i = 0;
+  int max_i = 0;
+  int excess_i = 0;
+  int limit_i = 0;
+  int buffer_i = 0;
+  const setup_menu_t* src;
+
+  for (src = base_src; !(src->m_flags & S_END); src++) {
+    if (src == &current_setup_menu[set_menu_itemon])
+      current_i = i;
+
+    if (src->m_flags & (S_NEXT | S_PREV))
+      continue;
+
+    if (src->m_flags & S_RESET_Y) {
+      i = 0;
+    }
+    else {
+      if (i > max_i)
+        max_i = i;
+
+      ++i;
     }
   }
 
-  while (!(src->m_flags & S_END)) {
+  layout->line_height = menu_font->line_height < 9 ? menu_font->line_height : 9;
+  layout->scroll_i = 0;
+  layout->max_i = max_i;
+
+  end_y = base_y + (max_i + 1) * layout->line_height;
+  if (end_y > 190)
+    excess_i = (end_y - 190 + layout->line_height - 1) / layout->line_height;
+
+  limit_i = max_i - excess_i;
+  buffer_i = (max_i - current_i > 3 ? 3 : max_i - current_i);
+
+  if (excess_i && !inhelpscreens)
+  {
+    while (current_i - layout->scroll_i > limit_i - buffer_i)
+      ++layout->scroll_i;
+  }
+
+  if (base_src == current_setup_menu && menu_mouse_setup_scroll >= 0)
+    layout->scroll_i = MIN(menu_mouse_setup_scroll, excess_i);
+
+  layout->limit_i = limit_i;
+  layout->excess_i = excess_i;
+}
+
+static dboolean M_GetSetupItemPosition(const setup_menu_t *item, int base_y, const setup_menu_layout_t *layout, int *index, int *carry_y, int *desc_y, int *set_y)
+{
+  if (item->m_flags & (S_NEXT | S_PREV))
+  {
+    *desc_y = 190 - layout->line_height - 2;
+  }
+  else if (item->m_flags & S_RESET_Y)
+  {
+    *index = 0;
+    return false;
+  }
+  else {
+    *desc_y = base_y + (*index - layout->scroll_i) * layout->line_height + *carry_y;
+
+    if (*index - layout->scroll_i < 0 || *index - layout->scroll_i > layout->limit_i)
+    {
+      ++*index;
+      return false;
+    }
+
+    ++*index;
+  }
+
+  *set_y = *desc_y;
+  if (item->m_flags & S_THERMO)
+  {
+    *carry_y += 6;
+    *desc_y += 3;
+  }
+
+  return true;
+}
+
+static void M_DrawSetupMenuScrollbar(int base_y,
+                                     const setup_menu_layout_t *layout)
+{
+  if (layout->excess_i && !inhelpscreens)
+  {
+    int xx, yy, ww, hh;
+    float scrollbar_scale;
+
+    // Draw scrollbar if needed
+    scrollbar_scale = (185 - DEFAULT_LIST_Y) / (float)layout->max_i;
+
+    xx = 310;
+    yy = base_y + layout->scroll_i * scrollbar_scale;
+    ww = 2;
+    hh = layout->limit_i * scrollbar_scale;
+    V_GetWideRect(&xx, &yy, &ww, &hh, VPT_STRETCH);
+    V_FillRect(0, xx, yy, ww, hh, colrngs[cr_scrollbar][playpal_lightest]);
+  }
+}
+
+// CPhipps - static, const parameter, formatting
+static void M_DrawScreenItems(const setup_menu_t* base_src, int base_y)
+{
+  int i = 0;
+  int carry_y = 0; // Bigger elements (like S_THERMO) needs a bigger offset that carries over for all settings
+  setup_menu_layout_t layout;
+  const setup_menu_t* src;
+
+  M_GetSetupMenuLayout(base_src, base_y, &layout);
+  M_DrawSetupMenuScrollbar(base_y, &layout);
+
+  i = 0;
+  for (src = base_src; !(src->m_flags & S_END); src++) {
+    int desc_y;
+    int set_y;
+
+    if (!M_GetSetupItemPosition(src, base_y, &layout, &i, &carry_y, &desc_y, &set_y))
+      continue;
 
     // See if we're to draw the item description (left-hand part)
-
     if (src->m_flags & S_SHOWDESC)
-      M_DrawItem(src);
+      M_DrawItem(src, desc_y);
 
     // See if we're to draw the setting (right-hand part)
-
     if (src->m_flags & S_SHOWSET)
-      M_DrawSetting(src);
-    src++;
+      M_DrawSetting(src, set_y);
   }
+}
+
+#define MENU_TAB_GAP 6
+
+typedef struct
+{
+  int x;
+  int start_i;
+  int end_i;
+  int page_count;
+} menu_tab_layout_t;
+
+static int M_TabPageCount(const char **pages)
+{
+  int count = 0;
+
+  while (pages && pages[count])
+    count++;
+
+  return count;
+}
+
+static void M_GetTabLayout(const char **pages, int visible_tabs,
+                           menu_tab_layout_t *layout)
+{
+  int i;
+  int s;
+
+  layout->x = 0;
+  layout->start_i = 0;
+  layout->end_i = -1;
+  layout->page_count = M_TabPageCount(pages);
+
+  if (!layout->page_count)
+    return;
+
+  if (visible_tabs <= 0 || visible_tabs > layout->page_count)
+    visible_tabs = layout->page_count;
+
+  layout->end_i = visible_tabs - 1;
+  s = visible_tabs / 2;  // halfway point
+
+  // Figure out what tabs should be drawn if using carousel
+  if (current_page > s)
+  {
+    i = 0;
+    while (current_page + i < layout->page_count)
+      i++;
+
+    if (i <= s)
+    {
+      layout->start_i = current_page + i - visible_tabs;
+      layout->end_i = current_page + i;
+    }
+    else
+    {
+      layout->start_i = current_page - s;
+      layout->end_i = current_page + s;
+    }
+  }
+
+  if (layout->start_i < 0)
+    layout->start_i = 0;
+  if (layout->end_i >= layout->page_count)
+    layout->end_i = layout->page_count - 1;
+
+  for (i = layout->start_i; i <= layout->end_i; i++)
+    layout->x += M_GetPixelWidth(pages[i]) + MENU_TAB_GAP;
+
+  layout->x = (BASE_WIDTH - layout->x + MENU_TAB_GAP) / 2;
+}
+
+// Draws the name of each page. If there are more than m, uses a carousel
+void M_DrawTabs(const char **pages, int m, int y)
+{
+  int x;
+  int i;
+  menu_tab_layout_t layout;
+
+  M_GetTabLayout(pages, m, &layout);
+  if (layout.end_i < layout.start_i)
+    return;
+
+  x = layout.x;
+
+  // Draw the arrows on the sides
+  if (layout.start_i > 0)
+    M_DrawString(x - M_GetPixelWidth("<-") - 2, y , cr_tab, "<-");
+  if (layout.end_i + 1 < layout.page_count)
+    M_DrawString(BASE_WIDTH - x + 2, y , cr_tab, "->");
+
+  // Draw the page names
+  for (i = layout.start_i; i <= layout.end_i; i++)
+  {
+    int color = (i == current_page || M_MouseTabHovered(i)) ?
+      cr_tab_highlight : cr_tab;
+
+    M_DrawString(x, y, color, pages[i]);
+
+    x += M_GetPixelWidth(pages[i]) + MENU_TAB_GAP;
+  }
+}
+
+static void M_DrawSetupTabs(int y)
+{
+  M_DrawTabs(setup_page_context.labels, setup_page_context.visible_tabs, y);
 }
 
 /////////////////////////////
@@ -2287,28 +2570,15 @@ static void M_DrawScreenItems(const setup_menu_t* src)
 
 // And the routine to draw it.
 
-static void M_DrawDefVerify(void)
-{
-  // proff 12/6/98: Drawing of verify box changed for hi-res, it now uses a patch
-  V_DrawNamePatch(VERIFYBOXXORG,VERIFYBOXYORG,0,"M_VBOX",CR_DEFAULT,VPT_STRETCH);
-  // The blinking messages is keyed off of the blinking of the
-  // cursor skull.
-
-  if (whichSkull) { // blink the text
-    strcpy(menu_buffer,"Reset to defaults? (Y or N)");
-    M_DrawMenuString(VERIFYBOXXORG+8,VERIFYBOXYORG+8,CR_RED);
-  }
-}
-
 // [FG] delete a savegame
 
-static void M_DrawDelVerify(void)
+void M_DrawDelVerify(void)
 {
   V_DrawNamePatch(VERIFYBOXXORG,VERIFYBOXYORG,0,"M_VBOX",CR_DEFAULT,VPT_STRETCH);
 
   if (whichSkull) {
     strcpy(menu_buffer,"Delete savegame? (Y or N)");
-    M_DrawMenuString(VERIFYBOXXORG+8,VERIFYBOXYORG+8,CR_RED);
+    M_DrawMenuString(VERIFYBOXXORG + 8, VERIFYBOXYORG + 8, cr_warning);
   }
 }
 
@@ -2320,6 +2590,13 @@ static void M_DrawDelVerify(void)
 // cph 2006/08/06 - go back to the Boom version, and then clean up by using
 // M_DrawStringCentered (much better than all those magic 'x' valies!)
 
+#define INSTRUCTION_Y 190
+
+static void M_DrawInstructionString(int cr, const char *str)
+{
+  M_DrawStringCentered(160, INSTRUCTION_Y, cr, str);
+}
+
 static void M_DrawInstructions(void)
 {
   int flags = current_setup_menu[set_menu_itemon].m_flags;
@@ -2328,118 +2605,140 @@ static void M_DrawInstructions(void)
   // are changing an item or just sitting on it.
 
   if (setup_select) {
-    switch (flags & (S_KEY | S_YESNO | S_WEAP | S_NUM | S_COLOR | S_CRITEM | S_CHAT | S_RESET | S_FILE | S_CHOICE)) {
-      case S_KEY:
-        // See if a joystick or mouse button setting is allowed for
-        // this item.
-        if (current_setup_menu[set_menu_itemon].m_mouse || current_setup_menu[set_menu_itemon].m_joy)
-          M_DrawStringCentered(160, 20, CR_SELECT, "Press key or button for this action");
-        else
-          M_DrawStringCentered(160, 20, CR_SELECT, "Press key for this action");
+    switch (flags & (S_INPUT | S_YESNO | S_WEAP | S_NUM | S_COLOR | S_CRITEM | S_FILE | S_CHOICE | S_THERMO | S_NAME)) {
+      case S_INPUT:
+        M_DrawInstructionString(cr_info_edit, "Press key or button for this action");
         break;
-
-    case S_YESNO:
-      M_DrawStringCentered(160, 20, CR_SELECT, "Press ENTER key to toggle");
-      break;
-    case S_WEAP:
-      M_DrawStringCentered(160, 20, CR_SELECT, "Enter weapon number");
-      break;
-    case S_NUM:
-      M_DrawStringCentered(160, 20, CR_SELECT, "Enter value. Press ENTER when finished.");
-      break;
-    case S_COLOR:
-      M_DrawStringCentered(160, 20, CR_SELECT, "Select color and press enter");
-      break;
-    case S_CRITEM:
-      M_DrawStringCentered(160, 20, CR_SELECT, "Enter value");
-      break;
-    case S_CHAT:
-      M_DrawStringCentered(160, 20, CR_SELECT, "Type/edit chat string and Press ENTER");
-      break;
-    case S_FILE:
-      M_DrawStringCentered(160, 20, CR_SELECT, "Type/edit filename and Press ENTER");
-      break;
-    case S_CHOICE: 
-      M_DrawStringCentered(160, 20, CR_SELECT, "Press left or right to choose");
-      break;
-    case S_RESET:
-      break;
-#ifdef SIMPLECHECKS
-    default:
-      lprintf(LO_WARN,"Unrecognised menu item type %d", flags);
-#endif
+      case S_YESNO:
+        M_DrawInstructionString(cr_info_edit, "Press ENTER key to toggle");
+        break;
+      case S_WEAP:
+        M_DrawInstructionString(cr_info_edit, "Enter weapon number");
+        break;
+      case S_NUM:
+        M_DrawInstructionString(cr_info_edit, "Enter value. Press ENTER when finished.");
+        break;
+      case S_COLOR:
+        M_DrawInstructionString(cr_info_edit, "Select color and press enter");
+        break;
+      case S_CRITEM:
+        M_DrawInstructionString(cr_info_edit, "Enter value");
+        break;
+      case S_FILE:
+        M_DrawInstructionString(cr_info_edit, "Type/edit filename and Press ENTER");
+        break;
+      case S_CHOICE:
+        M_DrawInstructionString(cr_info_edit, "Press left or right to choose");
+        break;
+      case S_THERMO:
+        M_DrawInstructionString(cr_info_edit, "Press left or right to choose");
+        break;
+      case S_NAME:
+        M_DrawInstructionString(cr_info_edit, "Type / edit author and Press ENTER");
+        break;
+      default:
+        break;
     }
-  } else {
-    if (flags & S_RESET)
-      M_DrawStringCentered(160, 20, CR_HILITE, "Press ENTER key to reset to defaults");
-    else if (flags & S_KEY)
-      M_DrawStringCentered(160, 20, CR_HILITE, "Press Enter to Change, Del to Clear");
+  }
+  else {
+    if (flags & S_INPUT)
+      M_DrawInstructionString(cr_info_highlight, "Press Enter to Change, Del to Clear");
     else
-      M_DrawStringCentered(160, 20, CR_HILITE, "Press Enter to Change");
+      M_DrawInstructionString(cr_info_highlight, "Press Enter to Change");
   }
 }
 
+#define TITLE(page_name, offset_x) { page_name, S_SKIP | S_TITLE, m_null, offset_x}
+#define NEXT_PAGE(page) { "", S_SKIP | S_NEXT, m_null, 318, .menu = page }
+#define PREV_PAGE(page) { "", S_SKIP | S_PREV | S_LEFTJUST, m_null, 2, .menu = page }
+#define FINAL_ENTRY { 0, S_SKIP | S_END, m_null }
+#define EMPTY_LINE { 0, S_SKIP, m_null }
+#define NEW_COLUMN { 0, S_SKIP | S_RESET_Y, m_null }
+
+static void M_ClearSetupMenuState(void)
+{
+  set_general_active = false;
+  set_keybnd_active = false;
+  set_display_active = false;
+  set_demos_active = false;
+  set_compatibility_active = false;
+  set_weapon_active = false;
+  set_auto_active = false;
+  level_table_active = false;
+  M_ClearSetupPageContext();
+}
+
+static void M_EnterSetup(menu_t *menu, dboolean *setup_flag,
+                         setup_menu_t *setup_menu,
+                         const char **page_labels, int visible_tabs,
+                         setup_menu_t **page_menus)
+{
+  M_SetupNextMenu(menu);
+
+  M_ClearSetupMenuState();
+  setup_active = true;
+  *setup_flag = true;
+  M_SetSetupPageContext(page_labels, visible_tabs, page_menus);
+  setup_select = false;
+  colorbox_active = false;
+  setup_gather = false;
+
+  M_UpdateSetupMenu(setup_menu);
+}
 
 /////////////////////////////
 //
 // The Key Binding Screen tables.
 
-#define KB_X  160
-#define KB_PREV  57
-#define KB_NEXT 310
-#define KB_Y   31
-
-// phares 4/16/98:
-// X,Y position of reset button. This is the same for every screen, and is
-// only defined once here.
-
-#define X_BUTTON 301
-#define Y_BUTTON   3
+#define KB_X  170
 
 // Definitions of the (in this case) four key binding screens.
 
-setup_menu_t keys_settings1[];
-setup_menu_t keys_settings2[];
-setup_menu_t keys_settings3[];
-setup_menu_t keys_settings4[];
-setup_menu_t keys_settings5[];
-setup_menu_t keys_settings6[];
-setup_menu_t keys_settings7[];
+static const char *keys_pages[] =
+{
+  "Movement",
+  "Weapons",
+  "Automap",
+  "Game",
+  "Misc",
+  "Toggles",
+  "Menus",
+  "Raven",
+  "Cheats",
+  "Scripts",
+  "Build",
+  NULL
+};
+
+setup_menu_t keys_movement_settings[];
+setup_menu_t keys_weapons_settings[];
+setup_menu_t keys_automap_settings[];
+setup_menu_t keys_game_settings[];
+setup_menu_t keys_misc_settings[];
+setup_menu_t keys_toggles_settings[];
+setup_menu_t keys_menus_settings[];
+setup_menu_t keys_raven_settings[];
+setup_menu_t keys_cheats_settings[];
+setup_menu_t keys_scripts_settings[];
+setup_menu_t keys_build_settings[];
 
 // The table which gets you from one screen table to the next.
 
 setup_menu_t* keys_settings[] =
 {
-  keys_settings1,
-  keys_settings2,
-  keys_settings3,
-  keys_settings4,
-  keys_settings5,
-  keys_settings6,
-  keys_settings7,
+  keys_movement_settings,
+  keys_weapons_settings,
+  keys_automap_settings,
+  keys_game_settings,
+  keys_misc_settings,
+  keys_toggles_settings,
+  keys_menus_settings,
+  keys_raven_settings,
+  keys_cheats_settings,
+  keys_scripts_settings,
+  keys_build_settings,
   NULL
 };
-
-int mult_screens_index; // the index of the current screen in a set
-
-// Here's an example from this first screen, with explanations.
-//
-//  {
-//  "STRAFE",      // The description of the item ('strafe' key)
-//  S_KEY,         // This is a key binding item
-//  m_scrn,        // It belongs to the m_scrn group. Its key cannot be
-//                 // bound to two items in this group.
-//  KB_X,          // The X offset of the start of the right-hand side
-//  KB_Y+ 8*8,     // The Y offset of the start of the right-hand side.
-//                 // Always given in multiples off a baseline.
-//  &key_strafe,   // The variable that holds the key value bound to this
-//                    OR a string that holds the config variable name.
-//                    OR a pointer to another setup_menu
-//  &mousebstrafe, // The variable that holds the mouse button bound to
-                   // this. If zero, no mouse button can be bound here.
-//  &joybstrafe,   // The variable that holds the joystick button bound to
-                   // this. If zero, no mouse button can be bound here.
-//  }
 
 // The first Key Binding screen table.
 // Note that the Y values are ascending. If you need to add something to
@@ -2451,241 +2750,337 @@ int mult_screens_index; // the index of the current screen in a set
 // button. If there is more than one screen in a set, the others don't get
 // the reset button.
 //
-// Note also that this screen has a "NEXT ->" line. This acts like an
+// Note also that this screen has a "->" line. This acts like an
 // item, in that 'activating' it moves you along to the next screen. If
-// there's a "<- PREV" item on a screen, it behaves similarly, moving you
+// there's a "<-" item on a screen, it behaves similarly, moving you
 // to the previous screen. If you leave these off, you can't move from
 // screen to screen.
 
-setup_menu_t keys_settings1[] =  // Key Binding screen strings
+setup_menu_t keys_movement_settings[] =  // Key Binding screen strings
 {
-  {"MOVEMENT"    ,S_SKIP|S_TITLE,m_null,KB_X,KB_Y},
-  {"FORWARD"     ,S_KEY       ,m_scrn,KB_X,KB_Y+1*8,{&key_up},&mousebforward,&joybup},
-  {"BACKWARD"    ,S_KEY       ,m_scrn,KB_X,KB_Y+2*8,{&key_down},&mousebbackward,&joybdown},
-  {"TURN LEFT"   ,S_KEY       ,m_scrn,KB_X,KB_Y+3*8,{&key_left},&mousebturnleft,&joybleft},
-  {"TURN RIGHT"  ,S_KEY       ,m_scrn,KB_X,KB_Y+4*8,{&key_right},&mousebturnright,&joybright},
-  {"RUN"         ,S_KEY       ,m_scrn,KB_X,KB_Y+5*8,{&key_speed},&mousebspeed,&joybspeed},
-  {"STRAFE LEFT" ,S_KEY       ,m_scrn,KB_X,KB_Y+6*8,{&key_strafeleft},0,&joybstrafeleft},
-  {"STRAFE RIGHT",S_KEY       ,m_scrn,KB_X,KB_Y+7*8,{&key_straferight},0,&joybstraferight},
-  {"STRAFE"      ,S_KEY       ,m_scrn,KB_X,KB_Y+8*8,{&key_strafe},&mousebstrafe,&joybstrafe},
-  {"AUTORUN"     ,S_KEY       ,m_scrn,KB_X,KB_Y+9*8,{&key_autorun}},
-  {"180 TURN"    ,S_KEY       ,m_scrn,KB_X,KB_Y+10*8,{&key_reverse}},
-  {"USE"         ,S_KEY       ,m_scrn,KB_X,KB_Y+11*8,{&key_use},&mousebuse,&joybuse},
-  {"JUMP/FLY UP" ,S_KEY       ,m_scrn,KB_X,KB_Y+12*8,{&key_flyup}},
-  {"FLY DOWN"    ,S_KEY       ,m_scrn,KB_X,KB_Y+13*8,{&key_flydown}},
-  {"MOUSE LOOK"  ,S_KEY       ,m_scrn,KB_X,KB_Y+16*8,{&key_mlook}},
-  {"NO VERTICAL MOUSE",S_KEY  ,m_scrn,KB_X,KB_Y+17*8,{&key_novert}},
+  { "INPUT PROFILE", S_NUM, m_conf, KB_X, dsda_config_input_profile },
+  EMPTY_LINE,
+  {"FORWARD"     ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_forward},
+  {"BACKWARD"    ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_backward},
+  {"TURN LEFT"   ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_turnleft},
+  {"TURN RIGHT"  ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_turnright},
+  {"RUN"         ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_speed},
+  {"STRAFE LEFT" ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_strafeleft},
+  {"STRAFE RIGHT",S_INPUT     ,m_scrn,KB_X,0,dsda_input_straferight},
+  {"STRAFE"      ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_strafe},
+  {"180 TURN"    ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_reverse},
+  EMPTY_LINE,
+  {"TOGGLES"  ,S_SKIP|S_TITLE,m_null,KB_X},
+  {"AUTORUN"  ,S_INPUT,m_scrn,KB_X,0,dsda_input_autorun},
+  {"FREE LOOK",S_INPUT,m_scrn,KB_X,0,dsda_input_mlook},
+  {"VERTMOUSE",S_INPUT,m_scrn,KB_X,0,dsda_input_novert},
 
-  // Button for resetting to defaults
-  {0,S_RESET,m_null,X_BUTTON,Y_BUTTON},
-
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,KB_NEXT,KB_Y+20*8, {keys_settings2}},
-
-  // Final entry
-  {0,S_SKIP|S_END,m_null}
-
+  NEXT_PAGE(keys_weapons_settings),
+  FINAL_ENTRY
 };
 
-setup_menu_t keys_settings2[] =  // Key Binding screen strings
+setup_menu_t keys_weapons_settings[] =  // Key Binding screen strings
 {
-  {"SCREEN"      ,S_SKIP|S_TITLE,m_null,KB_X,KB_Y},
+  {"FIRE"    ,S_INPUT       ,m_scrn,KB_X,0,dsda_input_fire},
+  {"USE"     ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_use},
+  EMPTY_LINE,
+  {"FIST"    ,S_INPUT       ,m_scrn,KB_X,0,dsda_input_weapon1},
+  {"PISTOL"  ,S_INPUT       ,m_scrn,KB_X,0,dsda_input_weapon2},
+  {"SHOTGUN" ,S_INPUT       ,m_scrn,KB_X,0,dsda_input_weapon3},
+  {"CHAINGUN",S_INPUT       ,m_scrn,KB_X,0,dsda_input_weapon4},
+  {"ROCKET"  ,S_INPUT       ,m_scrn,KB_X,0,dsda_input_weapon5},
+  {"PLASMA"  ,S_INPUT       ,m_scrn,KB_X,0,dsda_input_weapon6},
+  {"BFG",     S_INPUT       ,m_scrn,KB_X,0,dsda_input_weapon7},
+  {"CHAINSAW",S_INPUT       ,m_scrn,KB_X,0,dsda_input_weapon8},
+  {"SSG"     ,S_INPUT       ,m_scrn,KB_X,0,dsda_input_weapon9},
+  EMPTY_LINE,
+  {"NEXT"    ,S_INPUT       ,m_scrn,KB_X,0,dsda_input_nextweapon},
+  {"PREVIOUS",S_INPUT       ,m_scrn,KB_X,0,dsda_input_prevweapon},
+  {"BEST"    ,S_INPUT       ,m_scrn,KB_X,0,dsda_input_toggleweapon},
+
+  PREV_PAGE(keys_movement_settings),
+  NEXT_PAGE(keys_automap_settings),
+  FINAL_ENTRY
+};
+
+setup_menu_t keys_automap_settings[] =  // Key Binding screen strings
+{
+  {"TOGGLE AUTOMAP"     ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_map},
+  EMPTY_LINE,
+  {"FOLLOW"     ,S_INPUT     ,m_map ,KB_X,0,dsda_input_map_follow},
+  {"ZOOM IN"    ,S_INPUT     ,m_map ,KB_X,0,dsda_input_map_zoomin},
+  {"ZOOM OUT"   ,S_INPUT     ,m_map ,KB_X,0,dsda_input_map_zoomout},
+  {"SHIFT UP"   ,S_INPUT     ,m_map ,KB_X,0,dsda_input_map_up},
+  {"SHIFT DOWN" ,S_INPUT     ,m_map ,KB_X,0,dsda_input_map_down},
+  {"SHIFT LEFT" ,S_INPUT     ,m_map ,KB_X,0,dsda_input_map_left},
+  {"SHIFT RIGHT",S_INPUT     ,m_map ,KB_X,0,dsda_input_map_right},
+  {"MARK PLACE" ,S_INPUT     ,m_map ,KB_X,0,dsda_input_map_mark},
+  {"CLEAR MARKS",S_INPUT     ,m_map ,KB_X,0,dsda_input_map_clear},
+  {"FULL/ZOOM"  ,S_INPUT     ,m_map ,KB_X,0,dsda_input_map_gobig},
+  {"GRID"       ,S_INPUT     ,m_map ,KB_X,0,dsda_input_map_grid},
+  {"ROTATE"     ,S_INPUT     ,m_map ,KB_X,0,dsda_input_map_rotate},
+  {"OVERLAY"    ,S_INPUT     ,m_map ,KB_X,0,dsda_input_map_overlay},
+  {"TEXTURED"   ,S_INPUT     ,m_map ,KB_X,0,dsda_input_map_textured},
+  { "HIGHLIGHT BY TAG", S_INPUT, m_map, KB_X, 0, dsda_input_map_highlight_by_tag },
+
+  PREV_PAGE(keys_weapons_settings),
+  NEXT_PAGE(keys_game_settings),
+  FINAL_ENTRY
+};
+
+setup_menu_t keys_game_settings[] =  // Key Binding screen strings
+{
+  {"SAVE"        ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_savegame},
+  {"LOAD"        ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_loadgame},
+  {"QUICKSAVE"   ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_quicksave},
+  {"QUICKLOAD"   ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_quickload},
+  {"LEVEL TABLE" ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_level_table},
+  {"CONSOLE"     ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_console},
+  {"END GAME"    ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_endgame},
+  {"QUIT"        ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_quit},
+  EMPTY_LINE,
+  {"SCREEN"      ,S_SKIP|S_TITLE,m_null,KB_X},
 
   // phares 4/13/98:
-  // key_help and key_escape can no longer be rebound. This keeps the
+  // key_escape can no longer be rebound. This keeps the
   // player from getting themselves in a bind where they can't remember how
-  // to get to the menus, and can't remember how to get to the help screen
-  // to give them a clue as to how to get to the menus. :)
+  // to get to the menus
+  // {"MENU"        ,S_SKIP|S_KEEP|S_INPUT ,m_scrn,0   ,0,dsda_input_escape},
+  {"HELP"        ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_help},
+  {"PAUSE"       ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_pause},
+  {"VOLUME"      ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_soundvolume},
+  {"HUD"         ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_hud},
+  {"GAMMA FIX"   ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_gamma},
+  {"SPY"         ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_spy},
+  {"LARGER VIEW" ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_zoomin},
+  {"SMALLER VIEW",S_INPUT     ,m_scrn,KB_X,0,dsda_input_zoomout},
+  {"SCREENSHOT"  ,S_INPUT     ,m_scrn,KB_X,0,dsda_input_screenshot},
+  {"REPEAT MESSAGE",S_INPUT   ,m_scrn,KB_X,0,dsda_input_repeat_message},
 
-  // Also, the keys assigned to these functions cannot be bound to other
-  // functions. Introduce an S_KEEP flag to show that you cannot swap this
-  // key with other keys in the same 'group'. (m_scrn, etc.)
-
-  {"HELP"        ,S_SKIP|S_KEEP ,m_scrn,0   ,0    ,{&key_help}},
-  {"MENU"        ,S_SKIP|S_KEEP ,m_scrn,0   ,0    ,{&key_escape}},
-  // killough 10/98: hotkey for entering setup menu:
-  {"SETUP"       ,S_KEY       ,m_scrn,KB_X,KB_Y+ 1*8,{&key_setup}},
-  {"PAUSE"       ,S_KEY       ,m_scrn,KB_X,KB_Y+ 2*8,{&key_pause}},
-  {"AUTOMAP"     ,S_KEY       ,m_scrn,KB_X,KB_Y+ 3*8,{&key_map}},
-  {"VOLUME"      ,S_KEY       ,m_scrn,KB_X,KB_Y+ 4*8,{&key_soundvolume}},
-  {"HUD"         ,S_KEY       ,m_scrn,KB_X,KB_Y+ 5*8,{&key_hud}},
-  {"MESSAGES"    ,S_KEY       ,m_scrn,KB_X,KB_Y+ 6*8,{&key_messages}},
-  {"GAMMA FIX"   ,S_KEY       ,m_scrn,KB_X,KB_Y+ 7*8,{&key_gamma}},
-  {"SPY"         ,S_KEY       ,m_scrn,KB_X,KB_Y+ 8*8,{&key_spy}},
-  {"LARGER VIEW" ,S_KEY       ,m_scrn,KB_X,KB_Y+ 9*8,{&key_zoomin}},
-  {"SMALLER VIEW",S_KEY       ,m_scrn,KB_X,KB_Y+10*8,{&key_zoomout}},
-  {"GAME"        ,S_SKIP|S_TITLE,m_null,KB_X,KB_Y+12*8},
-  {"SAVE"        ,S_KEY       ,m_scrn,KB_X,KB_Y+13*8,{&key_savegame}},
-  {"LOAD"        ,S_KEY       ,m_scrn,KB_X,KB_Y+14*8,{&key_loadgame}},
-  {"QUICKSAVE"   ,S_KEY       ,m_scrn,KB_X,KB_Y+15*8,{&key_quicksave}},
-  {"QUICKLOAD"   ,S_KEY       ,m_scrn,KB_X,KB_Y+16*8,{&key_quickload}},
-  {"END GAME"    ,S_KEY       ,m_scrn,KB_X,KB_Y+17*8,{&key_endgame}},
-  {"QUIT"        ,S_KEY       ,m_scrn,KB_X,KB_Y+18*8,{&key_quit}},
-  {"<- PREV", S_SKIP|S_PREV,m_null,KB_PREV,KB_Y+20*8, {keys_settings1}},
-  {"NEXT ->", S_SKIP|S_NEXT,m_null,KB_NEXT,KB_Y+20*8, {keys_settings3}},
-
-  // Final entry
-
-  {0,S_SKIP|S_END,m_null}
+  PREV_PAGE(keys_automap_settings),
+  NEXT_PAGE(keys_misc_settings),
+  FINAL_ENTRY
 };
 
-setup_menu_t keys_settings3[] =  // Key Binding screen strings
+#define MS_X 200
+
+setup_menu_t keys_misc_settings[] =
 {
-  {"WEAPONS" ,S_SKIP|S_TITLE,m_null,KB_X,KB_Y},
-  {"FIST"    ,S_KEY       ,m_scrn,KB_X,KB_Y+ 1*8,{&key_weapon1},&mb_weapon1},
-  {"PISTOL"  ,S_KEY       ,m_scrn,KB_X,KB_Y+ 2*8,{&key_weapon2},&mb_weapon2},
-  {"SHOTGUN" ,S_KEY       ,m_scrn,KB_X,KB_Y+ 3*8,{&key_weapon3},&mb_weapon3},
-  {"CHAINGUN",S_KEY       ,m_scrn,KB_X,KB_Y+ 4*8,{&key_weapon4},&mb_weapon4},
-  {"ROCKET"  ,S_KEY       ,m_scrn,KB_X,KB_Y+ 5*8,{&key_weapon5},&mb_weapon5},
-  {"PLASMA"  ,S_KEY       ,m_scrn,KB_X,KB_Y+ 6*8,{&key_weapon6},&mb_weapon6},
-  {"BFG",     S_KEY       ,m_scrn,KB_X,KB_Y+ 7*8,{&key_weapon7},&mb_weapon7},
-  {"CHAINSAW",S_KEY       ,m_scrn,KB_X,KB_Y+ 8*8,{&key_weapon8},&mb_weapon8},
-  {"SSG"     ,S_KEY       ,m_scrn,KB_X,KB_Y+ 9*8,{&key_weapon9},&mb_weapon9},
-  {"NEXT"    ,S_KEY       ,m_scrn,KB_X,KB_Y+11*8,{&key_nextweapon}},
-  {"PREVIOUS",S_KEY       ,m_scrn,KB_X,KB_Y+12*8,{&key_prevweapon}},
-  {"BEST"    ,S_KEY       ,m_scrn,KB_X,KB_Y+13*8,{&key_weapontoggle}},
-  {"FIRE"    ,S_KEY       ,m_scrn,KB_X,KB_Y+15*8,{&key_fire},&mousebfire,&joybfire},
+  {"Restart Map/Demo"  ,S_INPUT   ,m_scrn,MS_X,0,dsda_input_restart},
+  {"Next Level"           ,S_INPUT   ,m_scrn,MS_X,0,dsda_input_nextlevel},
+  {"Previous Level"       ,S_INPUT   ,m_scrn,MS_X,0,dsda_input_prevlevel},
+  { "Rewind", S_INPUT, m_scrn, MS_X, 0, dsda_input_rewind },
+  { "Store Quick Key Frame", S_INPUT, m_scrn, MS_X, 0, dsda_input_store_quick_key_frame },
+  { "Restore Quick Key Frame", S_INPUT, m_scrn, MS_X, 0, dsda_input_restore_quick_key_frame },
+  { "Fake Archvile Jump", S_INPUT, m_scrn, MS_X, 0, dsda_input_avj },
+  EMPTY_LINE,
+  {"GAME SPEED"           ,S_SKIP|S_TITLE,m_null,MS_X},
+  {"SPEED UP"             ,S_INPUT   ,m_scrn,MS_X,0,dsda_input_speed_up},
+  {"SPEED DOWN"           ,S_INPUT   ,m_scrn,MS_X,0,dsda_input_speed_down},
+  {"RESET TO DEFAULT"     ,S_INPUT   ,m_scrn,MS_X,0,dsda_input_speed_default},
+  EMPTY_LINE,
+  {"Demos"           ,S_SKIP|S_TITLE,m_null,MS_X},
+  {"START/STOP SKIPPING"  ,S_INPUT   ,m_scrn,MS_X,0,dsda_input_demo_skip},
+  {"END LEVEL"            ,S_INPUT   ,m_scrn,MS_X,0,dsda_input_demo_endlevel},
+  {"JOIN"                 ,S_INPUT   ,m_scrn,MS_X,0,dsda_input_join_demo},
+  {"CAMERA MODE"          ,S_INPUT   ,m_scrn,MS_X,0,dsda_input_walkcamera},
 
-  {"<- PREV",S_SKIP|S_PREV,m_null,KB_PREV,KB_Y+20*8, {keys_settings2}},
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,KB_NEXT,KB_Y+20*8, {keys_settings4}},
-
-  // Final entry
-
-  {0,S_SKIP|S_END,m_null}
-
+  PREV_PAGE(keys_game_settings),
+  NEXT_PAGE(keys_toggles_settings),
+  FINAL_ENTRY
 };
 
-setup_menu_t keys_settings4[] =  // Key Binding screen strings
-{
-  {"AUTOMAP"    ,S_SKIP|S_TITLE,m_null,KB_X,KB_Y},
-  {"FOLLOW"     ,S_KEY       ,m_map ,KB_X,KB_Y+ 1*8,{&key_map_follow}},
-  {"ZOOM IN"    ,S_KEY       ,m_map ,KB_X,KB_Y+ 2*8,{&key_map_zoomin}},
-  {"ZOOM OUT"   ,S_KEY       ,m_map ,KB_X,KB_Y+ 3*8,{&key_map_zoomout}},
-  {"SHIFT UP"   ,S_KEY       ,m_map ,KB_X,KB_Y+ 4*8,{&key_map_up}},
-  {"SHIFT DOWN" ,S_KEY       ,m_map ,KB_X,KB_Y+ 5*8,{&key_map_down}},
-  {"SHIFT LEFT" ,S_KEY       ,m_map ,KB_X,KB_Y+ 6*8,{&key_map_left}},
-  {"SHIFT RIGHT",S_KEY       ,m_map ,KB_X,KB_Y+ 7*8,{&key_map_right}},
-  {"MARK PLACE" ,S_KEY       ,m_map ,KB_X,KB_Y+ 8*8,{&key_map_mark}},
-  {"CLEAR MARKS",S_KEY       ,m_map ,KB_X,KB_Y+ 9*8,{&key_map_clear}},
-  {"FULL/ZOOM"  ,S_KEY       ,m_map ,KB_X,KB_Y+10*8,{&key_map_gobig}},
-  {"GRID"       ,S_KEY       ,m_map ,KB_X,KB_Y+11*8,{&key_map_grid}},
-  {"ROTATE"     ,S_KEY       ,m_map ,KB_X,KB_Y+12*8,{&key_map_rotate}},
-  {"OVERLAY"    ,S_KEY       ,m_map ,KB_X,KB_Y+13*8,{&key_map_overlay}},
-#ifdef GL_DOOM
-  {"TEXTURED"   ,S_KEY       ,m_map ,KB_X,KB_Y+14*8,{&key_map_textured}},
-#endif
+setup_menu_t keys_toggles_settings[] = {
+  { "Command Display", S_INPUT, m_scrn, KB_X, 0, dsda_input_command_display },
+  { "Coordinate Display", S_INPUT, m_scrn, KB_X, 0, dsda_input_coordinate_display },
+  { "Strict Mode", S_INPUT, m_scrn, KB_X, 0, dsda_input_strict_mode },
+  { "Extended HUD", S_INPUT, m_scrn, KB_X, 0, dsda_input_exhud },
+  { "SFX", S_INPUT, m_scrn, KB_X, 0, dsda_input_mute_sfx },
+  { "Music", S_INPUT, m_scrn, KB_X, 0, dsda_input_mute_music },
+  { "Messages" ,S_INPUT ,m_scrn, KB_X, 0, dsda_input_messages},
+  { "Cheat Code Entry", S_INPUT, m_scrn, KB_X, 0, dsda_input_cheat_codes },
+  { "Render Stats", S_INPUT, m_scrn, KB_X, 0, dsda_input_idrate },
+  { "FPS", S_INPUT, m_scrn, KB_X, 0, dsda_input_fps },
+  {"Show Alive Monsters"  ,S_INPUT   ,m_scrn,KB_X,0,dsda_input_showalive},
+  EMPTY_LINE,
+  { "Cycle", S_SKIP | S_TITLE, m_null, KB_X},
+  { "Cycle Input Profile", S_INPUT, m_scrn, KB_X, 0, dsda_input_cycle_profile },
+  { "Cycle Palette", S_INPUT, m_scrn, KB_X, 0, dsda_input_cycle_palette },
 
-  {"<- PREV" ,S_SKIP|S_PREV,m_null,KB_PREV,KB_Y+20*8, {keys_settings3}},
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,KB_NEXT,KB_Y+20*8, {keys_settings5}},
-
-  // Final entry
-
-  {0,S_SKIP|S_END,m_null}
+  PREV_PAGE(keys_misc_settings),
+  NEXT_PAGE(keys_menus_settings),
+  FINAL_ENTRY
 };
 
-setup_menu_t keys_settings5[] =  // Key Binding screen strings
+setup_menu_t keys_menus_settings[] =
 {
-  {"CHATTING"   ,S_SKIP|S_TITLE,m_null,KB_X,KB_Y+0*8},
-  {"BEGIN CHAT" ,S_KEY       ,m_scrn,KB_X,KB_Y+1*8,{&key_chat}},
-  {"PLAYER 1"   ,S_KEY       ,m_scrn,KB_X,KB_Y+2*8,{&destination_keys[0]}},
-  {"PLAYER 2"   ,S_KEY       ,m_scrn,KB_X,KB_Y+3*8,{&destination_keys[1]}},
-  {"PLAYER 3"   ,S_KEY       ,m_scrn,KB_X,KB_Y+4*8,{&destination_keys[2]}},
-  {"PLAYER 4"   ,S_KEY       ,m_scrn,KB_X,KB_Y+5*8,{&destination_keys[3]}},
-  {"BACKSPACE"  ,S_KEY       ,m_scrn,KB_X,KB_Y+6*8,{&key_backspace}},
-  {"ENTER"      ,S_KEY       ,m_scrn,KB_X,KB_Y+7*8,{&key_enter}},
+  {"NEXT ITEM"   ,S_INPUT     ,m_menu,KB_X,0,dsda_input_menu_down},
+  {"PREV ITEM"   ,S_INPUT     ,m_menu,KB_X,0,dsda_input_menu_up},
+  {"LEFT"        ,S_INPUT     ,m_menu,KB_X,0,dsda_input_menu_left},
+  {"RIGHT"       ,S_INPUT     ,m_menu,KB_X,0,dsda_input_menu_right},
+  {"BACKSPACE"   ,S_INPUT     ,m_menu,KB_X,0,dsda_input_menu_backspace},
+  { "SELECT ITEM", S_INPUT | S_NOCLEAR, m_menu, KB_X, 0, dsda_input_menu_enter },
+  {"EXIT"        ,S_INPUT     ,m_menu,KB_X,0,dsda_input_menu_escape},
+  {"CLEAR"       ,S_INPUT     ,m_menu,KB_X,0,dsda_input_menu_clear},
 
-  {"<- PREV" ,S_SKIP|S_PREV,m_null,KB_PREV,KB_Y+20*8, {keys_settings4}},
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,KB_NEXT,KB_Y+20*8, {keys_settings6}},
-
-  // Final entry
-
-  {0,S_SKIP|S_END,m_null}
+  PREV_PAGE(keys_toggles_settings),
+  NEXT_PAGE(keys_raven_settings),
+  FINAL_ENTRY
 };
 
-//e6y
-setup_menu_t keys_settings6[] =  // Key Binding screen strings
-{
-  {"GAME SPEED"           ,S_SKIP|S_TITLE,m_null,KB_X,KB_Y},
-  {"SPEED UP"             ,S_KEY     ,m_scrn,KB_X,KB_Y+ 1*8,{&key_speed_up}},
-  {"SPEED DOWN"           ,S_KEY     ,m_scrn,KB_X,KB_Y+ 2*8,{&key_speed_down}},
-  {"RESET TO DEFAULT"     ,S_KEY     ,m_scrn,KB_X,KB_Y+ 3*8,{&key_speed_default}},
-  {"STEP OF CHANGE (0-AUTO)" ,S_NUM  ,m_null,KB_X,KB_Y+ 4*8, {"speed_step"}},
-  {"DEMOS"                ,S_SKIP|S_TITLE,m_null,KB_X,KB_Y+5*8},
-  {"START/STOP SKIPPING"  ,S_KEY     ,m_scrn,KB_X,KB_Y+ 6*8,{&key_demo_skip}},
-  {"END LEVEL"            ,S_KEY     ,m_scrn,KB_X,KB_Y+ 7*8,{&key_demo_endlevel}},
-  {"CAMERA MODE"          ,S_KEY     ,m_scrn,KB_X,KB_Y+ 8*8,{&key_walkcamera}},
-  {"JOIN"                 ,S_KEY     ,m_scrn,KB_X,KB_Y+ 9*8,{&key_demo_jointogame}},
-  {"MISC"                 ,S_SKIP|S_TITLE,m_null,KB_X,KB_Y+10*8},
-  {"RESTART LEVEL/DEMO"   ,S_KEY     ,m_scrn,KB_X,KB_Y+ 11*8,{&key_level_restart}},
-  {"NEXT LEVEL"           ,S_KEY     ,m_scrn,KB_X,KB_Y+ 12*8,{&key_nextlevel}},
-#ifdef GL_DOOM
-  {"Show Alive Monsters"  ,S_KEY     ,m_scrn,KB_X,KB_Y+13*8,{&key_showalive}},
-#endif
+setup_menu_t keys_raven_settings[] = {
+  { "LOOK UP", S_INPUT, m_scrn, MS_X, 0, dsda_input_lookup },
+  { "LOOK DOWN", S_INPUT, m_scrn, MS_X, 0, dsda_input_lookdown },
+  { "LOOK CENTER", S_INPUT, m_scrn, MS_X, 0, dsda_input_lookcenter },
+  { "FLY UP", S_INPUT, m_scrn, MS_X, 0, dsda_input_flyup },
+  { "FLY DOWN", S_INPUT, m_scrn, MS_X, 0, dsda_input_flydown },
+  { "FLY CENTER", S_INPUT, m_scrn, MS_X, 0, dsda_input_flycenter },
+  { "JUMP", S_INPUT, m_scrn, MS_X, 0, dsda_input_jump },
+  EMPTY_LINE,
+  { "INVENTORY LEFT", S_INPUT, m_scrn, MS_X, 0, dsda_input_invleft },
+  { "INVENTORY RIGHT", S_INPUT, m_scrn, MS_X, 0, dsda_input_invright },
+  { "USE ARTIFACT", S_INPUT, m_scrn, MS_X, 0, dsda_input_use_artifact },
+  EMPTY_LINE,
+  { "HERETIC INVENTORY", S_SKIP | S_TITLE, m_null, MS_X},
+  { "USE TOME OF POWER", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_tome },
+  { "USE QUARTZ FLASK", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_quartz },
+  { "USE MYSTIC URN", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_urn },
+  { "USE TIMEBOMB", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_bomb },
+  { "USE RING OF INVINCIBILITY", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_ring },
+  { "USE CHAOS DEVICE", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_chaosdevice },
+  { "USE SHADOWSPHERE", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_shadowsphere },
+  { "USE WINGS OF WRATH", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_wings },
+  { "USE TORCH", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_torch },
+  { "USE MORPH OVUM", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_morph },
+  EMPTY_LINE,
+  { "HEXEN INVENTORY", S_SKIP | S_TITLE, m_null, MS_X},
+  { "USE ICON OF THE DEFENDER", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_ring },
+  { "USE QUARTZ FLASK", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_quartz },
+  { "USE MYSTIC URN", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_urn },
+  { "USE MYSTIC AMBIT INCANT", S_INPUT, m_scrn, MS_X, 0, dsda_input_hexen_arti_incant },
+  { "USE DARK SERVANT", S_INPUT, m_scrn, MS_X, 0, dsda_input_hexen_arti_summon },
+  { "USE TORCH", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_torch },
+  { "USE PORKALATOR", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_morph },
+  { "USE WINGS OF WRATH", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_wings },
+  { "USE DISC OF REPULSION", S_INPUT, m_scrn, MS_X, 0, dsda_input_hexen_arti_disk },
+  { "USE FLECHETTE", S_INPUT, m_scrn, MS_X, 0, dsda_input_hexen_arti_flechette },
+  { "USE BANISHMENT DEVICE", S_INPUT, m_scrn, MS_X, 0, dsda_input_hexen_arti_banishment },
+  { "USE BOOTS OF SPEED", S_INPUT, m_scrn, MS_X, 0, dsda_input_hexen_arti_boots },
+  { "USE KRATER OF MIGHT", S_INPUT, m_scrn, MS_X, 0, dsda_input_hexen_arti_krater },
+  { "USE DRAGONSKIN BRACERS", S_INPUT, m_scrn, MS_X, 0, dsda_input_hexen_arti_bracers },
+  { "USE CHAOS DEVICE", S_INPUT, m_scrn, MS_X, 0, dsda_input_arti_chaosdevice },
 
-  {"<- PREV",S_SKIP|S_PREV,m_null,KB_PREV,KB_Y+20*8, {keys_settings5}},
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,KB_NEXT,KB_Y+20*8, {keys_settings7}},
-  // Final entry
-  {0,S_SKIP|S_END,m_null}
+  PREV_PAGE(keys_menus_settings),
+  NEXT_PAGE(keys_cheats_settings),
+  FINAL_ENTRY
 };
 
-setup_menu_t keys_settings7[] =
+setup_menu_t keys_cheats_settings[] =
 {
-  {"MENUS"       ,S_SKIP|S_TITLE,m_null,KB_X,KB_Y+0*8},
-  {"NEXT ITEM"   ,S_KEY       ,m_menu,KB_X,KB_Y+1*8,{&key_menu_down}},
-  {"PREV ITEM"   ,S_KEY       ,m_menu,KB_X,KB_Y+2*8,{&key_menu_up}},
-  {"LEFT"        ,S_KEY       ,m_menu,KB_X,KB_Y+3*8,{&key_menu_left}},
-  {"RIGHT"       ,S_KEY       ,m_menu,KB_X,KB_Y+4*8,{&key_menu_right}},
-  {"BACKSPACE"   ,S_KEY       ,m_menu,KB_X,KB_Y+5*8,{&key_menu_backspace}},
-  {"SELECT ITEM" ,S_KEY       ,m_menu,KB_X,KB_Y+6*8,{&key_menu_enter}},
-  {"EXIT"        ,S_KEY       ,m_menu,KB_X,KB_Y+7*8,{&key_menu_escape}},
-  {"CLEAR"       ,S_KEY       ,m_menu,KB_X,KB_Y+8*8,{&key_menu_clear}},
+  { "God Mode", S_INPUT, m_scrn, KB_X, 0, dsda_input_iddqd },
+  { "Ammo & Keys", S_INPUT, m_scrn, KB_X, 0, dsda_input_idkfa },
+  { "Ammo", S_INPUT, m_scrn, KB_X, 0, dsda_input_idfa },
+  { "No Clipping", S_INPUT, m_scrn, KB_X, 0, dsda_input_idclip },
+  { "Health", S_INPUT, m_scrn, KB_X, 0, dsda_input_idbeholdh },
+  { "Armor", S_INPUT, m_scrn, KB_X, 0, dsda_input_idbeholdm },
+  { "Invulnerability", S_INPUT, m_scrn, KB_X, 0, dsda_input_idbeholdv },
+  { "Berserk", S_INPUT, m_scrn, KB_X, 0, dsda_input_idbeholds },
+  { "Partial Invisibility", S_INPUT, m_scrn, KB_X, 0, dsda_input_idbeholdi },
+  { "Radiation Suit", S_INPUT, m_scrn, KB_X, 0, dsda_input_idbeholdr },
+  { "Computer Area Map", S_INPUT, m_scrn, KB_X, 0, dsda_input_idbeholda },
+  { "Light Amplification", S_INPUT, m_scrn, KB_X, 0, dsda_input_idbeholdl },
+  { "Show Position", S_INPUT, m_scrn, KB_X, 0, dsda_input_idmypos },
+  { "Reveal Map", S_INPUT, m_scrn, KB_X, 0, dsda_input_iddt },
+  { "Reset Health", S_INPUT, m_scrn, KB_X, 0, dsda_input_ponce },
+  { "Tome of Power", S_INPUT, m_scrn, KB_X, 0, dsda_input_shazam },
+  { "Chicken", S_INPUT, m_scrn, KB_X, 0, dsda_input_chicken },
+  { "No Target", S_INPUT, m_scrn, KB_X, 0, dsda_input_notarget },
+  { "Freeze", S_INPUT, m_scrn, KB_X, 0, dsda_input_freeze },
 
-  {"<- PREV",S_SKIP|S_PREV,m_null,KB_PREV,KB_Y+20*8, {keys_settings6}},
-  // Final entry
-  {0,S_SKIP|S_END,m_null}
+  PREV_PAGE(keys_raven_settings),
+  NEXT_PAGE(keys_scripts_settings),
+  FINAL_ENTRY
+};
+
+setup_menu_t keys_scripts_settings[] = {
+  { "Script 0", S_INPUT, m_scrn, KB_X, 0, dsda_input_script_0 },
+  { "Script 1", S_INPUT, m_scrn, KB_X, 0, dsda_input_script_1 },
+  { "Script 2", S_INPUT, m_scrn, KB_X, 0, dsda_input_script_2 },
+  { "Script 3", S_INPUT, m_scrn, KB_X, 0, dsda_input_script_3 },
+  { "Script 4", S_INPUT, m_scrn, KB_X, 0, dsda_input_script_4 },
+  { "Script 5", S_INPUT, m_scrn, KB_X, 0, dsda_input_script_5 },
+  { "Script 6", S_INPUT, m_scrn, KB_X, 0, dsda_input_script_6 },
+  { "Script 7", S_INPUT, m_scrn, KB_X, 0, dsda_input_script_7 },
+  { "Script 8", S_INPUT, m_scrn, KB_X, 0, dsda_input_script_8 },
+  { "Script 9", S_INPUT, m_scrn, KB_X, 0, dsda_input_script_9 },
+
+  PREV_PAGE(keys_cheats_settings),
+  NEXT_PAGE(keys_build_settings),
+  FINAL_ENTRY
+};
+
+setup_menu_t keys_build_settings[] = {
+  { "Toggle Build Mode", S_INPUT, m_scrn, KB_X, 0, dsda_input_build },
+  EMPTY_LINE,
+  { "Advance Frame", S_INPUT, m_build, KB_X, 0, dsda_input_build_advance_frame },
+  { "Reverse Frame", S_INPUT, m_build, KB_X, 0, dsda_input_build_reverse_frame },
+  { "Reset Command", S_INPUT, m_build, KB_X, 0, dsda_input_build_reset_command },
+  { "Toggle Source", S_INPUT, m_build, KB_X, 0, dsda_input_build_source },
+  EMPTY_LINE,
+  { "Controls", S_SKIP | S_TITLE, m_null, KB_X},
+  { "Forward", S_INPUT, m_build, KB_X, 0, dsda_input_build_forward },
+  { "Backward", S_INPUT, m_build, KB_X, 0, dsda_input_build_backward },
+  { "Fine Forward", S_INPUT, m_build, KB_X, 0, dsda_input_build_fine_forward },
+  { "Fine Backward", S_INPUT, m_build, KB_X, 0, dsda_input_build_fine_backward },
+  { "Turn Left", S_INPUT, m_build, KB_X, 0, dsda_input_build_turn_left },
+  { "Turn Right", S_INPUT, m_build, KB_X, 0, dsda_input_build_turn_right },
+  { "Strafe Left", S_INPUT, m_build, KB_X, 0, dsda_input_build_strafe_left },
+  { "Strafe Right", S_INPUT, m_build, KB_X, 0, dsda_input_build_strafe_right },
+  { "Fine Strafe Left", S_INPUT, m_build, KB_X, 0, dsda_input_build_fine_strafe_left },
+  { "Fine Strafe Right", S_INPUT, m_build, KB_X, 0, dsda_input_build_fine_strafe_right },
+  EMPTY_LINE,
+  { "Use", S_INPUT, m_build, KB_X, 0, dsda_input_build_use },
+  { "Fire", S_INPUT, m_build, KB_X, 0, dsda_input_build_fire },
+  { "Fist", S_INPUT, m_build, KB_X, 0, dsda_input_build_weapon1 },
+  { "Pistol", S_INPUT, m_build, KB_X, 0, dsda_input_build_weapon2 },
+  { "Shotgun", S_INPUT, m_build, KB_X, 0, dsda_input_build_weapon3 },
+  { "Chaingun", S_INPUT, m_build, KB_X, 0, dsda_input_build_weapon4 },
+  { "Rocket", S_INPUT, m_build, KB_X, 0, dsda_input_build_weapon5 },
+  { "Plasma", S_INPUT, m_build, KB_X, 0, dsda_input_build_weapon6 },
+  { "BFG", S_INPUT, m_build, KB_X, 0, dsda_input_build_weapon7 },
+  { "Chainsaw", S_INPUT, m_build, KB_X, 0, dsda_input_build_weapon8 },
+  { "SSG", S_INPUT, m_build, KB_X, 0, dsda_input_build_weapon9 },
+
+  PREV_PAGE(keys_scripts_settings),
+  FINAL_ENTRY
 };
 
 // Setting up for the Key Binding screen. Turn on flags, set pointers,
 // locate the first item on the screen where the cursor is allowed to
 // land.
 
-void M_KeyBindings(int choice)
+static void M_KeyBindings(int choice)
 {
-  M_SetupNextMenu(&KeybndDef);
-
-  setup_active = true;
-  setup_screen = ss_keys;
-  set_keybnd_active = true;
-  setup_select = false;
-  default_verify = false;
-  setup_gather = false;
-  mult_screens_index = 0;
-  current_setup_menu = keys_settings[0];
-  set_menu_itemon = M_GetSetupMenuItemOn();
-  while (current_setup_menu[set_menu_itemon++].m_flags & S_SKIP);
-  current_setup_menu[--set_menu_itemon].m_flags |= S_HILITE;
+  M_EnterSetup(&KeybndDef, &set_keybnd_active, keys_settings[0],
+               keys_pages, 5, keys_settings);
 }
 
 // The drawing part of the Key Bindings Setup initialization. Draw the
 // background, title, instruction line, and items.
 
-void M_DrawKeybnd(void)
+static void M_DrawKeybnd(void)
 {
-  menuactive = mnact_full;
+  M_ChangeMenu(NULL, mnact_full);
 
   // Set up the Key Binding screen
 
-  M_DrawBackground("FLOOR4_6", 0); // Draw background
+  M_DrawBackground(g_menu_flat, 0); // Draw background
 
   // proff/nicolas 09/20/98 -- changed for hi-res
-  M_DrawTitle(84, 2, "M_KEYBND", CR_DEFAULT, "KEY BINDINGS", CR_GOLD);
+  M_DrawTitle(2, "KEY BINDINGS", cr_title); // M_KEYBND
   M_DrawInstructions();
-  M_DrawScreenItems(current_setup_menu);
-
-  // If the Reset Button has been selected, an "Are you sure?" message
-  // is overlayed across everything else.
-
-  if (default_verify)
-    M_DrawDefVerify();
+  M_DrawSetupTabs(TABS_Y);
+  M_DrawScreenItems(current_setup_menu, DEFAULT_LIST_Y);
 }
 
 /////////////////////////////
@@ -2693,7 +3088,6 @@ void M_DrawKeybnd(void)
 // The Weapon Screen tables.
 
 #define WP_X 203
-#define WP_Y  33
 
 static const char *weapon_attack_alignment_strings[] = {
   "OFF", "HORIZONTAL", "CENTERED", "BOBBING", NULL
@@ -2706,217 +3100,147 @@ static const char *weapon_attack_alignment_strings[] = {
 // Note that this screen has no PREV or NEXT items, since there are no
 // neighboring screens.
 
-enum {           // killough 10/98: enum for y-offset info
-  weap_recoil,
-  weap_bobbing,
-  weap_attack_alignment,
-  weap_stub1,
-  weap_pref1,
-  weap_pref2,
-  weap_pref3,
-  weap_pref4,
-  weap_pref5,
-  weap_pref6,
-  weap_pref7,
-  weap_pref8,
-  weap_pref9,
-};
-
-setup_menu_t weap_settings1[];
-
-setup_menu_t* weap_settings[] =
+static const char *weap_pages[] =
 {
-  weap_settings1,
+  "Priority",
   NULL
 };
 
-setup_menu_t weap_settings1[] =  // Weapons Settings screen
+setup_menu_t weap_priority_settings[];
+
+setup_menu_t* weap_settings[] =
 {
-  {"ENABLE RECOIL", S_YESNO,m_null,WP_X, WP_Y+ weap_recoil*8, {"weapon_recoil"}},
-  {"ENABLE BOBBING",S_YESNO,m_null,WP_X, WP_Y+weap_bobbing*8, {"player_bobbing"}},
-  {"WEAPON ATTACK ALIGNMENT",S_CHOICE,m_null,WP_X, WP_Y+weap_attack_alignment*8, {"weapon_attack_alignment"}, 0, 0, NULL, weapon_attack_alignment_strings},
+  weap_priority_settings,
+  NULL
+};
 
-  {"1ST CHOICE WEAPON",S_WEAP,m_null,WP_X,WP_Y+weap_pref1*8, {"weapon_choice_1"}},
-  {"2nd CHOICE WEAPON",S_WEAP,m_null,WP_X,WP_Y+weap_pref2*8, {"weapon_choice_2"}},
-  {"3rd CHOICE WEAPON",S_WEAP,m_null,WP_X,WP_Y+weap_pref3*8, {"weapon_choice_3"}},
-  {"4th CHOICE WEAPON",S_WEAP,m_null,WP_X,WP_Y+weap_pref4*8, {"weapon_choice_4"}},
-  {"5th CHOICE WEAPON",S_WEAP,m_null,WP_X,WP_Y+weap_pref5*8, {"weapon_choice_5"}},
-  {"6th CHOICE WEAPON",S_WEAP,m_null,WP_X,WP_Y+weap_pref6*8, {"weapon_choice_6"}},
-  {"7th CHOICE WEAPON",S_WEAP,m_null,WP_X,WP_Y+weap_pref7*8, {"weapon_choice_7"}},
-  {"8th CHOICE WEAPON",S_WEAP,m_null,WP_X,WP_Y+weap_pref8*8, {"weapon_choice_8"}},
-  {"9th CHOICE WEAPON",S_WEAP,m_null,WP_X,WP_Y+weap_pref9*8, {"weapon_choice_9"}},
+setup_menu_t weap_priority_settings[] =  // Weapons Settings screen
+{
+  { "1ST CHOICE WEAPON", S_WEAP, m_conf, WP_X, dsda_config_weapon_choice_1 },
+  { "2nd CHOICE WEAPON", S_WEAP, m_conf, WP_X, dsda_config_weapon_choice_2 },
+  { "3rd CHOICE WEAPON", S_WEAP, m_conf, WP_X, dsda_config_weapon_choice_3 },
+  { "4th CHOICE WEAPON", S_WEAP, m_conf, WP_X, dsda_config_weapon_choice_4 },
+  { "5th CHOICE WEAPON", S_WEAP, m_conf, WP_X, dsda_config_weapon_choice_5 },
+  { "6th CHOICE WEAPON", S_WEAP, m_conf, WP_X, dsda_config_weapon_choice_6 },
+  { "7th CHOICE WEAPON", S_WEAP, m_conf, WP_X, dsda_config_weapon_choice_7 },
+  { "8th CHOICE WEAPON", S_WEAP, m_conf, WP_X, dsda_config_weapon_choice_8 },
+  { "9th CHOICE WEAPON", S_WEAP, m_conf, WP_X, dsda_config_weapon_choice_9 },
 
-  // Button for resetting to defaults
-  {0,S_RESET,m_null,X_BUTTON,Y_BUTTON},
-
-  // Final entry
-  {0,S_SKIP|S_END,m_null}
-
+  FINAL_ENTRY
 };
 
 // Setting up for the Weapons screen. Turn on flags, set pointers,
 // locate the first item on the screen where the cursor is allowed to
 // land.
 
-void M_Weapons(int choice)
+static void M_Weapons(int choice)
 {
-  M_SetupNextMenu(&WeaponDef);
-
-  setup_active = true;
-  setup_screen = ss_weap;
-  set_weapon_active = true;
-  setup_select = false;
-  default_verify = false;
-  setup_gather = false;
-  mult_screens_index = 0;
-  current_setup_menu = weap_settings[0];
-  set_menu_itemon = M_GetSetupMenuItemOn();
-  while (current_setup_menu[set_menu_itemon++].m_flags & S_SKIP);
-  current_setup_menu[--set_menu_itemon].m_flags |= S_HILITE;
+  M_EnterSetup(&WeaponDef, &set_weapon_active, weap_settings[0],
+               weap_pages, arrlen(weap_pages), weap_settings);
 }
 
 
 // The drawing part of the Weapons Setup initialization. Draw the
 // background, title, instruction line, and items.
 
-void M_DrawWeapons(void)
+static void M_DrawWeapons(void)
 {
-  menuactive = mnact_full;
+  M_ChangeMenu(NULL, mnact_full);
 
-  M_DrawBackground("FLOOR4_6", 0); // Draw background
+  M_DrawBackground(g_menu_flat, 0); // Draw background
 
   // proff/nicolas 09/20/98 -- changed for hi-res
-  M_DrawTitle(109, 2, "M_WEAP", CR_DEFAULT, "WEAPONS", CR_GOLD);
+  M_DrawTitle(2, "WEAPONS", cr_title); // M_WEAP
   M_DrawInstructions();
-  M_DrawScreenItems(current_setup_menu);
-
-  // If the Reset Button has been selected, an "Are you sure?" message
-  // is overlayed across everything else.
-
-  if (default_verify)
-    M_DrawDefVerify();
+  M_DrawSetupTabs(TABS_Y);
+  M_DrawScreenItems(current_setup_menu, DEFAULT_LIST_Y);
 }
 
 /////////////////////////////
 //
-// The Status Bar / HUD tables.
+// The Demos tables.
 
-#define SB_X 203
-#define SB_Y  31
+#define DM_X 203
 
 // Screen table definitions
 
-setup_menu_t stat_settings1[];
-//e6y
-setup_menu_t stat_settings2[];
-
-setup_menu_t* stat_settings[] =
+static const char *demos_pages[] =
 {
-  stat_settings1,
-  //e6y
-  stat_settings2,
+  "Options",
+  "TAS",
   NULL
 };
 
-setup_menu_t stat_settings1[] =  // Status Bar and HUD Settings screen
+setup_menu_t demos_options_settings[];
+setup_menu_t demos_tas_settings[];
+
+setup_menu_t* demos_settings[] =
 {
-  {"STATUS BAR"        ,S_SKIP|S_TITLE,m_null,SB_X,SB_Y+ 1*8 },
-
-  {"USE RED NUMBERS"   ,S_YESNO, m_null,SB_X,SB_Y+ 2*8, {"sts_always_red"}},
-  {"GRAY %"            ,S_YESNO, m_null,SB_X,SB_Y+ 3*8, {"sts_pct_always_gray"}},
-  {"SINGLE KEY DISPLAY",S_YESNO, m_null,SB_X,SB_Y+ 4*8, {"sts_traditional_keys"}},
-
-  {"HEADS-UP DISPLAY"  ,S_SKIP|S_TITLE,m_null,SB_X,SB_Y+ 6*8},
-
-  {"HEALTH LOW/OK"     ,S_NUM       ,m_null,SB_X,SB_Y+ 7*8, {"health_red"}},
-  {"HEALTH OK/GOOD"    ,S_NUM       ,m_null,SB_X,SB_Y+ 8*8, {"health_yellow"}},
-  {"HEALTH GOOD/EXTRA" ,S_NUM       ,m_null,SB_X,SB_Y+ 9*8, {"health_green"}},
-  {"ARMOR COLOR DEPENDS ON TYPE",S_YESNO, m_null,SB_X,SB_Y+ 10*8, {"sts_armorcolor_type"}},
-  {"ARMOR LOW/OK"      ,S_NUM       ,m_null,SB_X,SB_Y+11*8, {"armor_red"}},
-  {"ARMOR OK/GOOD"     ,S_NUM       ,m_null,SB_X,SB_Y+12*8, {"armor_yellow"}},
-  {"ARMOR GOOD/EXTRA"  ,S_NUM       ,m_null,SB_X,SB_Y+13*8, {"armor_green"}},
-  {"AMMO LOW/OK"       ,S_NUM       ,m_null,SB_X,SB_Y+14*8, {"ammo_red"}},
-  {"AMMO OK/GOOD"      ,S_NUM       ,m_null,SB_X,SB_Y+15*8, {"ammo_yellow"}},
-  {"BACKPACK CHANGES THRESHOLDS",S_CHOICE,m_null,SB_X,SB_Y+16*8, 
-   {"ammo_colour_behaviour"},0,0,NULL,ammo_colour_behaviour_list},
-
-  // Button for resetting to defaults
-  {0,S_RESET,m_null,X_BUTTON,Y_BUTTON},
-
-  //e6y
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,KB_NEXT,SB_Y+20*8, {stat_settings2}},
-  // Final entry
-  {0,S_SKIP|S_END,m_null}
+  demos_options_settings,
+  demos_tas_settings,
+  NULL
 };
 
-//e6y
-#define ADVHUD_X 284
-setup_menu_t stat_settings2[] =
+setup_menu_t demos_options_settings[] =  // Demos Settings screen
 {
-  {"ADVANCED HUD SETTINGS"       ,S_SKIP|S_TITLE,m_null,ADVHUD_X,SB_Y+1*8},
-  {"REPORT REVEALED SECRETS"     ,S_YESNO     ,m_null,ADVHUD_X,SB_Y+ 2*8, {"hudadd_secretarea"}},
-  {"SMART TOTALS"                ,S_YESNO     ,m_null,ADVHUD_X,SB_Y+ 3*8, {"hudadd_smarttotals"}},
-  {"SHOW GAMESPEED"              ,S_YESNO     ,m_null,ADVHUD_X,SB_Y+ 4*8, {"hudadd_gamespeed"}},
-  {"SHOW LEVELTIME"              ,S_YESNO     ,m_null,ADVHUD_X,SB_Y+ 5*8, {"hudadd_leveltime"}},
-  {"SHOW DEMOTIME"               ,S_YESNO     ,m_null,ADVHUD_X,SB_Y+ 6*8, {"hudadd_demotime"}},
-  {"SHOW PROGRESS BAR DURING DEMO PLAYBACK" ,S_YESNO     ,m_null,ADVHUD_X,SB_Y+ 7*8, {"hudadd_demoprogressbar"}},
-  {"SHOW TIME/STS ABOVE STATUS BAR" ,S_YESNO  ,m_null,ADVHUD_X,SB_Y+ 8*8, {"hudadd_timests"}},
+  { "Show Demo Attempts", S_YESNO, m_conf, DM_X, dsda_config_show_demo_attempts },
+  { "Show Split Data", S_YESNO, m_conf, DM_X, dsda_config_show_split_data },
+  { "Precise Intermission Time", S_YESNO,  m_conf, DM_X, dsda_config_show_level_splits },
+  { "Quickstart Cache Tics", S_NUM, m_conf, DM_X, dsda_config_quickstart_cache_tics },
+  { "Text File Author", S_NAME, m_conf, DM_X, dsda_config_player_name },
+  EMPTY_LINE,
+  { "Playback Progress Bar", S_YESNO, m_conf, DM_X, dsda_config_hudadd_demoprogressbar },
+  { "Playback Mouse Controls", S_YESNO, m_conf, DM_X, dsda_config_playback_mouse_controls },
+  { "Smooth Playback", S_YESNO, m_conf, DM_X, dsda_config_demo_smoothturns },
+  { "Smooth Playback Factor", S_NUM, m_conf, DM_X, dsda_config_demo_smoothturnsfactor },
+  { "Cycle Ghost Colors", S_YESNO, m_conf, DM_X, dsda_config_cycle_ghost_colors },
+  { "Organize Failed Demos", S_YESNO,  m_conf, DM_X, dsda_config_organize_failed_demos },
 
-  {"CROSSHAIR SETTINGS"            ,S_SKIP|S_TITLE,m_null,ADVHUD_X,SB_Y+10*8},
-  {"ENABLE CROSSHAIR"              ,S_CHOICE   ,m_null,ADVHUD_X,SB_Y+11*8, {"hudadd_crosshair"}, 0, 0, 0, crosshair_str},
-  {"SCALE CROSSHAIR"               ,S_YESNO    ,m_null,ADVHUD_X,SB_Y+12*8, {"hudadd_crosshair_scale"}},
-  {"CHANGE CROSSHAIR COLOR BY PLAYER HEALTH" ,S_YESNO    ,m_null,ADVHUD_X,SB_Y+13*8, {"hudadd_crosshair_health"}},
-  {"CHANGE CROSSHAIR COLOR ON TARGET"        ,S_YESNO    ,m_null,ADVHUD_X,SB_Y+14*8, {"hudadd_crosshair_target"}},
-  {"LOCK CROSSHAIR ON TARGET"                ,S_YESNO    ,m_null,ADVHUD_X,SB_Y+15*8, {"hudadd_crosshair_lock_target"}},
-  {"DEFAULT CROSSHAIR COLOR"                 ,S_CRITEM   ,m_null,ADVHUD_X,SB_Y+16*8, {"hudadd_crosshair_color"}},
-  {"TARGET CROSSHAIR COLOR"                  ,S_CRITEM   ,m_null,ADVHUD_X,SB_Y+17*8, {"hudadd_crosshair_target_color"}},
-
-  {0,S_RESET,m_null,X_BUTTON,Y_BUTTON},
-  {"<- PREV",S_SKIP|S_PREV,m_null,KB_PREV,SB_Y+20*8, {stat_settings1}},
-  {0,S_SKIP|S_END,m_null}
+  NEXT_PAGE(demos_tas_settings),
+  FINAL_ENTRY
 };
 
-// Setting up for the Status Bar / HUD screen. Turn on flags, set pointers,
+setup_menu_t demos_tas_settings[] =
+{
+  { "Strict Mode", S_YESNO, m_conf, DM_X, dsda_config_strict_mode },
+  EMPTY_LINE,
+  { "Wipe At Full Speed", S_YESNO, m_conf, DM_X, dsda_config_wipe_at_full_speed },
+  { "Show Command Display", S_YESNO, m_conf, DM_X, dsda_config_command_display },
+  { "Command History", S_NUM, m_conf, DM_X, dsda_config_command_history_size },
+  { "Hide Empty Commands", S_YESNO, m_conf, DM_X, dsda_config_hide_empty_commands },
+  { "Show Coordinate Display", S_YESNO, m_conf, DM_X, dsda_config_coordinate_display },
+  EMPTY_LINE,
+  { "Permanent Strafe50", S_YESNO, m_conf, DM_X, dsda_config_movement_strafe50 },
+  { "Strafe50 On Turns", S_YESNO, m_conf, DM_X, dsda_config_movement_strafe50onturns },
+
+  PREV_PAGE(demos_options_settings),
+  FINAL_ENTRY
+};
+
+// Setting up for the Demos screen. Turn on flags, set pointers,
 // locate the first item on the screen where the cursor is allowed to
 // land.
 
-void M_StatusBar(int choice)
+static void M_Demos(int choice)
 {
-  M_SetupNextMenu(&StatusHUDDef);
-
-  setup_active = true;
-  setup_screen = ss_stat;
-  set_status_active = true;
-  setup_select = false;
-  default_verify = false;
-  setup_gather = false;
-  mult_screens_index = 0;
-  current_setup_menu = stat_settings[0];
-  set_menu_itemon = M_GetSetupMenuItemOn();
-  while (current_setup_menu[set_menu_itemon++].m_flags & S_SKIP);
-  current_setup_menu[--set_menu_itemon].m_flags |= S_HILITE;
+  M_EnterSetup(&DemosDef, &set_demos_active, demos_settings[0],
+               demos_pages, arrlen(demos_pages), demos_settings);
 }
 
-
-// The drawing part of the Status Bar / HUD Setup initialization. Draw the
+// The drawing part of the Demos Setup initialization. Draw the
 // background, title, instruction line, and items.
 
-void M_DrawStatusHUD(void)
+static void M_DrawDemos(void)
 {
-  menuactive = mnact_full;
+  M_ChangeMenu(NULL, mnact_full);
 
-  M_DrawBackground("FLOOR4_6", 0); // Draw background
+  M_DrawBackground(g_menu_flat, 0); // Draw background
 
   // proff/nicolas 09/20/98 -- changed for hi-res
-  M_DrawTitle(59, 2, "M_STAT", CR_DEFAULT, "STATUS BAR / HUD", CR_GOLD);
+  M_DrawTitle(2, "DEMOS", cr_title); // M_DEMOS
   M_DrawInstructions();
-  M_DrawScreenItems(current_setup_menu);
-
-  // If the Reset Button has been selected, an "Are you sure?" message
-  // is overlayed across everything else.
-
-  if (default_verify)
-    M_DrawDefVerify();
+  M_DrawSetupTabs(TABS_Y);
+  M_DrawScreenItems(current_setup_menu, DEFAULT_LIST_Y);
 }
 
 
@@ -2924,130 +3248,132 @@ void M_DrawStatusHUD(void)
 //
 // The Automap tables.
 
-#define AU_X    275
-#define AU_Y     31
-#define AU_PREV KB_PREV
-#define AU_NEXT KB_NEXT
+#define AU_X 260
+#define AA_X 240
 
-setup_menu_t auto_settings1[];
-setup_menu_t auto_settings2[];
-setup_menu_t auto_settings3[];
-
-setup_menu_t* auto_settings[] =
+static const char *auto_pages[] =
 {
-  auto_settings1,
-  auto_settings2,
-  auto_settings3,
+  "Options",
+  "Appearance",
+  "Colors",
   NULL
 };
 
-setup_menu_t auto_settings1[] =  // 1st AutoMap Settings screen
+setup_menu_t auto_options_settings[];
+setup_menu_t auto_appearance_settings[];
+setup_menu_t auto_colors_settings[];
+
+setup_menu_t* auto_settings[] =
 {
-  {"Show Kills/Secrts/Items statistics",      S_YESNO,m_null,AU_X,AU_Y+0*8, {"map_level_stat"}},
-  {"Show coordinates of automap pointer",     S_YESNO,m_null,AU_X,AU_Y+1*8, {"map_point_coord"}},  // killough 10/98
-  {"Show Secrets only after entering",        S_YESNO,m_null,AU_X,AU_Y+2*8, {"map_secret_after"}},
-  {"Update unexplored parts in automap mode", S_YESNO,m_null,AU_X,AU_Y+3*8, {"map_always_updates"}},
-  {"Grid cell size 8..256, -1 for autosize",  S_NUM,  m_null,AU_X,AU_Y+4*8, {"map_grid_size"}, 0, 0, M_ChangeMapGridSize},
-  {"Scroll / Zoom speed  (1..32)",            S_NUM,  m_null,AU_X,AU_Y+5*8, {"map_scroll_speed"}},
-  {"Use mouse wheel for zooming",             S_YESNO,m_null,AU_X,AU_Y+6*8, {"map_wheel_zoom"}},
-  {"Apply multisampling",                     S_YESNO,m_null,AU_X,AU_Y+7*8, {"map_use_multisamling"}, 0, 0, M_ChangeMapMultisamling},
-#ifdef GL_DOOM
-  {"Enable textured display",                 S_YESNO,m_null,AU_X,AU_Y+8*8, {"map_textured"}, 0, 0, M_ChangeMapTextured},
-  {"Things appearance",                       S_CHOICE,m_null,AU_X,AU_Y+9*8, {"map_things_appearance"}, 0, 0, NULL, map_things_appearance_list},
-  {"Translucency percentage",                 S_SKIP|S_TITLE,m_null,AU_X,AU_Y+10*8},
-  {"Textured automap",                        S_NUM,  m_null,AU_X,AU_Y+11*8, {"map_textured_trans"}},
-  {"Textured automap in overlay mode",        S_NUM,  m_null,AU_X,AU_Y+12*8, {"map_textured_overlay_trans"}},
-  {"Lines in overlay mode",                   S_NUM,  m_null,AU_X,AU_Y+13*8, {"map_lines_overlay_trans"}},
+  auto_options_settings,
+  auto_appearance_settings,
+  auto_colors_settings,
+  NULL
+};
+
+static const char *map_things_appearance_list[] =
+{
+  "classic",
+  "scaled",
+#if defined(HAVE_LIBSDL2_IMAGE)
+  "icons",
 #endif
-
-  // Button for resetting to defaults
-  {0,S_RESET,m_null,X_BUTTON,Y_BUTTON},
-
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,AU_NEXT,AU_Y+20*8, {auto_settings2}},
-
-  // Final entry
-  {0,S_SKIP|S_END,m_null}
+  "hitboxes",
+  NULL
 };
 
-setup_menu_t auto_settings2[] =  // 2st AutoMap Settings screen
+setup_menu_t auto_options_settings[] =
 {
-  {"background", S_COLOR, m_null, AU_X, AU_Y, {"mapcolor_back"}},
-  {"grid lines", S_COLOR, m_null, AU_X, AU_Y + 1*8, {"mapcolor_grid"}},
-  {"normal 1s wall", S_COLOR, m_null,AU_X,AU_Y+ 2*8, {"mapcolor_wall"}},
-  {"line at floor height change", S_COLOR, m_null, AU_X, AU_Y+ 3*8, {"mapcolor_fchg"}},
-  {"line at ceiling height change"      ,S_COLOR,m_null,AU_X,AU_Y+ 4*8, {"mapcolor_cchg"}},
-  {"line at sector with floor = ceiling",S_COLOR,m_null,AU_X,AU_Y+ 5*8, {"mapcolor_clsd"}},
-  {"red key"                            ,S_COLOR,m_null,AU_X,AU_Y+ 6*8, {"mapcolor_rkey"}},
-  {"blue key"                           ,S_COLOR,m_null,AU_X,AU_Y+ 7*8, {"mapcolor_bkey"}},
-  {"yellow key"                         ,S_COLOR,m_null,AU_X,AU_Y+ 8*8, {"mapcolor_ykey"}},
-  {"red door"                           ,S_COLOR,m_null,AU_X,AU_Y+ 9*8, {"mapcolor_rdor"}},
-  {"blue door"                          ,S_COLOR,m_null,AU_X,AU_Y+10*8, {"mapcolor_bdor"}},
-  {"yellow door"                        ,S_COLOR,m_null,AU_X,AU_Y+11*8, {"mapcolor_ydor"}},
+  { "Locked doors blink", S_YESNO, m_conf, AU_X, dsda_config_map_blinking_locks },
+  { "Show Secrets only after entering", S_YESNO, m_conf, AU_X, dsda_config_map_secret_after },
+  { "Grid cell size 8..256, -1 for auto", S_NUM, m_conf, AU_X, dsda_config_map_grid_size },
+  { "Pan speed (1..32)", S_NUM, m_conf, AU_X, dsda_config_map_pan_speed },
+  { "Zoom speed (1..32)", S_NUM, m_conf, AU_X, dsda_config_map_scroll_speed },
+  { "Use mouse wheel for zooming", S_YESNO, m_conf, AU_X, dsda_config_map_wheel_zoom },
+  { "Show Minimap", S_YESNO, m_conf, AU_X, dsda_config_show_minimap },
+  EMPTY_LINE,
+  { "Components", S_SKIP | S_TITLE, m_null, AU_X},
+  { "Stat Totals", S_YESNO, m_conf, AU_X, dsda_config_map_totals },
+  { "Player Coordinates", S_YESNO, m_conf, AU_X, dsda_config_map_coordinates },
+  { "Level / Total Time", S_YESNO, m_conf, AU_X, dsda_config_map_time },
+  { "Level Title", S_YESNO, m_conf, AU_X, dsda_config_map_title },
 
-  {"AUTOMAP LEVEL TITLE COLOR"      ,S_CRITEM,m_null,AU_X,AU_Y+12*8, {"hudcolor_titl"}},
-  {"AUTOMAP COORDINATES COLOR"      ,S_CRITEM,m_null,AU_X,AU_Y+13*8, {"hudcolor_xyco"}},
-
-  {"Automap Statistics Titles Color",S_CRITEM,m_null,AU_X,AU_Y+14*8, {"hudcolor_mapstat_title"}},
-  {"Automap Statistics Values Color",S_CRITEM,m_null,AU_X,AU_Y+15*8, {"hudcolor_mapstat_value"}},
-  {"Automap Statistics Time Color"  ,S_CRITEM,m_null,AU_X,AU_Y+16*8, {"hudcolor_mapstat_time"}},
-
-  // Button for resetting to defaults
-  {0,S_RESET,m_null,X_BUTTON,Y_BUTTON},
-
-  {"<- PREV",S_SKIP|S_PREV,m_null,AU_PREV,AU_Y+20*8, {auto_settings1}},
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,AU_NEXT,AU_Y+20*8, {auto_settings3}},
-
-  // Final entry
-  {0,S_SKIP|S_END,m_null}
-
+  NEXT_PAGE(auto_appearance_settings),
+  FINAL_ENTRY
 };
 
-setup_menu_t auto_settings3[] =  // 3nd AutoMap Settings screen
+#define T_X 180
+
+setup_menu_t auto_appearance_settings[] =
 {
-  {"teleporter line"                ,S_COLOR ,m_null,AU_X,AU_Y, {"mapcolor_tele"}},
-  {"secret sector boundary"         ,S_COLOR ,m_null,AU_X,AU_Y+ 1*8, {"mapcolor_secr"}},
+  { "Enable textured display", S_YESNO, m_conf, AA_X, dsda_config_map_textured },
+  { "Things appearance", S_CHOICE, m_conf, AA_X, dsda_config_map_things_appearance, 0, map_things_appearance_list },
+  { "Show Line Traces", S_YESNO, m_conf, AA_X, dsda_config_map_traces },
+  EMPTY_LINE,
+  { "Translucency percentage", S_SKIP | S_TITLE, m_null, AA_X},
+  { "Textured automap", S_NUM, m_conf, AA_X, dsda_config_map_textured_trans },
+  { "Textured automap on overlay", S_NUM, m_conf, AA_X, dsda_config_map_textured_overlay_trans },
+  { "Lines on overlay", S_NUM, m_conf, AA_X, dsda_config_map_lines_overlay_trans },
+  EMPTY_LINE,
+  { "Trail", S_SKIP | S_TITLE, m_null, AA_X},
+  { "Player Trail", S_YESNO, m_conf, AA_X, dsda_config_map_trail },
+  { "Include Collisions", S_YESNO, m_conf, AA_X, dsda_config_map_trail_collisions },
+  { "Player Trail Size", S_NUM, m_conf, AA_X, dsda_config_map_trail_size },
+
+  PREV_PAGE(auto_options_settings),
+  NEXT_PAGE(auto_colors_settings),
+  FINAL_ENTRY
+};
+
+setup_menu_t auto_colors_settings[] =  // 2st AutoMap Settings screen
+{
+  {"background", S_COLOR, m_conf, AU_X, dsda_config_mapcolor_back},
+  {"grid lines", S_COLOR, m_conf, AU_X, dsda_config_mapcolor_grid},
+  {"normal 1s wall", S_COLOR, m_conf,AU_X, dsda_config_mapcolor_wall},
+  {"line at floor height change", S_COLOR, m_conf, AU_X, dsda_config_mapcolor_fchg},
+  {"line at ceiling height change"      ,S_COLOR,m_conf,AU_X, dsda_config_mapcolor_cchg},
+  {"line at sector with floor = ceiling",S_COLOR,m_conf,AU_X, dsda_config_mapcolor_clsd},
+  {"red key"                            ,S_COLOR,m_conf,AU_X, dsda_config_mapcolor_rkey},
+  {"blue key"                           ,S_COLOR,m_conf,AU_X, dsda_config_mapcolor_bkey},
+  {"yellow key"                         ,S_COLOR,m_conf,AU_X, dsda_config_mapcolor_ykey},
+  {"red door"                           ,S_COLOR,m_conf,AU_X, dsda_config_mapcolor_rdor},
+  {"blue door"                          ,S_COLOR,m_conf,AU_X, dsda_config_mapcolor_bdor},
+  {"yellow door"                        ,S_COLOR,m_conf,AU_X, dsda_config_mapcolor_ydor},
+  EMPTY_LINE,
+  {"teleporter line"                ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_tele},
+  {"secret sector boundary"         ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_secr},
+  {"revealed secret sector boundary",S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_revsecr},
+  {"tag finder line"                ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_tagfinder},
   //jff 4/23/98 add exit line to automap
-  {"exit line"                      ,S_COLOR ,m_null,AU_X,AU_Y+ 2*8, {"mapcolor_exit"}},
-  {"computer map unseen line"       ,S_COLOR ,m_null,AU_X,AU_Y+ 3*8, {"mapcolor_unsn"}},
-  {"line w/no floor/ceiling changes",S_COLOR ,m_null,AU_X,AU_Y+ 4*8, {"mapcolor_flat"}},
-  {"general sprite"                 ,S_COLOR ,m_null,AU_X,AU_Y+ 5*8, {"mapcolor_sprt"}},
-  {"countable enemy sprite"         ,S_COLOR ,m_null,AU_X,AU_Y+ 6*8, {"mapcolor_enemy"}},      // cph 2006/06/30
-  {"countable item sprite"          ,S_COLOR ,m_null,AU_X,AU_Y+ 7*8, {"mapcolor_item"}},       // mead 3/4/2003
-  {"crosshair"                      ,S_COLOR ,m_null,AU_X,AU_Y+ 8*8, {"mapcolor_hair"}},
-  {"single player arrow"            ,S_COLOR ,m_null,AU_X,AU_Y+ 9*8, {"mapcolor_sngl"}},
-  {"your colour in multiplayer"     ,S_COLOR ,m_null,AU_X,AU_Y+10*8, {"mapcolor_me"}},
+  {"exit line"                      ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_exit},
+  {"alt secret exit line"           ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_exitsecr},
+  {"computer map unseen line"       ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_unsn},
+  {"line w/no floor/ceiling changes",S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_flat},
+  {"general sprite"                 ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_sprt},
+  {"pickup sprite"                  ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_pickup},
+  {"countable enemy sprite"         ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_enemy},      // cph 2006/06/30
+  {"countable item sprite"          ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_item},       // mead 3/4/2003
+  {"crosshair"                      ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_hair},
+  {"single player arrow"            ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_sngl},
+  {"your colour in multiplayer"     ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_me},
+  EMPTY_LINE,
+  {"friends"                        ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_frnd},        // killough 8/8/98
+  EMPTY_LINE,
+  {"player trail 1"     ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_trail_1},
+  {"player trail 2"     ,S_COLOR ,m_conf,AU_X, dsda_config_mapcolor_trail_2},
 
-  {"friends"                        ,S_COLOR ,m_null,AU_X,AU_Y+12*8, {"mapcolor_frnd"}},        // killough 8/8/98
-
-  {"<- PREV",S_SKIP|S_PREV,m_null,AU_PREV,AU_Y+20*8, {auto_settings2}},
-
-  // Final entry
-
-  {0,S_SKIP|S_END,m_null}
-
+  PREV_PAGE(auto_appearance_settings),
+  FINAL_ENTRY
 };
-
 
 // Setting up for the Automap screen. Turn on flags, set pointers,
 // locate the first item on the screen where the cursor is allowed to
 // land.
 
-void M_Automap(int choice)
+static void M_Automap(int choice)
 {
-  M_SetupNextMenu(&AutoMapDef);
-
-  setup_active = true;
-  setup_screen = ss_auto;
-  set_auto_active = true;
-  setup_select = false;
-  colorbox_active = false;
-  default_verify = false;
-  setup_gather = false;
-  mult_screens_index = 0;
-  current_setup_menu = auto_settings[0];
-  set_menu_itemon = M_GetSetupMenuItemOn();
-  while (current_setup_menu[set_menu_itemon++].m_flags & S_SKIP);
-  current_setup_menu[--set_menu_itemon].m_flags |= S_HILITE;
+  M_EnterSetup(&AutoMapDef, &set_auto_active, auto_settings[0],
+               auto_pages, arrlen(auto_pages), auto_settings);
 }
 
 // Data used by the color palette that is displayed for the player to
@@ -3055,7 +3381,6 @@ void M_Automap(int choice)
 
 int color_palette_x; // X position of the cursor on the color palette
 int color_palette_y; // Y position of the cursor on the color palette
-byte palette_background[16*(CHIP_SIZE+1)+8];
 
 // M_DrawColPal() draws the color palette when the user needs to select a
 // color.
@@ -3076,8 +3401,8 @@ static void M_DrawColPal(void)
   // Draw the cursor around the paint chip
   // (cpx,cpy) is the upper left-hand corner of the paint chip
 
-  cpx = COLORPALXORIG+color_palette_x*(CHIP_SIZE+1)-1;
-  cpy = COLORPALYORIG+color_palette_y*(CHIP_SIZE+1)-1;
+  cpx = COLORPALXORIG+color_palette_x*(CHIP_SIZE)-1;
+  cpy = COLORPALYORIG+color_palette_y*(CHIP_SIZE)-1;
   // proff 12/6/98: Drawing of colorchips completly changed for hi-res, it now uses a patch
   V_DrawNamePatch(cpx,cpy,0,"M_PALSEL",CR_DEFAULT,VPT_STRETCH); // PROFF_GL_FIX
 }
@@ -3085,211 +3410,59 @@ static void M_DrawColPal(void)
 // The drawing part of the Automap Setup initialization. Draw the
 // background, title, instruction line, and items.
 
-void M_DrawAutoMap(void)
+static void M_DrawAutoMap(void)
 {
-  menuactive = mnact_full;
+  M_ChangeMenu(NULL, mnact_full);
 
-  M_DrawBackground("FLOOR4_6", 0); // Draw background
+  M_DrawBackground(g_menu_flat, 0); // Draw background
 
   // CPhipps - patch drawing updated
-  M_DrawTitle(109, 2, "M_AUTO", CR_DEFAULT, "AUTOMAP", CR_GOLD);
+  M_DrawTitle(2, "AUTOMAP", cr_title); // M_AUTO
   M_DrawInstructions();
-  M_DrawScreenItems(current_setup_menu);
+  M_DrawSetupTabs(TABS_Y);
+  M_DrawScreenItems(current_setup_menu, DEFAULT_LIST_Y);
 
   // If a color is being selected, need to show color paint chips
 
   if (colorbox_active)
     M_DrawColPal();
-
-  // If the Reset Button has been selected, an "Are you sure?" message
-  // is overlayed across everything else.
-
-  else if (default_verify)
-    M_DrawDefVerify();
 }
-
-
-/////////////////////////////
-//
-// The Enemies table.
-
-#define E_X 250
-#define E_Y  31
-
-setup_menu_t enem_settings1[];
-
-setup_menu_t* enem_settings[] =
-{
-  enem_settings1,
-  NULL
-};
-
-enum {
-  enem_infighting,
-
-  enem_remember = 1,
-
-  enem_backing,
-  enem_monkeys,
-  enem_avoid_hazards,
-  enem_friction,
-  enem_help_friends,
-
-  enem_helpers,
-
-  enem_distfriend,
-
-  enem_dog_jumping,
-
-  enem_colored_blood,
-
-  enem_end
-};
-
-setup_menu_t enem_settings1[] =  // Enemy Settings screen
-{
-  // killough 7/19/98
-  {"Monster Infighting When Provoked",S_YESNO,m_null,E_X,E_Y+ enem_infighting*8, {"monster_infighting"}},
-
-  {"Remember Previous Enemy",S_YESNO,m_null,E_X,E_Y+ enem_remember*8, {"monsters_remember"}},
-
-  // killough 9/8/98
-  {"Monster Backing Out",S_YESNO,m_null,E_X,E_Y+ enem_backing*8, {"monster_backing"}},
-
-  {"Climb Steep Stairs", S_YESNO,m_null,E_X,E_Y+enem_monkeys*8, {"monkeys"}},
-
-  // killough 9/9/98
-  {"Intelligently Avoid Hazards",S_YESNO,m_null,E_X,E_Y+ enem_avoid_hazards*8, {"monster_avoid_hazards"}},
-
-  // killough 10/98
-  {"Affected by Friction",S_YESNO,m_null,E_X,E_Y+ enem_friction*8, {"monster_friction"}},
-
-  {"Rescue Dying Friends",S_YESNO,m_null,E_X,E_Y+ enem_help_friends*8, {"help_friends"}},
-
-  // killough 7/19/98
-  {"Number Of Single-Player Helper Dogs",S_NUM|S_LEVWARN,m_null,E_X,E_Y+ enem_helpers*8, {"player_helpers"}},
-
-  // killough 8/8/98
-  {"Distance Friends Stay Away",S_NUM,m_null,E_X,E_Y+ enem_distfriend*8, {"friend_distance"}},
-
-  {"Allow dogs to jump down",S_YESNO,m_null,E_X,E_Y+ enem_dog_jumping*8, {"dog_jumping"}},
-
-  {"Colored blood and gibs",S_YESNO,m_null,E_X,E_Y+ enem_colored_blood*8, {"colored_blood"}},
-
-  // Button for resetting to defaults
-  {0,S_RESET,m_null,X_BUTTON,Y_BUTTON},
-
-  // Final entry
-  {0,S_SKIP|S_END,m_null}
-
-};
-
-/////////////////////////////
-
-// Setting up for the Enemies screen. Turn on flags, set pointers,
-// locate the first item on the screen where the cursor is allowed to
-// land.
-
-void M_Enemy(int choice)
-{
-  M_SetupNextMenu(&EnemyDef);
-
-  setup_active = true;
-  setup_screen = ss_enem;
-  set_enemy_active = true;
-  setup_select = false;
-  default_verify = false;
-  setup_gather = false;
-  mult_screens_index = 0;
-  current_setup_menu = enem_settings[0];
-  set_menu_itemon = M_GetSetupMenuItemOn();
-  while (current_setup_menu[set_menu_itemon++].m_flags & S_SKIP);
-  current_setup_menu[--set_menu_itemon].m_flags |= S_HILITE;
-}
-
-// The drawing part of the Enemies Setup initialization. Draw the
-// background, title, instruction line, and items.
-
-void M_DrawEnemy(void)
-{
-  menuactive = mnact_full;
-
-  M_DrawBackground("FLOOR4_6", 0); // Draw background
-
-  // proff/nicolas 09/20/98 -- changed for hi-res
-  M_DrawTitle(114, 2, "M_ENEM", CR_DEFAULT, "ENEMIES", CR_GOLD);
-  M_DrawInstructions();
-  M_DrawScreenItems(current_setup_menu);
-
-  // If the Reset Button has been selected, an "Are you sure?" message
-  // is overlayed across everything else.
-
-  if (default_verify)
-    M_DrawDefVerify();
-}
-
 
 /////////////////////////////
 //
 // The General table.
 // killough 10/10/98
 
-extern int usemouse, default_mus_card, default_snd_card;
-extern int detect_voices, realtic_clock_rate, tran_filter_pct;
-
-setup_menu_t gen_settings1[], gen_settings2[], gen_settings3[];
-setup_menu_t gen_settings4[], gen_settings5[], gen_settings6[];
-setup_menu_t gen_settings7[], gen_settings8[];
-
-setup_menu_t* gen_settings[] =
+static const char *gen_pages[] =
 {
-  gen_settings1,
-  gen_settings2,
-  gen_settings3,
-  gen_settings4,
-  gen_settings5,
-  gen_settings6,
-  gen_settings7,
-  gen_settings8,
+  "Video",
+  "Audio",
+  "Mouse",
+  "Controller",
+  "Misc",
   NULL
 };
 
-#define G_X 226
-#define GF_X 76
-#define G_Y 23
-#define G_X2 284
+setup_menu_t gen_video_settings[], gen_audio_settings[], gen_mouse_settings[];
+setup_menu_t gen_controller_settings[], gen_misc_settings[];
+
+setup_menu_t* gen_settings[] =
+{
+  gen_video_settings,
+  gen_audio_settings,
+  gen_mouse_settings,
+  gen_controller_settings,
+  gen_misc_settings,
+  NULL
+};
+
+#define G_X 210
+#define G2_X 220
 
 static const char *videomodes[] = {
-  "15bit","16bit", "32bit",
-#ifdef GL_DOOM
+  "Software",
   "OpenGL",
-#endif
   NULL};
-
-static const char *gltexformats[] = {
-  "GL_RGBA","GL_RGB5_A1", "GL_RGBA4", NULL};
-
-setup_menu_t gen_settings1[] = { // General Settings screen1
-  {"Video",                          S_SKIP|S_TITLE,     m_null, G_X, G_Y+ 1*8},
-  {"Video mode",                     S_CHOICE|S_PRGWARN, m_null, G_X, G_Y+ 2*8, {"videomode"}, 0, 0, 0, videomodes},
-  {"Aspect Ratio",                   S_CHOICE,           m_null, G_X, G_Y+ 3*8, {"render_aspect"}, 0, 0, M_ChangeAspectRatio, render_aspects_list},
-  {"Status Bar and Menu Appearance", S_CHOICE,           m_null, G_X, G_Y+ 4*8, {"render_stretch_hud"}, 0, 0, M_ChangeStretch, render_stretch_list},
-  
-  {"Enable Translucency",            S_YESNO,            m_null, G_X, G_Y+ 6*8, {"translucency"}, 0, 0, M_Trans},
-  {"Translucency filter percentage", S_NUM,              m_null, G_X, G_Y+ 7*8, {"tran_filter_pct"}, 0, 0, M_Trans},
-  {"Uncapped Framerate",             S_YESNO,            m_null, G_X, G_Y+ 8*8, {"uncapped_framerate"}, 0, 0, M_ChangeUncappedFrameRate},
-
-  {"Sound & Music",                  S_SKIP|S_TITLE,     m_null, G_X, G_Y+10*8},
-  {"Number of Sound Channels",       S_NUM|S_PRGWARN,    m_null, G_X, G_Y+11*8, {"snd_channels"}},
-  {"Enable v1.1 Pitch Effects",      S_YESNO,            m_null, G_X, G_Y+12*8, {"pitched_sounds"}},
-  {"disable sound cutoffs",          S_YESNO,            m_null, G_X, G_Y+13*8, {"full_sounds"}},
-
-  // Button for resetting to defaults
-  {0,S_RESET,m_null,X_BUTTON,Y_BUTTON},
-
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,KB_NEXT,KB_Y+20*8, {gen_settings2}},
-  {0,S_SKIP|S_END,m_null}
-};
 
 static const char *gen_skillstrings[] = {
   // Dummy first option because defaultskill is 1-based
@@ -3298,194 +3471,180 @@ static const char *gen_skillstrings[] = {
 
 static const char *gen_compstrings[] =
 {
-  "17/Default",
-  "0/Doom v1.2",
-  "1/Doom v1.666",
-  "2/Doom (2) v1.9",
-  "3/Ultimate v1.9",
-  "4/Final Doom",
-  "5/DosDoom",
-  "6/TASDoom",
-  "7/Boom vanilla",
-  "8/Boom v2.01",
-  "9/Boom",
-  "10/LxDoom",
-  "11/MBF",
-  "12/PrB 2.03b",
-  "13/PrB 2.1.x",
-  "14/PrB 2.2.x",
-  "15/PrB 2.3.x",
-  "16/PrB 2.4.0",
-  "17/PrB+ Latest",
+  "Default",
+  "Doom v1.2",
+  "Doom v1.666",
+  "Doom/2 v1.9",
+  "Ultimate Doom",
+  "Final Doom",
+  "DosDoom",
+  "TASDoom",
+  "Boom's vanilla",
+  "Boom v2.01",
+  "Boom",
+  "LxDoom",
+  "MBF",
+  "PrBoom 2.03b",
+  "PrBoom 2.1.x",
+  "PrBoom 2.2.x",
+  "PrBoom 2.3.x",
+  "PrBoom 2.4.0",
+  "Latest PrBoom+",
+  "~",
+  "~",
+  "~",
+  "MBF21",
   NULL
 };
 
-setup_menu_t gen_settings2[] = { // General Settings screen2
-  {"Input Devices",                    S_SKIP|S_TITLE, m_null, G_X, G_Y+ 1*8},
-  {"Enable Mouse",                     S_YESNO, m_null, G_X, G_Y+ 2*8, {"use_mouse"}},
+static const char *death_use_strings[] = { "default", "nothing", "reload", NULL };
 
-  {"Files Preloaded at Game Startup",  S_SKIP|S_TITLE, m_null, G_X, G_Y + 4*8},
-  {"WAD # 1",                          S_FILE, m_null, GF_X, G_Y+ 5*8, {"wadfile_1"}}, 
-  {"WAD #2",                           S_FILE, m_null, GF_X, G_Y+ 6*8, {"wadfile_2"}},
-  {"DEH/BEX # 1",                      S_FILE, m_null, GF_X, G_Y+ 7*8, {"dehfile_1"}},
-  {"DEH/BEX #2",                       S_FILE, m_null, GF_X, G_Y+ 8*8, {"dehfile_2"}},
+static const char *render_aspects_list[] = { "auto", "16:9", "16:10", "4:3", "5:4", NULL };
 
-  {"Miscellaneous",                    S_SKIP|S_TITLE,  m_null, G_X, G_Y+10*8},
-  {"Maximum number of player corpses", S_NUM|S_PRGWARN, m_null, G_X, G_Y+11*8, {"max_player_corpse"}},
-  {"Game speed, percentage of normal", S_NUM|S_PRGWARN, m_null, G_X, G_Y+12*8, {"realtic_clock_rate"}},
-  {"Default skill level",              S_CHOICE,        m_null, G_X, G_Y+13*8, {"default_skill"}, 0, 0, NULL, gen_skillstrings},
-  {"Default compatibility level",      S_CHOICE,        m_null, G_X, G_Y+14*8, {"default_compatibility_level"}, 0, 0, NULL, &gen_compstrings[1]},
-  {"Show ENDOOM screen",               S_YESNO,         m_null, G_X, G_Y+15*8, {"showendoom"}},
-  {"Fullscreen menu background",       S_YESNO, m_null, G_X, G_Y + 16*8, {"menu_background"}},
-
-  {"<- PREV",S_SKIP|S_PREV, m_null, KB_PREV, KB_Y+20*8, {gen_settings1}},
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,KB_NEXT,KB_Y+20*8, {gen_settings3}},
-  {0,S_SKIP|S_END,m_null}
+static const char* render_stretch_list[] = {
+  "Not Adjusted", "Doom Format", "Fit to Width", NULL
 };
 
-setup_menu_t gen_settings3[] = { // General Settings screen2
-  {"Demos",                       S_SKIP|S_TITLE, m_null, G_X, G_Y+ 1*8},
-  {"Use Extended Format",         S_YESNO|S_PRGWARN, m_null,G_X,G_Y+ 2*8, {"demo_extendedformat"}, 0, 0, M_ChangeDemoExtendedFormat},
-  {"Overwrite Existing",          S_YESNO, m_null, G_X, G_Y+ 3*8, {"demo_overwriteexisting"}},
-  {"Smooth Demo Playback",        S_YESNO, m_null, G_X, G_Y+ 4*8, {"demo_smoothturns"}, 0, 0, M_ChangeDemoSmoothTurns},
-  {"Smooth Demo Playback Factor", S_NUM,   m_null, G_X, G_Y+ 5*8, {"demo_smoothturnsfactor"}, 0, 0, M_ChangeDemoSmoothTurns},
-  {"Quickstart Window (ms)",      S_NUM,   m_null, G_X, G_Y+6*8, {"quickstart_window_ms"}},
-
-  {"Movements",                   S_SKIP|S_TITLE,m_null,G_X, G_Y+8*8},
-  {"Permanent Strafe50",          S_YESNO, m_null, G_X, G_Y+ 9*8, {"movement_strafe50"}, 0, 0, M_ChangeSpeed},
-
-  {"Mouse",                       S_SKIP|S_TITLE,m_null, G_X, G_Y+11*8},
-  {"Dbl-Click As Use",            S_YESNO, m_null, G_X, G_Y+12*8, {"mouse_doubleclick_as_use"}},
-  {"Carry Fractional Tics",       S_YESNO, m_null, G_X, G_Y+13*8, {"mouse_carrytics"}},
-  {"Enable Mouselook",            S_YESNO, m_null, G_X, G_Y+14*8, {"movement_mouselook"}, 0, 0, M_ChangeMouseLook},
-  {"No Vertical Mouse",           S_YESNO, m_null, G_X, G_Y+15*8, {"movement_mousenovert"}},
-  {"Invert Mouse",                S_YESNO, m_null, G_X, G_Y+16*8, {"movement_mouseinvert"}, 0, 0, M_ChangeMouseInvert},
-  {"Max View Pitch",              S_NUM,   m_null, G_X, G_Y+17*8, {"movement_maxviewpitch"}, 0, 0, M_ChangeMaxViewPitch},
-  {"Mouse Strafe Divisor",        S_NUM,   m_null, G_X, G_Y+18*8, {"movement_mousestrafedivisor"}},
-
-  {"<- PREV",S_SKIP|S_PREV, m_null,KB_PREV, KB_Y+20*8, {gen_settings2}},
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,KB_NEXT,KB_Y+20*8, {gen_settings4}},
-  {0,S_SKIP|S_END,m_null}
-};
-
-static const char *renderfilters[] = {"none", "point", "linear", "rounded"};
-static const char *edgetypes[] = {"jagged", "sloped"};
-
-setup_menu_t gen_settings4[] = { // General Settings screen3
-  {"Display Options",          S_SKIP|S_TITLE, m_null, G_X, G_Y+ 1*8},
-  {"Filter for walls",           S_CHOICE, m_null, G_X, G_Y+ 2*8, {"filter_wall"}, 0, 0, NULL, renderfilters},
-  {"Filter for floors/ceilings", S_CHOICE, m_null, G_X, G_Y+ 3*8, {"filter_floor"}, 0, 0, NULL, renderfilters},
-  {"Filter for sprites",         S_CHOICE, m_null, G_X, G_Y+ 4*8, {"filter_sprite"}, 0, 0, NULL, renderfilters},
-  {"Filter for patches",         S_CHOICE, m_null, G_X, G_Y+ 5*8, {"filter_patch"}, 0, 0, NULL, renderfilters},
-  {"Filter for lighting",        S_CHOICE, m_null, G_X, G_Y+ 6*8, {"filter_z"}, 0, 0, NULL, renderfilters},
-
-  {"Drawing of sprite edges",    S_CHOICE, m_null, G_X, G_Y+ 8*8, {"sprite_edges"}, 0, 0, NULL, edgetypes},
-  {"Drawing of patch edges",     S_CHOICE, m_null, G_X, G_Y+ 9*8, {"patch_edges"}, 0, 0, NULL, edgetypes},
-  {"Flashing HOM indicator",     S_YESNO,  m_null, G_X, G_Y+10*8, {"flashing_hom"}},
-
-  // prboom-plus 
-  {"Wipe Screen Effect",         S_YESNO,  m_null, G_X, G_Y+12*8, {"render_wipescreen"}},
-  {"Change Palette On Pain",     S_YESNO,  m_null, G_X, G_Y+14*8, {"palette_ondamage"}, 0, 0, M_ChangeApplyPalette},
-  {"Change Palette On Bonus",    S_YESNO,  m_null, G_X, G_Y+15*8, {"palette_onbonus"}, 0, 0, M_ChangeApplyPalette},
-  {"Change Palette On Powers",   S_YESNO,  m_null, G_X, G_Y+16*8, {"palette_onpowers"}, 0, 0, M_ChangeApplyPalette},
-
-  {"<- PREV",S_SKIP|S_PREV, m_null, KB_PREV, KB_Y+20*8, {gen_settings3}},
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,KB_NEXT,KB_Y+20*8, {gen_settings5}},
-  // Final entry
-
-  {0,S_SKIP|S_END,m_null}
-};
-
-setup_menu_t gen_settings5[] = { // General Settings screen3
-#ifdef GL_DOOM
-  {"OpenGL Options",             S_SKIP|S_TITLE,m_null,G_X,G_Y+1*8},
-  {"Field Of View",             S_NUM,    m_null, G_X, G_Y+ 2*8, {"render_fov"}, 0, 0, M_ChangeFOV},
-  {"Sector Light Mode",         S_CHOICE, m_null, G_X, G_Y+ 3*8, {"gl_lightmode"}, 0, 0, M_ChangeLightMode, gl_lightmodes},
-  {"Allow Fog",                 S_YESNO,  m_null, G_X, G_Y+ 4*8, {"gl_fog"}, 0, 0, M_ChangeAllowFog},
-  {"Thing Sprite Fuzz",         S_CHOICE, m_null, G_X, G_Y+ 5*8, {"gl_thingspritefuzzmode"}, 0, 0, 0, gl_spritefuzzmodes},
-  {"Weapon Sprite Fuzz",        S_CHOICE, m_null, G_X, G_Y+ 6*8, {"gl_weaponspritefuzzmode"}, 0, 0, 0, gl_spritefuzzmodes},
-  {"Paper Items",               S_YESNO,  m_null, G_X, G_Y+ 7*8, {"render_paperitems"}},
-  {"Smooth sprite edges",       S_YESNO,  m_null, G_X, G_Y+ 8*8, {"gl_sprite_blend"}},
-  {"Adjust Sprite Clipping",    S_CHOICE, m_null, G_X, G_Y+ 9*8, {"gl_spriteclip"}, 0, 0, M_ChangeSpriteClip, gl_spriteclipmodes},
-  {"Item out of Floor offset",  S_NUM,    m_null, G_X, G_Y+10*8, {"gl_sprite_offset"}, 0, 0, M_ChangeSpriteClip},
-  {"Health Bar Above Monsters", S_YESNO,  m_null, G_X, G_Y+11*8, {"health_bar"}},
-#endif
-
-  {"<- PREV",S_SKIP|S_PREV, m_null,KB_PREV, KB_Y+20*8, {gen_settings4}},
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,KB_NEXT,KB_Y+20*8, {gen_settings6}},
-  {0,S_SKIP|S_END,m_null}
-};
-
-setup_menu_t gen_settings6[] =
+static const char* fake_contrast_list[] =
 {
-  {"EMULATION"                         ,S_SKIP|S_TITLE,m_null,G_X2,G_Y+ 1*8},
-  {"WARN ON SPECHITS OVERFLOW"         ,S_YESNO     ,m_null,G_X2,G_Y+ 2*8, {"overrun_spechit_warn"}},
-  {"TRY TO EMULATE IT"                 ,S_YESNO     ,m_null,G_X2,G_Y+ 3*8, {"overrun_spechit_emulate"}},
-  {"WARN ON REJECT OVERFLOW"           ,S_YESNO     ,m_null,G_X2,G_Y+ 4*8, {"overrun_reject_warn"}},
-  {"TRY TO EMULATE IT"                 ,S_YESNO     ,m_null,G_X2,G_Y+ 5*8, {"overrun_reject_emulate"}},
-  {"WARN ON INTERCEPTS OVERFLOW"       ,S_YESNO     ,m_null,G_X2,G_Y+ 6*8, {"overrun_intercept_warn"}},
-  {"TRY TO EMULATE IT"                 ,S_YESNO     ,m_null,G_X2,G_Y+ 7*8, {"overrun_intercept_emulate"}},
-  {"WARN ON PLAYERINGAME OVERFLOW"     ,S_YESNO     ,m_null,G_X2,G_Y+ 8*8, {"overrun_playeringame_warn"}},
-  {"TRY TO EMULATE IT"                 ,S_YESNO     ,m_null,G_X2,G_Y+ 9*8, {"overrun_playeringame_emulate"}},
-  {"WARN ON DONUT OVERFLOW"            ,S_YESNO     ,m_null,G_X2,G_Y+10*8, {"overrun_donut_warn"}},
-  {"TRY TO EMULATE IT"                 ,S_YESNO     ,m_null,G_X2,G_Y+11*8, {"overrun_donut_emulate"}},
-  {"WARN ON MISSEDBACKSIDE OVERFLOW"   ,S_YESNO     ,m_null,G_X2,G_Y+12*8, {"overrun_missedbackside_warn"}},
-  {"TRY TO EMULATE IT"                 ,S_YESNO     ,m_null,G_X2,G_Y+13*8, {"overrun_missedbackside_emulate"}},
-
-  {"<- PREV",S_SKIP|S_PREV,m_null,KB_PREV,KB_Y+20*8, {gen_settings5}},
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,KB_NEXT,KB_Y+20*8, {gen_settings7}},
-  {0,S_SKIP|S_END,m_null}
+  [FAKE_CONTRAST_MODE_OFF] = "Off",
+  [FAKE_CONTRAST_MODE_ON] = "Normal",
+  [FAKE_CONTRAST_MODE_SMOOTH] = "Smooth",
+  NULL
 };
 
-static const char *jumpheights[] = {
-  "No", "Low", "High", NULL};
+static const char *gl_fade_mode_list[] = { "Normal", "Smooth", "TrueColor", NULL };
 
-setup_menu_t gen_settings7[] =
+setup_menu_t gen_video_settings[] = {
+  { "Video mode", S_CHOICE | S_STR, m_conf, G_X, dsda_config_videomode, 0, videomodes },
+  { "Screen Resolution", S_CHOICE | S_STR, m_conf, G_X, dsda_config_screen_resolution, 0, screen_resolutions_list },
+  { "Aspect Ratio", S_CHOICE, m_conf, G_X, dsda_config_render_aspect, 0, render_aspects_list },
+  { "Fullscreen Video mode", S_YESNO, m_conf, G_X, dsda_config_use_fullscreen },
+  { "Exclusive Fullscreen", S_YESNO, m_conf, G_X, dsda_config_exclusive_fullscreen },
+  EMPTY_LINE,
+  TITLE("FPS", G_X),
+  { "Vertical Sync", S_YESNO, m_conf, G_X, dsda_config_render_vsync },
+  { "Uncapped FPS", S_YESNO, m_conf, G_X, dsda_config_uncapped_framerate },
+  { "FPS Limit", S_NUM, m_conf, G_X, dsda_config_fps_limit },
+  { "Background FPS Limit", S_NUM, m_conf, G_X, dsda_config_background_fps_limit },
+  { "Show FPS", S_YESNO,  m_conf, G_X, dsda_config_show_fps },
+  EMPTY_LINE,
+  { "Fake Contrast", S_CHOICE, m_conf, G_X, dsda_config_fake_contrast_mode, 0, fake_contrast_list },
+  { "OpenGL Light Fade", S_CHOICE, m_conf, G_X, dsda_config_gl_fade_mode, 0, gl_fade_mode_list },
+
+  NEXT_PAGE(gen_audio_settings),
+  FINAL_ENTRY
+};
+
+setup_menu_t gen_audio_settings[] = {
+  { "SFX Volume", S_THERMO, m_conf, G_X, dsda_config_sfx_volume},
+  { "Music Volume", S_THERMO, m_conf, G_X, dsda_config_music_volume},
+  EMPTY_LINE,
+  { "Enable v1.1 Pitch Effects", S_YESNO, m_conf, G_X, dsda_config_pitched_sounds },
+  { "Disable Sound Cutoffs", S_YESNO, m_conf, G_X, dsda_config_full_sounds },
+  { "SFX For Movement Toggles", S_YESNO, m_conf, G_X, dsda_config_movement_toggle_sfx },
+  { "Mute When Out of Focus", S_YESNO, m_conf, G_X, dsda_config_mute_unfocused_window },
+  EMPTY_LINE,
+  TITLE("Limits", G_X),
+  { "Number of Sound Channels", S_NUM, m_conf, G_X, dsda_config_snd_channels },
+  { "Parallel Same-Sound Limit", S_NUM, m_conf, G_X, dsda_config_parallel_sfx_limit },
+  { "Parallel Same-Sound Window", S_NUM, m_conf, G_X, dsda_config_parallel_sfx_window },
+  EMPTY_LINE,
+  { "Preferred MIDI player", S_CHOICE | S_STR, m_conf, G_X, dsda_config_snd_midiplayer, 0, midiplayers },
+  { "Audio Output Device", S_CHOICE | S_STR, m_conf, G_X, dsda_config_snd_device, 0, audio_devices_list },
+
+  PREV_PAGE(gen_video_settings),
+  NEXT_PAGE(gen_mouse_settings),
+  FINAL_ENTRY
+};
+
+setup_menu_t gen_mouse_settings[] = {
+  { "Enable Mouse", S_YESNO, m_conf, G2_X, dsda_config_use_mouse },
+  EMPTY_LINE,
+  { "Horizontal Sensitivity", S_NUM, m_conf, G2_X, dsda_config_mouse_sensitivity_horiz },
+  { "Vertical Sensitivity", S_NUM, m_conf, G2_X, dsda_config_mouse_sensitivity_vert },
+  { "Free Look Sensitivity", S_NUM, m_conf, G2_X, dsda_config_mouse_sensitivity_mlook },
+  { "Acceleration", S_NUM, m_conf, G2_X, dsda_config_mouse_acceleration },
+  EMPTY_LINE,
+  { "Enable Free Look", S_YESNO, m_conf, G2_X, dsda_config_freelook },
+  { "Invert Free Look", S_YESNO, m_conf, G2_X, dsda_config_movement_mouseinvert },
+  EMPTY_LINE,
+  { "Mouse Strafe Divisor", S_NUM, m_conf, G2_X, dsda_config_movement_mousestrafedivisor },
+  { "Dbl-Click As Use", S_YESNO, m_conf, G2_X, dsda_config_mouse_doubleclick_as_use },
+  { "Vertical Mouse Movement", S_YESNO, m_conf, G2_X, dsda_config_vertmouse },
+  { "Carry Fractional Tics", S_YESNO, m_conf, G2_X, dsda_config_mouse_carrytics },
+  { "Mouse Stutter Correction", S_YESNO, m_conf, G2_X, dsda_config_mouse_stutter_correction },
+
+  PREV_PAGE(gen_audio_settings),
+  NEXT_PAGE(gen_controller_settings),
+  FINAL_ENTRY
+};
+
+setup_menu_t gen_controller_settings[] = {
+  { "Enable Controller", S_YESNO, m_conf, G2_X, dsda_config_use_game_controller },
+  EMPTY_LINE,
+  { "Left Horizontal Sensitivity", S_NUM, m_conf, G2_X, dsda_config_left_analog_sensitivity_x },
+  { "Left Vertical Sensitivity", S_NUM, m_conf, G2_X, dsda_config_left_analog_sensitivity_y },
+  { "Right Horizontal Sensitivity", S_NUM, m_conf, G2_X, dsda_config_right_analog_sensitivity_x },
+  { "Right Vertical Sensitivity", S_NUM, m_conf, G2_X, dsda_config_right_analog_sensitivity_y },
+  { "Acceleration", S_NUM, m_conf, G2_X, dsda_config_analog_look_acceleration },
+  EMPTY_LINE,
+  { "Enable Free Look", S_YESNO, m_conf, G2_X, dsda_config_freelook },
+  { "Invert Free Look", S_YESNO, m_conf, G2_X, dsda_config_invert_analog_look },
+  { "Swap Analogs", S_YESNO, m_conf, G2_X, dsda_config_swap_analogs },
+  EMPTY_LINE,
+  { "Left Analog Deadzone", S_NUM, m_conf, G2_X, dsda_config_left_analog_deadzone },
+  { "Right Analog Deadzone", S_NUM, m_conf, G2_X, dsda_config_right_analog_deadzone },
+  { "Left Trigger Deadzone", S_NUM, m_conf, G2_X, dsda_config_left_trigger_deadzone },
+  { "Right Trigger Deadzone", S_NUM, m_conf, G2_X, dsda_config_right_trigger_deadzone },
+
+  PREV_PAGE(gen_mouse_settings),
+  NEXT_PAGE(gen_misc_settings),
+  FINAL_ENTRY
+};
+
+static const char* endoom_list[] = { "Off", "On", "Smart", NULL };
+
+setup_menu_t gen_misc_settings[] = {
+  { "Death Use Action", S_CHOICE, m_conf, G2_X, dsda_config_death_use_action, 0, death_use_strings },
+  { "Boom Weapon Auto Switch", S_YESNO, m_conf, G2_X, dsda_config_switch_when_ammo_runs_out },
+  { "Auto Switch Weapon on Pickup", S_YESNO, m_conf, G2_X, dsda_config_switch_weapon_on_pickup },
+  { "Enable Cheat Code Entry", S_YESNO, m_conf, G2_X, dsda_config_cheat_codes },
+  { "Skip Quit Prompt", S_YESNO, m_conf, G2_X, dsda_config_skip_quit_prompt },
+  EMPTY_LINE,
+  { "Endoom Screen", S_CHOICE, m_conf, G2_X, dsda_config_show_endoom, 0, endoom_list },
+  EMPTY_LINE,
+  TITLE("Rewind", G2_X),
+  { "Rewind Interval (s)", S_NUM, m_conf, G2_X, dsda_config_auto_key_frame_interval },
+  { "Rewind Depth", S_NUM, m_conf, G2_X, dsda_config_auto_key_frame_depth },
+  { "Rewind Timeout (ms)", S_NUM, m_conf, G2_X, dsda_config_auto_key_frame_timeout },
+  EMPTY_LINE,
+  { "Autosave On Level Start", S_YESNO, m_conf, G2_X, dsda_config_auto_save },
+  { "Organize My Save Files", S_YESNO, m_conf, G2_X, dsda_config_organized_saves },
+
+  PREV_PAGE(gen_controller_settings),
+  FINAL_ENTRY
+};
+
+// To (un)set fullscreen video after menu changes
+void M_ChangeFullScreen(void)
 {
-  {"COMPATIBILITY WITH COMMON MAPPING ERRORS" ,S_SKIP|S_TITLE,m_null,G_X2,G_Y+1*8},
-  {"LINEDEFS W/O TAGS APPLY LOCALLY"   ,S_YESNO     ,m_null,G_X2,G_Y+2*8, {"comperr_zerotag"}},
-  {"USE PASSES THRU ALL SPECIAL LINES" ,S_YESNO     ,m_null,G_X2,G_Y+3*8, {"comperr_passuse"}},
-  {"WALK UNDER SOLID HANGING BODIES"   ,S_YESNO     ,m_null,G_X2,G_Y+4*8, {"comperr_hangsolid"}},
-  {"FIX CLIPPING PROBLEMS IN LARGE LEVELS" ,S_YESNO ,m_null,G_X2,G_Y+5*8, {"comperr_blockmap"}},
-  {"ALLOW JUMP"                        ,S_CHOICE    ,m_null,G_X2,G_Y+6*8, {"comperr_allowjump"}, 0, 0, NULL, jumpheights},
-  {"ALLOW VERTICAL AIMING"             ,S_YESNO     ,m_null,G_X2,G_Y+7*8, {"comperr_freeaim"}},
+  I_UpdateVideoMode();
 
-  {"<- PREV",S_SKIP|S_PREV,m_null,KB_PREV,KB_Y+20*8, {gen_settings6}},
-#ifdef GL_DOOM
-  {"NEXT ->",S_SKIP|S_NEXT,m_null,KB_NEXT,KB_Y+20*8, {gen_settings8}},
-#endif
-  {0,S_SKIP|S_END,m_null}
-};
+  if (V_IsOpenGLMode())
+  {
+    gld_PreprocessLevel();
+  }
+}
 
-static const char *gltexfilters[] = {
-  "None", "Linear", "Nearest Mipmap", "Linear Mipmap", "Bilinear", "Trilinear", NULL};
-
-setup_menu_t gen_settings8[] = { // General Settings screen4
-#ifdef GL_DOOM
-  {"Texture Options",  S_SKIP|S_TITLE,m_null,G_X,G_Y+ 1*8},
-  {"Texture Filter Mode",        S_CHOICE, m_null, G_X, G_Y+2 *8, {"gl_texture_filter"}, 0, 0, M_ChangeTextureParams, gltexfilters},
-  {"Sprite Filter Mode",        S_CHOICE, m_null, G_X, G_Y+3 *8, {"gl_sprite_filter"}, 0, 0, M_ChangeTextureParams, gltexfilters},
-  {"Patch Filter Mode",          S_CHOICE, m_null, G_X, G_Y+4 *8, {"gl_patch_filter"}, 0, 0, M_ChangeTextureParams, gltexfilters},
-  {"Texture format",             S_CHOICE, m_null, G_X, G_Y+5 *8, {"gl_tex_format_string"}, 0, 0, M_ChangeTextureParams, gltexformats},
-
-  {"Enable Colormaps",           S_YESNO, m_null, G_X,G_Y+ 7*8, {"gl_boom_colormaps"}, 0, 0, M_ChangeAllowBoomColormaps},
-  {"Enable Internal Hi-Res",     S_YESNO, m_null, G_X,G_Y+ 8*8, {"gl_texture_internal_hires"}, 0, 0, M_ChangeTextureUseHires},
-  {"Enable External Hi-Res",     S_YESNO, m_null, G_X,G_Y+ 9*8, {"gl_texture_external_hires"}, 0, 0, M_ChangeTextureUseHires},
-  {"Override PWAD's graphics with Hi-Res" ,S_YESNO|S_PRGWARN,m_null,G_X,G_Y+10*8, {"gl_hires_override_pwads"}, 0, 0, M_ChangeTextureUseHires},
-
-  {"Blend Animations",           S_YESNO,  m_null, G_X, G_Y+13*8, {"gl_blend_animations"}},
-#endif //GL_DOOM
-
-  {"<- PREV",S_SKIP|S_PREV,m_null,KB_PREV,KB_Y+20*8, {gen_settings7}},
-  {0,S_SKIP|S_END,m_null}
-};
-
-void M_Trans(void) // To reset translucency after setting it in menu
+void M_ChangeVideoMode(void)
 {
-  general_translucency = default_translucency; //e6y: Fix for "translucency won't change until you restart the engine"
+  V_ChangeScreenResolution();
+}
 
-  if (general_translucency)
-    R_InitTranMap(0);
+void M_ChangeUseGLSurface(void)
+{
+  V_ChangeScreenResolution();
 }
 
 void M_ChangeDemoSmoothTurns(void)
@@ -3493,462 +3652,762 @@ void M_ChangeDemoSmoothTurns(void)
   R_SmoothPlaying_Reset(NULL);
 }
 
-void M_ChangeTextureParams(void)
-{
-#ifdef GL_DOOM
-  if (V_GetMode() == VID_MODEGL)
-  {
-    gld_InitTextureParams();
-    gld_FlushTextures();
-  }
-#endif
-}
-
 // Setting up for the General screen. Turn on flags, set pointers,
 // locate the first item on the screen where the cursor is allowed to
 // land.
 
-void M_General(int choice)
+static void M_General(int choice)
 {
-  M_SetupNextMenu(&GeneralDef);
-
-  setup_active = true;
-  setup_screen = ss_gen;
-  set_general_active = true;
-  setup_select = false;
-  default_verify = false;
-  setup_gather = false;
-  mult_screens_index = 0;
-  current_setup_menu = gen_settings[0];
-  set_menu_itemon = M_GetSetupMenuItemOn();
-  while (current_setup_menu[set_menu_itemon++].m_flags & S_SKIP);
-  current_setup_menu[--set_menu_itemon].m_flags |= S_HILITE;
+  M_EnterSetup(&GeneralDef, &set_general_active, gen_settings[0],
+               gen_pages, arrlen(gen_pages), gen_settings);
 }
 
 // The drawing part of the General Setup initialization. Draw the
 // background, title, instruction line, and items.
 
-void M_DrawGeneral(void)
+static void M_DrawGeneral(void)
 {
-  menuactive = mnact_full;
+  M_ChangeMenu(NULL, mnact_full);
 
-  M_DrawBackground("FLOOR4_6", 0); // Draw background
+  M_DrawBackground(g_menu_flat, 0); // Draw background
 
   // proff/nicolas 09/20/98 -- changed for hi-res
-  M_DrawTitle(114, 2, "M_GENERL", CR_DEFAULT, "GENERAL", CR_GOLD);
+  M_DrawTitle(2, "GENERAL", cr_title); // M_GENERL
   M_DrawInstructions();
-  M_DrawScreenItems(current_setup_menu);
-
-  // If the Reset Button has been selected, an "Are you sure?" message
-  // is overlayed across everything else.
-
-  if (default_verify)
-    M_DrawDefVerify();
+  M_DrawSetupTabs(TABS_Y);
+  M_DrawScreenItems(current_setup_menu, DEFAULT_LIST_Y);
 }
 
-/////////////////////////////
-//
-// The Compatibility table.
-// killough 10/10/98
+static const char *display_pages[] =
+{
+  "Options",
+  "Status Bar",
+  "HUD",
+  "Crosshair",
+  NULL
+};
 
-#define C_X  284
-#define C_Y  32
-#define COMP_SPC 12
-#define C_NEXTPREV 131
+setup_menu_t display_options_settings[], display_statbar_settings[];
+setup_menu_t display_hud_settings[], display_crosshair_settings[];
 
-setup_menu_t comp_settings1[], comp_settings2[], comp_settings3[];
-setup_menu_t comp_settings3[];//e6y
+setup_menu_t* display_settings[] =
+{
+  display_options_settings,
+  display_statbar_settings,
+  display_hud_settings,
+  display_crosshair_settings,
+  NULL
+};
+
+#define D_X 226
+
+static const char* menu_background_list[] = { "Off", "Dark", "Texture", NULL };
+static const char* translucent_list[] = { "Off", "Default", "w/ Vanilla", NULL };
+static const char* viewbob_list[] = { "Off", "25%", "50%", "75%", "100%", NULL };
+static const char* weaponbob_list[] = { "Off", "25%", "50%", "75%", "100%", NULL };
+
+setup_menu_t display_options_settings[] = {
+  { "Hide Weapon", S_YESNO, m_conf, G_X, dsda_config_hide_weapon },
+  { "Wipe Screen Effect", S_YESNO,  m_conf, G_X, dsda_config_render_wipescreen },
+  { "View Bobbing", S_CHOICE, m_conf, G_X, dsda_config_viewbob, 0, viewbob_list },
+  { "Weapon Bobbing", S_CHOICE, m_conf, G_X, dsda_config_weaponbob, 0, weaponbob_list },
+  { "Weapon Attack Alignment", S_CHOICE, m_conf, G_X, dsda_config_weapon_attack_alignment, 0, weapon_attack_alignment_strings },
+  { "Fix Shallow Floor View Bob Jolt", S_YESNO, m_conf, G_X, dsda_config_fix_viewbob_floor_jolt },
+  { "Linear Sky Scrolling", S_YESNO, m_conf, G_X, dsda_config_render_linearsky },
+  { "Quake Intensity", S_NUM, m_conf, G_X, dsda_config_quake_intensity },
+  { "OpenGL Show Health Bars", S_YESNO, m_conf, G_X, dsda_config_gl_health_bar },
+  { "Translucent Sprites", S_CHOICE, m_conf, G_X, dsda_config_translucent_sprites, 0, translucent_list },
+  { "Translucent Ghosts", S_YESNO, m_conf, G_X, dsda_config_translucent_ghosts },
+  EMPTY_LINE,
+  { "Change Palette On Pain", S_YESNO, m_conf, G_X, dsda_config_palette_ondamage },
+  { "Change Palette On Bonus", S_YESNO, m_conf, G_X, dsda_config_palette_onbonus },
+  { "Change Palette On Powers", S_YESNO, m_conf, G_X, dsda_config_palette_onpowers },
+  EMPTY_LINE,
+  { "Menu Background", S_CHOICE, m_conf, G_X, dsda_config_menu_background, 0, menu_background_list },
+
+  NEXT_PAGE(display_statbar_settings),
+  FINAL_ENTRY
+};
+
+setup_menu_t display_statbar_settings[] =  // Demos Settings screen
+{
+  { "Hide Status Bar Horns", S_YESNO, m_conf, DM_X, dsda_config_hide_horns },
+  { "Single Key Display", S_YESNO, m_conf, DM_X, dsda_config_sts_traditional_keys },
+  { "Solid Color Background", S_YESNO, m_conf, DM_X, dsda_config_sts_solid_bg_color },
+  EMPTY_LINE,
+  TITLE("Coloring", DM_X),
+  { "Gray %",S_YESNO, m_conf, DM_X, dsda_config_sts_pct_always_gray },
+  { "Colored Numbers", S_YESNO, m_conf, DM_X, dsda_config_sts_colored_numbers },
+  { "Health Low/Ok", S_NUM, m_conf, DM_X, dsda_config_hud_health_red },
+  { "Health Ok/Good", S_NUM, m_conf, DM_X, dsda_config_hud_health_yellow },
+  { "Health Good/Extra", S_NUM, m_conf, DM_X, dsda_config_hud_health_green },
+  { "Ammo Low/Ok", S_NUM, m_conf, DM_X, dsda_config_hud_ammo_red },
+  { "Ammo Ok/Good", S_NUM, m_conf, DM_X, dsda_config_hud_ammo_yellow },
+  EMPTY_LINE,
+  { "Appearance", S_CHOICE, m_conf, DM_X, dsda_config_render_stretch_hud, 0, render_stretch_list },
+
+  PREV_PAGE(display_options_settings),
+  NEXT_PAGE(display_hud_settings),
+  FINAL_ENTRY
+};
+
+setup_menu_t display_hud_settings[] =  // Demos Settings screen
+{
+  { "Use Extended Hud", S_YESNO, m_conf, D_X, dsda_config_exhud },
+  { "Ex Hud Scale %", S_NUM, m_conf, D_X, dsda_config_ex_text_scale_x },
+  { "Ex Hud Ratio %", S_NUM, m_conf, D_X, dsda_config_ex_text_ratio_y },
+  EMPTY_LINE,
+  TITLE("Messages", D_X),
+  { "Show Messages", S_YESNO, m_conf, D_X, dsda_config_show_messages },
+  { "Report Revealed Secrets", S_YESNO, m_conf, D_X, dsda_config_hudadd_secretarea },
+  { "Announce Map On Entry", S_YESNO, m_conf, D_X, dsda_config_announce_map },
+
+  PREV_PAGE(display_statbar_settings),
+  NEXT_PAGE(display_crosshair_settings),
+  FINAL_ENTRY
+};
+
+static const char *crosshair_str[] =
+  { "none", "cross", "angle", "dot", "small", "slim", "tiny", "big", NULL };
+
+#define HUD_X 245
+
+setup_menu_t display_crosshair_settings[] =
+{
+  { "Enable Crosshair", S_CHOICE, m_conf, HUD_X, dsda_config_hudadd_crosshair, 0, crosshair_str },
+  EMPTY_LINE,
+  { "Scale Crosshair", S_YESNO, m_conf, HUD_X, dsda_config_hudadd_crosshair_scale },
+  { "Change Color By Player Health", S_YESNO, m_conf, HUD_X, dsda_config_hudadd_crosshair_health },
+  { "Change Color On Target", S_YESNO, m_conf, HUD_X, dsda_config_hudadd_crosshair_target },
+  { "Default Color", S_CRITEM, m_conf, HUD_X, dsda_config_hudadd_crosshair_color },
+  { "Target Color", S_CRITEM, m_conf, HUD_X, dsda_config_hudadd_crosshair_target_color },
+  { "Lock Crosshair On Target", S_YESNO, m_conf, HUD_X, dsda_config_hudadd_crosshair_lock_target },
+
+  PREV_PAGE(display_hud_settings),
+  FINAL_ENTRY
+};
+
+static void M_Display(int choice)
+{
+  M_EnterSetup(&DisplayDef, &set_display_active, display_settings[0],
+               display_pages, arrlen(display_pages), display_settings);
+}
+
+static void M_DrawDisplay(void)
+{
+  M_ChangeMenu(NULL, mnact_full);
+
+  M_DrawBackground(g_menu_flat, 0);
+
+  M_DrawTitle(2, "DISPLAY", cr_title); // M_DSPLAY
+  M_DrawInstructions();
+  M_DrawSetupTabs(TABS_Y);
+  M_DrawScreenItems(current_setup_menu, DEFAULT_LIST_Y);
+}
+
+static const char *comp_pages[] =
+{
+  "Options",
+  "Emulation",
+  NULL
+};
+
+setup_menu_t comp_options_settings[], comp_emulation_settings[];
 
 setup_menu_t* comp_settings[] =
 {
-  comp_settings1,
-  comp_settings2,
-  comp_settings3,
+  comp_options_settings,
+  comp_emulation_settings,
   NULL
 };
 
-enum
-{
-  compat_telefrag,
-  compat_dropoff,
-  compat_falloff,
-  compat_staylift,
-  compat_doorstuck,
-  compat_pursuit,
-  compat_vile,
-  compat_pain,
-  compat_skull,
-  compat_blazing,
-  compat_doorlight = 0,
-  compat_god,
-  compat_infcheat,
-  compat_zombie,
-  compat_skymap,
-  compat_stairs,
-  compat_floors,
-  compat_moveblock,
-  compat_model,
-  compat_zerotags,
-  compat_666 = 0,
-  compat_soul,
-  compat_maskedanim,
-  compat_sound,
-  //e6y
-  compat_plussettings,
-  compat_ouchface,
-  compat_maxhealth,
-  compat_translucency,
-  compat_skytransfers,
+setup_menu_t comp_options_settings[] = {
+  { "Default skill level", S_CHOICE, m_conf, G2_X, dsda_config_default_skill, 0, gen_skillstrings },
+  { "Default compatibility level", S_CHOICE, m_conf, G2_X, dsda_config_default_complevel, 0, &gen_compstrings[1] },
+  EMPTY_LINE,
+  { "Casual Play", S_SKIP | S_TITLE, m_conf, G2_X},
+  { "Pistol Start", S_YESNO, m_conf, G2_X, dsda_config_pistol_start },
+  { "Respawn Monsters", S_YESNO, m_conf, G2_X, dsda_config_respawn_monsters },
+  { "Fast Monsters", S_YESNO, m_conf, G2_X, dsda_config_fast_monsters },
+  { "No Monsters", S_YESNO, m_conf, G2_X, dsda_config_no_monsters },
+  { "Coop Spawns", S_YESNO, m_conf, G2_X, dsda_config_coop_spawns },
+  EMPTY_LINE,
+  { "Always Pistol Start", S_YESNO, m_conf, G2_X, dsda_config_always_pistol_start },
+  { "Allow Jumping", S_YESNO, m_conf, G2_X, dsda_config_allow_jumping },
+
+  NEXT_PAGE(comp_emulation_settings),
+  FINAL_ENTRY
 };
 
-setup_menu_t comp_settings1[] =  // Compatibility Settings screen #1
-{
-  {"Any monster can telefrag on MAP30", S_YESNO, m_null, C_X,
-   C_Y + compat_telefrag * COMP_SPC, {"comp_telefrag"}},
+setup_menu_t comp_emulation_settings[] = {
+  { "WARN ON SPECHITS OVERFLOW", S_YESNO, m_conf, AU_X, dsda_config_overrun_spechit_warn },
+  { "TRY TO EMULATE IT", S_YESNO, m_conf, AU_X, dsda_config_overrun_spechit_emulate },
+  { "WARN ON REJECT OVERFLOW", S_YESNO, m_conf, AU_X, dsda_config_overrun_reject_warn },
+  { "TRY TO EMULATE IT", S_YESNO, m_conf, AU_X, dsda_config_overrun_reject_emulate },
+  { "WARN ON INTERCEPTS OVERFLOW", S_YESNO, m_conf, AU_X, dsda_config_overrun_intercept_warn },
+  { "TRY TO EMULATE IT", S_YESNO, m_conf, AU_X, dsda_config_overrun_intercept_emulate },
+  { "WARN ON PLAYERINGAME OVERFLOW", S_YESNO, m_conf, AU_X, dsda_config_overrun_playeringame_warn },
+  { "TRY TO EMULATE IT", S_YESNO, m_conf, AU_X, dsda_config_overrun_playeringame_emulate },
+  EMPTY_LINE,
+  { "MAPPING ERROR FIXES", S_SKIP | S_TITLE, m_conf, AU_X},
+  { "USE PASSES THRU ALL SPECIAL LINES", S_YESNO, m_conf, AU_X, dsda_config_comperr_passuse },
+  { "WALK UNDER SOLID HANGING BODIES", S_YESNO, m_conf, AU_X, dsda_config_comperr_hangsolid },
+  { "FIX CLIPPING IN LARGE LEVELS", S_YESNO, m_conf, AU_X, dsda_config_comperr_blockmap },
 
-  {"Some objects never hang over tall ledges", S_YESNO, m_null, C_X,
-   C_Y + compat_dropoff * COMP_SPC, {"comp_dropoff"}},
-
-  {"Objects don't fall under their own weight", S_YESNO, m_null, C_X,
-   C_Y + compat_falloff * COMP_SPC, {"comp_falloff"}},
-
-  {"Monsters randomly walk off of moving lifts", S_YESNO, m_null, C_X,
-   C_Y + compat_staylift * COMP_SPC, {"comp_staylift"}},
-
-  {"Monsters get stuck on doortracks", S_YESNO, m_null, C_X,
-   C_Y + compat_doorstuck * COMP_SPC, {"comp_doorstuck"}},
-
-  {"Monsters don't give up pursuit of targets", S_YESNO, m_null, C_X,
-   C_Y + compat_pursuit * COMP_SPC, {"comp_pursuit"}},
-
-  {"Arch-Vile resurrects invincible ghosts", S_YESNO, m_null, C_X,
-   C_Y + compat_vile * COMP_SPC, {"comp_vile"}},
-
-  {"Pain Elementals limited to 21 lost souls", S_YESNO, m_null, C_X,
-   C_Y + compat_pain * COMP_SPC, {"comp_pain"}},
-
-  {"Lost souls get stuck behind walls", S_YESNO, m_null, C_X,
-   C_Y + compat_skull * COMP_SPC, {"comp_skull"}},
-
-  {"Blazing doors make double closing sounds", S_YESNO, m_null, C_X,
-   C_Y + compat_blazing * COMP_SPC, {"comp_blazing"}},
-
-  // Button for resetting to defaults
-  {0,S_RESET,m_null,X_BUTTON,Y_BUTTON},
-
-  {"NEXT ->",S_SKIP|S_NEXT, m_null, KB_NEXT, C_Y+C_NEXTPREV, {comp_settings2}},
-
-  // Final entry
-  {0,S_SKIP|S_END,m_null}
+  PREV_PAGE(comp_options_settings),
+  FINAL_ENTRY
 };
 
-setup_menu_t comp_settings2[] =  // Compatibility Settings screen #2
+static void M_Compatibility(int choice)
 {
-  {"Tagged doors don't trigger special lighting", S_YESNO, m_null, C_X,
-   C_Y + compat_doorlight * COMP_SPC, {"comp_doorlight"}},
-
-  {"God mode isn't absolute", S_YESNO, m_null, C_X,
-   C_Y + compat_god * COMP_SPC, {"comp_god"}},
-
-  {"Powerup cheats are not infinite duration", S_YESNO, m_null, C_X,
-   C_Y + compat_infcheat * COMP_SPC, {"comp_infcheat"}},
-
-  {"Dead players can exit levels", S_YESNO, m_null, C_X,
-   C_Y + compat_zombie * COMP_SPC, {"comp_zombie"}},
-
-  {"Sky is unaffected by invulnerability", S_YESNO, m_null, C_X,
-   C_Y + compat_skymap * COMP_SPC, {"comp_skymap"}},
-
-  {"Use exactly Doom's stairbuilding method", S_YESNO, m_null, C_X,
-   C_Y + compat_stairs * COMP_SPC, {"comp_stairs"}},
-
-  {"Use exactly Doom's floor motion behavior", S_YESNO, m_null, C_X,
-   C_Y + compat_floors * COMP_SPC, {"comp_floors"}},
-
-  {"Use exactly Doom's movement clipping code", S_YESNO, m_null, C_X,
-   C_Y + compat_moveblock * COMP_SPC, {"comp_moveblock"}},
-
-  {"Use exactly Doom's linedef trigger model", S_YESNO, m_null, C_X,
-   C_Y + compat_model * COMP_SPC, {"comp_model"}},
-
-  {"Linedef effects work with sector tag = 0", S_YESNO, m_null, C_X,
-   C_Y + compat_zerotags * COMP_SPC, {"comp_zerotags"}},
-
-  {"NEXT ->",S_SKIP|S_NEXT, m_null, KB_NEXT, C_Y+C_NEXTPREV, {comp_settings3}},//e6y
-  {"<- PREV", S_SKIP|S_PREV, m_null, KB_PREV, C_Y+C_NEXTPREV,{comp_settings1}},
-
-  {"NEXT ->",S_SKIP|S_NEXT, m_null, KB_NEXT, C_Y+C_NEXTPREV, {comp_settings3}},
-
-  // Final entry
-
-  {0,S_SKIP|S_END,m_null}
-};
-
-//e6y
-setup_menu_t comp_settings3[] =  // Compatibility Settings screen #3
-{
-  {"Emulate pre-Ultimate BossDeath behaviour", S_YESNO, m_null, C_X,
-   C_Y + compat_666 * COMP_SPC, {"comp_666"}},
-
-  {"Lost souls don't bounce off flat surfaces", S_YESNO, m_null, C_X,
-   C_Y + compat_soul * COMP_SPC, {"comp_soul"}},
-
-  {"2S middle textures do not animate", S_YESNO, m_null, C_X,
-   C_Y + compat_maskedanim * COMP_SPC, {"comp_maskedanim"}},
-
-  //e6y
-  {"Retain quirks in Doom's sound code", S_YESNO, m_null, C_X,
-   C_Y + compat_sound * COMP_SPC, {"comp_sound"}},
-  {"PrBoom-Plus Settings", S_SKIP|S_TITLE,m_null,C_X,
-   C_Y + compat_plussettings * COMP_SPC},
-  {"Use Doom's buggy \"Ouch\" face code", S_YESNO, m_null, C_X,
-   C_Y + compat_ouchface * COMP_SPC, {"comp_ouchface"}},
-  {"Max Health in DEH applies only to potions", S_YESNO, m_null, C_X,
-   C_Y + compat_maxhealth * COMP_SPC, {"comp_maxhealth"}},
-  {"No predefined translucency for some things", S_YESNO, m_null, C_X,
-   C_Y + compat_translucency * COMP_SPC, {"comp_translucency"},0,0,deh_changeCompTranslucency},
-   // [FG]
-  {"allow MBF sky transfers in all complevels", S_YESNO, m_null, C_X,
-   C_Y + compat_skytransfers * COMP_SPC, {"comp_skytransfers"}},
-  {"<- PREV", S_SKIP|S_PREV, m_null, KB_PREV, C_Y+C_NEXTPREV,{comp_settings2}},
-  {0,S_SKIP|S_END,m_null}
-};
-
-// Setting up for the Compatibility screen. Turn on flags, set pointers,
-// locate the first item on the screen where the cursor is allowed to
-// land.
-
-void M_Compat(int choice)
-{
-  M_SetupNextMenu(&CompatDef);
-
-  setup_active = true;
-  setup_screen = ss_comp;
-  set_general_active = true;
-  setup_select = false;
-  default_verify = false;
-  setup_gather = false;
-  mult_screens_index = 0;
-  current_setup_menu = comp_settings[0];
-  set_menu_itemon = M_GetSetupMenuItemOn();
-  while (current_setup_menu[set_menu_itemon++].m_flags & S_SKIP);
-  current_setup_menu[--set_menu_itemon].m_flags |= S_HILITE;
+  M_EnterSetup(&CompatibilityDef, &set_compatibility_active, comp_settings[0],
+               comp_pages, arrlen(comp_pages), comp_settings);
 }
 
-// The drawing part of the Compatibility Setup initialization. Draw the
-// background, title, instruction line, and items.
-
-void M_DrawCompat(void)
+static void M_DrawCompatibility(void)
 {
-  menuactive = mnact_full;
+  M_ChangeMenu(NULL, mnact_full);
 
-  M_DrawBackground("FLOOR4_6", 0); // Draw background
+  M_DrawBackground(g_menu_flat, 0);
 
-  M_DrawTitle(52, 2, "M_COMPAT", CR_DEFAULT, "DOOM COMPATIBILITY", CR_GOLD);
+  M_DrawTitle(2, "COMPATIBILITY", cr_title); // M_COMP
   M_DrawInstructions();
-  M_DrawScreenItems(current_setup_menu);
-
-  // If the Reset Button has been selected, an "Are you sure?" message
-  // is overlayed across everything else.
-
-  if (default_verify)
-    M_DrawDefVerify();
+  M_DrawSetupTabs(TABS_Y);
+  M_DrawScreenItems(current_setup_menu, DEFAULT_LIST_Y);
 }
 
 /////////////////////////////
 //
-// The Messages table.
-
-#define M_X 230
-#define M_Y  39
-
-// killough 11/98: enumerated
-
-enum {
-  mess_color_play,
-  mess_timer,
-  mess_color_chat,
-  mess_chat_timer,
-  mess_color_review,
-  mess_timed,
-  mess_hud_timer,
-  mess_lines,
-  mess_scrollup,
-  mess_background,
-};
-
-setup_menu_t mess_settings1[];
-
-setup_menu_t* mess_settings[] =
-{
-  mess_settings1,
-  NULL
-};
-
-setup_menu_t mess_settings1[] =  // Messages screen
-{
-  {"Message Color During Play", S_CRITEM, m_null, M_X,
-   M_Y + mess_color_play*8, {"hudcolor_mesg"}},
-
-#if 0
-  {"Message Duration During Play (ms)", S_NUM, m_null, M_X,
-   M_Y  + mess_timer*8, {"message_timer"}},
-#endif
-
-  {"Chat Message Color", S_CRITEM, m_null, M_X,
-   M_Y + mess_color_chat*8, {"hudcolor_chat"}},
-
-#if 0
-  {"Chat Message Duration (ms)", S_NUM, m_null, M_X,
-   M_Y  + mess_chat_timer*8, {"chat_msg_timer"}},
-#endif
-
-  {"Message Review Color", S_CRITEM, m_null, M_X,
-   M_Y + mess_color_review*8, {"hudcolor_list"}},
-
-#if 0
-  {"Message Listing Review is Temporary",  S_YESNO,  m_null,  M_X,
-   M_Y + mess_timed*8, {"hud_msg_timed"}},
-
-  {"Message Review Duration (ms)", S_NUM, m_null, M_X,
-   M_Y  + mess_hud_timer*8, {"hud_msg_timer"}},
-#endif
-
-  {"Number of Review Message Lines", S_NUM, m_null,  M_X,
-   M_Y + mess_lines*8, {"hud_msg_lines"}},
-
-#if 0
-  {"Message Listing Scrolls Upwards",  S_YESNO,  m_null,  M_X,
-   M_Y + mess_scrollup*8, {"hud_msg_scrollup"}},
-#endif
-
-  {"Message Background",  S_YESNO,  m_null,  M_X,
-   M_Y + mess_background*8, {"hud_list_bgon"}},
-
-  // Button for resetting to defaults
-  {0,S_RESET,m_null,X_BUTTON,Y_BUTTON},
-
-  // Final entry
-
-  {0,S_SKIP|S_END,m_null}
-};
-
-
-// Setting up for the Messages screen. Turn on flags, set pointers,
-// locate the first item on the screen where the cursor is allowed to
-// land.
-
-void M_Messages(int choice)
-{
-  M_SetupNextMenu(&MessageDef);
-
-  setup_active = true;
-  setup_screen = ss_mess;
-  set_mess_active = true;
-  setup_select = false;
-  default_verify = false;
-  setup_gather = false;
-  mult_screens_index = 0;
-  current_setup_menu = mess_settings[0];
-  set_menu_itemon = M_GetSetupMenuItemOn();
-  while (current_setup_menu[set_menu_itemon++].m_flags & S_SKIP);
-  current_setup_menu[--set_menu_itemon].m_flags |= S_HILITE;
-}
-
-
-// The drawing part of the Messages Setup initialization. Draw the
-// background, title, instruction line, and items.
-
-void M_DrawMessages(void)
-{
-  menuactive = mnact_full;
-
-  M_DrawBackground("FLOOR4_6", 0); // Draw background
-
-  // CPhipps - patch drawing updated
-  M_DrawTitle(103, 2, "M_MESS", CR_DEFAULT, "MESSAGES", CR_GOLD);
-  M_DrawInstructions();
-  M_DrawScreenItems(current_setup_menu);
-  if (default_verify)
-    M_DrawDefVerify();
-}
-
-
-/////////////////////////////
+// The level table.
 //
-// The Chat Strings table.
 
-#define CS_X 20
-#define CS_Y (31+8)
-
-setup_menu_t chat_settings1[];
-
-setup_menu_t* chat_settings[] =
+static const char *level_table_pages[] =
 {
-  chat_settings1,
+  "Stats",
+  "Time",
+  "Summary",
   NULL
 };
 
-setup_menu_t chat_settings1[] =  // Chat Strings screen
-{
-  {"1",S_CHAT,m_null,CS_X,CS_Y+ 1*8, {"chatmacro1"}},
-  {"2",S_CHAT,m_null,CS_X,CS_Y+ 2*8, {"chatmacro2"}},
-  {"3",S_CHAT,m_null,CS_X,CS_Y+ 3*8, {"chatmacro3"}},
-  {"4",S_CHAT,m_null,CS_X,CS_Y+ 4*8, {"chatmacro4"}},
-  {"5",S_CHAT,m_null,CS_X,CS_Y+ 5*8, {"chatmacro5"}},
-  {"6",S_CHAT,m_null,CS_X,CS_Y+ 6*8, {"chatmacro6"}},
-  {"7",S_CHAT,m_null,CS_X,CS_Y+ 7*8, {"chatmacro7"}},
-  {"8",S_CHAT,m_null,CS_X,CS_Y+ 8*8, {"chatmacro8"}},
-  {"9",S_CHAT,m_null,CS_X,CS_Y+ 9*8, {"chatmacro9"}},
-  {"0",S_CHAT,m_null,CS_X,CS_Y+10*8, {"chatmacro0"}},
+#define LEVEL_TABLE_PAGES 3
 
-  // Button for resetting to defaults
-  {0,S_RESET,m_null,X_BUTTON,Y_BUTTON},
+static setup_menu_t *level_table_page[LEVEL_TABLE_PAGES];
+static setup_menu_t next_page_template = NEXT_PAGE(NULL);
+static setup_menu_t prev_page_template = PREV_PAGE(NULL);
+static setup_menu_t final_entry_template = FINAL_ENTRY;
+static setup_menu_t new_column_template = NEW_COLUMN;
+static setup_menu_t empty_line_template = EMPTY_LINE;
 
-  // Final entry
-  {0,S_SKIP|S_END,m_null}
+#define LOOP_LEVEL_TABLE_COLUMN { \
+  for (i = 0; i < wad_stats.map_count; ++i) { \
+    map = &wad_stats.maps[i]; \
+    if (map->episode == -1) \
+      continue; \
+    entry = &level_table_page[page][base_i + i]; \
 
-};
-
-// Setting up for the Chat Strings screen. Turn on flags, set pointers,
-// locate the first item on the screen where the cursor is allowed to
-// land.
-
-void M_ChatStrings(int choice)
-{
-  M_SetupNextMenu(&ChatStrDef);
-  setup_active = true;
-  setup_screen = ss_chat;
-  set_chat_active = true;
-  setup_select = false;
-  default_verify = false;
-  setup_gather = false;
-  mult_screens_index = 0;
-  current_setup_menu = chat_settings[0];
-  set_menu_itemon = M_GetSetupMenuItemOn();
-  while (current_setup_menu[set_menu_itemon++].m_flags & S_SKIP);
-  current_setup_menu[--set_menu_itemon].m_flags |= S_HILITE;
+#define END_LOOP_LEVEL_TABLE_COLUMN } \
+  base_i += i; \
 }
 
-// The drawing part of the Chat Strings Setup initialization. Draw the
-// background, title, instruction line, and items.
+#define INSERT_LEVEL_TABLE_COLUMN(heading, x) { \
+  level_table_page[page][base_i] = new_column_template; \
+  ++base_i; \
+  level_table_page[page][base_i] = empty_line_template; \
+  level_table_page[page][base_i].m_flags |= S_TITLE; \
+  level_table_page[page][base_i].m_text = Z_Strdup(heading); \
+  level_table_page[page][base_i].m_x = x; \
+  ++base_i; \
+}
 
-void M_DrawChatStrings(void)
+#define INSERT_FINAL_LEVEL_TABLE_ENTRY { \
+  level_table_page[page][base_i] = final_entry_template; \
+  level_table_page[page][base_i].m_x = level_table_cursor_position[page]; \
+}
+
+#define INSERT_LEVEL_TABLE_EMPTY_LINE { \
+  level_table_page[page][base_i] = empty_line_template; \
+  ++base_i; \
+}
+
+#define INSERT_LEVEL_TABLE_NEXT_PAGE { \
+  level_table_page[page][base_i] = next_page_template; \
+  level_table_page[page][base_i].menu = level_table_page[page + 1]; \
+  ++base_i; \
+}
+
+#define INSERT_LEVEL_TABLE_PREV_PAGE { \
+  level_table_page[page][base_i] = prev_page_template; \
+  level_table_page[page][base_i].menu = level_table_page[page - 1]; \
+  ++base_i; \
+}
+
+#define START_LEVEL_TABLE_PAGE(page_number) { \
+  page = page_number; \
+  base_i = 0; \
+  column_x = 16; \
+  INSERT_LEVEL_TABLE_EMPTY_LINE \
+}
+
+static void M_FreeMText(const char *m_text)
 {
-  menuactive = mnact_full;
+  union { const char *c; char *s; } str;
 
-  M_DrawBackground("FLOOR4_6", 0); // Draw background
+  str.c = m_text;
+  Z_Free(str.s);
+}
 
-  // CPhipps - patch drawing updated
-  M_DrawTitle(83, 2, "M_CHAT", CR_DEFAULT, "CHAT STRINGS", CR_GOLD);
-  M_DrawInstructions();
-  M_DrawScreenItems(current_setup_menu);
+typedef struct {
+  int completed_count;
+  int timed_count;
+  int max_timed_count;
+  int nm_timed_count;
+  int best_skill;
+  int best_kills;
+  int best_items;
+  int best_secrets;
+  int max_kills;
+  int max_items;
+  int max_secrets;
+  int best_time;
+  int best_max_time;
+  int best_nm_time;
+} wad_stats_summary_t;
 
-  // If the Reset Button has been selected, an "Are you sure?" message
-  // is overlayed across everything else.
+static wad_stats_summary_t wad_stats_summary;
 
-  if (default_verify)
-    M_DrawDefVerify();
+static void M_CalculateWadStatsSummary(void)
+{
+  int i;
+  map_stats_t *map;
+
+  memset(&wad_stats_summary, 0, sizeof(wad_stats_summary));
+
+  wad_stats_summary.best_skill = 6;
+
+  for (i = 0; i < wad_stats.map_count; ++i)
+  {
+    map = &wad_stats.maps[i];
+    if (map->episode == -1 || !map->best_skill)
+      continue;
+
+    if (map->best_skill < wad_stats_summary.best_skill)
+      wad_stats_summary.best_skill = map->best_skill;
+
+    ++wad_stats_summary.completed_count;
+    wad_stats_summary.best_kills += map->best_kills;
+    wad_stats_summary.best_items += map->best_items;
+    wad_stats_summary.best_secrets += map->best_secrets;
+    wad_stats_summary.max_kills += map->max_kills;
+    wad_stats_summary.max_items += map->max_items;
+    wad_stats_summary.max_secrets += map->max_secrets;
+
+    if (map->best_time >= 0)
+    {
+      ++wad_stats_summary.timed_count;
+      wad_stats_summary.best_time += map->best_time;
+    }
+
+    if (map->best_max_time >= 0)
+    {
+      ++wad_stats_summary.max_timed_count;
+      wad_stats_summary.best_max_time += map->best_max_time;
+    }
+
+    if (map->best_nm_time >= 0)
+    {
+      ++wad_stats_summary.nm_timed_count;
+      wad_stats_summary.best_nm_time += map->best_nm_time;
+    }
+  }
+}
+
+static int level_table_cursor_position[LEVEL_TABLE_PAGES];
+
+static void M_ResetLevelTable(void)
+{
+  int i, page;
+  const int page_count[LEVEL_TABLE_PAGES] = {
+    wad_stats.map_count * 5 + 16,
+    wad_stats.map_count * 4 + 16,
+    38,
+  };
+
+  for (page = 0; page < LEVEL_TABLE_PAGES; ++page)
+  {
+    if (!level_table_page[page])
+      level_table_page[page] = Z_Calloc(page_count[page], sizeof(*level_table_page[page]));
+    else
+    {
+      for (i = 0; !(level_table_page[page][i].m_flags & S_END); ++i)
+      {
+        if (level_table_page[page][i].m_text &&
+            !(level_table_page[page][i].m_flags & (S_NEXT | S_PREV)))
+          M_FreeMText(level_table_page[page][i].m_text);
+      }
+
+      level_table_cursor_position[page] = level_table_page[page][i].m_x;
+
+      memset(level_table_page[page], 0, page_count[page] * sizeof(*level_table_page[page]));
+    }
+  }
+}
+
+static void M_PrintTime(dsda_string_t* m_text, int tics)
+{
+  dsda_StringPrintF(m_text, "%d:%05.2f",
+                    tics / 35 / 60,
+                    (float) (tics % (60 * 35)) / 35);
+}
+
+static int wad_stats_summary_page;
+
+static void M_BuildLevelTable(void)
+{
+  int i;
+  int page;
+  int base_i;
+  int column_x;
+  setup_menu_t *entry;
+  map_stats_t *map;
+  dsda_string_t m_text;
+
+  M_ResetLevelTable();
+
+  START_LEVEL_TABLE_PAGE(0)
+
+  LOOP_LEVEL_TABLE_COLUMN
+    dsda_StringPrintF(&m_text, "%s", map->lump);
+    entry->m_text = m_text.string;
+    entry->m_flags = S_TITLE | S_LEFTJUST;
+    entry->m_x = column_x;
+  END_LOOP_LEVEL_TABLE_COLUMN
+
+  column_x += 112;
+  INSERT_LEVEL_TABLE_COLUMN("SKILL", column_x)
+
+  LOOP_LEVEL_TABLE_COLUMN
+    entry->m_flags = S_LABEL | S_SKIP;
+    entry->m_x = column_x;
+
+    if (map->best_skill) {
+      dsda_StringPrintF(&m_text, "%d", map->best_skill);
+      entry->m_text = m_text.string;
+      if (map->best_skill == num_skills)
+        entry->m_flags |= S_TC_SEL;
+    }
+    else {
+      entry->m_text = Z_Strdup("-");
+    }
+  END_LOOP_LEVEL_TABLE_COLUMN
+
+  column_x += 64;
+  INSERT_LEVEL_TABLE_COLUMN("K", column_x);
+
+  LOOP_LEVEL_TABLE_COLUMN
+    entry->m_flags = S_LABEL | S_SKIP;
+    entry->m_x = column_x;
+
+    if (map->best_skill) {
+      dsda_StringPrintF(&m_text, "%d/%d", map->best_kills, map->max_kills);
+      entry->m_text = m_text.string;
+      if (map->best_kills >= map->max_kills)
+        entry->m_flags |= S_TC_SEL;
+    }
+    else {
+      entry->m_text = Z_Strdup("-");
+    }
+  END_LOOP_LEVEL_TABLE_COLUMN
+
+  column_x += 48;
+  INSERT_LEVEL_TABLE_COLUMN("I", column_x);
+
+  LOOP_LEVEL_TABLE_COLUMN
+    entry->m_flags = S_LABEL | S_SKIP;
+    entry->m_x = column_x;
+
+    if (map->best_skill) {
+      dsda_StringPrintF(&m_text, "%d/%d", map->best_items, map->max_items);
+      entry->m_text = m_text.string;
+      if (map->best_items >= map->max_items)
+        entry->m_flags |= S_TC_SEL;
+    }
+    else {
+      entry->m_text = Z_Strdup("-");
+    }
+  END_LOOP_LEVEL_TABLE_COLUMN
+
+  column_x += 48;
+  INSERT_LEVEL_TABLE_COLUMN("S", column_x);
+
+  LOOP_LEVEL_TABLE_COLUMN
+    entry->m_flags = S_LABEL | S_SKIP;
+    entry->m_x = column_x;
+
+    if (map->best_skill) {
+      dsda_StringPrintF(&m_text, "%d/%d", map->best_secrets, map->max_secrets);
+      entry->m_text = m_text.string;
+      if (map->best_secrets >= map->max_secrets)
+        entry->m_flags |= S_TC_SEL;
+    }
+    else {
+      entry->m_text = Z_Strdup("-");
+    }
+  END_LOOP_LEVEL_TABLE_COLUMN
+
+  INSERT_LEVEL_TABLE_NEXT_PAGE
+  INSERT_FINAL_LEVEL_TABLE_ENTRY
+
+  // -------- //
+
+  START_LEVEL_TABLE_PAGE(1)
+
+  LOOP_LEVEL_TABLE_COLUMN
+    dsda_StringPrintF(&m_text, "%s", map->lump);
+    entry->m_text = m_text.string;
+    entry->m_flags = S_TITLE | S_LEFTJUST;
+    entry->m_x = column_x;
+  END_LOOP_LEVEL_TABLE_COLUMN
+
+  column_x += 120;
+  INSERT_LEVEL_TABLE_COLUMN("TIME", column_x)
+
+  LOOP_LEVEL_TABLE_COLUMN
+    entry->m_flags = S_LABEL | S_SKIP;
+    entry->m_x = column_x;
+
+    if (map->best_time >= 0) {
+      M_PrintTime(&m_text, map->best_time);
+      entry->m_text = m_text.string;
+      entry->m_flags |= S_TC_SEL;
+    }
+    else {
+      entry->m_text = Z_Strdup("- : --");
+    }
+  END_LOOP_LEVEL_TABLE_COLUMN
+
+  column_x += 80;
+  INSERT_LEVEL_TABLE_COLUMN("MAX TIME", column_x)
+
+  LOOP_LEVEL_TABLE_COLUMN
+    entry->m_flags = S_LABEL | S_SKIP;
+    entry->m_x = column_x;
+
+    if (map->best_max_time >= 0) {
+      M_PrintTime(&m_text, map->best_max_time);
+      entry->m_text = m_text.string;
+      entry->m_flags |= S_TC_SEL;
+    }
+    else {
+      entry->m_text = Z_Strdup("- : --");
+    }
+  END_LOOP_LEVEL_TABLE_COLUMN
+
+  column_x += 80;
+  INSERT_LEVEL_TABLE_COLUMN("NM TIME", column_x)
+
+  LOOP_LEVEL_TABLE_COLUMN
+    entry->m_flags = S_LABEL | S_SKIP;
+    entry->m_x = column_x;
+
+    if (map->best_nm_time >= 0) {
+      M_PrintTime(&m_text, map->best_nm_time);
+      entry->m_text = m_text.string;
+      entry->m_flags |= S_TC_SEL;
+    }
+    else {
+      entry->m_text = Z_Strdup("- : --");
+    }
+  END_LOOP_LEVEL_TABLE_COLUMN
+
+  INSERT_LEVEL_TABLE_PREV_PAGE
+  INSERT_LEVEL_TABLE_NEXT_PAGE
+  INSERT_FINAL_LEVEL_TABLE_ENTRY
+
+  // -------- //
+
+  M_CalculateWadStatsSummary();
+
+  ++page;
+  base_i = 2;
+  wad_stats_summary_page = page;
+
+  dsda_StringPrintF(&m_text, "Maps");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_TITLE | S_SKIP;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  dsda_StringPrintF(&m_text, "Skill");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_TITLE | S_SKIP;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  INSERT_LEVEL_TABLE_EMPTY_LINE
+
+  dsda_StringPrintF(&m_text, "Kill Completion");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_TITLE | S_SKIP;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  INSERT_LEVEL_TABLE_EMPTY_LINE
+
+  dsda_StringPrintF(&m_text, "Item Completion");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_TITLE | S_SKIP;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  INSERT_LEVEL_TABLE_EMPTY_LINE
+
+  dsda_StringPrintF(&m_text, "Secret Completion");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_TITLE | S_SKIP;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  INSERT_LEVEL_TABLE_EMPTY_LINE
+
+  dsda_StringPrintF(&m_text, "Time");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_TITLE | S_SKIP;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  INSERT_LEVEL_TABLE_EMPTY_LINE
+
+  dsda_StringPrintF(&m_text, "Max Time");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_TITLE | S_SKIP;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  INSERT_LEVEL_TABLE_EMPTY_LINE
+
+  dsda_StringPrintF(&m_text, "Nightmare Time");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_TITLE | S_SKIP;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  level_table_page[page][base_i] = new_column_template;
+  ++base_i;
+
+  INSERT_LEVEL_TABLE_EMPTY_LINE
+  INSERT_LEVEL_TABLE_EMPTY_LINE
+
+  dsda_StringPrintF(&m_text, "%d / %d",
+                    wad_stats_summary.completed_count, wad_stats.map_count);
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_LABEL | S_SKIP | S_LEFTJUST;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  if (wad_stats_summary.completed_count)
+    dsda_StringPrintF(&m_text, "%d", wad_stats_summary.best_skill);
+  else
+    dsda_StringPrintF(&m_text, "-");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_LABEL | S_SKIP | S_LEFTJUST;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  INSERT_LEVEL_TABLE_EMPTY_LINE
+
+  dsda_StringPrintF(&m_text, "%d / ", wad_stats_summary.best_kills);
+  if (wad_stats_summary.completed_count)
+    dsda_StringCatF(&m_text, "%d", wad_stats_summary.max_kills);
+  else
+    dsda_StringCat(&m_text, "-");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_LABEL | S_SKIP | S_LEFTJUST;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  INSERT_LEVEL_TABLE_EMPTY_LINE
+
+  dsda_StringPrintF(&m_text, "%d / ", wad_stats_summary.best_items);
+  if (wad_stats_summary.completed_count)
+    dsda_StringCatF(&m_text, "%d", wad_stats_summary.max_items);
+  else
+    dsda_StringCat(&m_text, "-");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_LABEL | S_SKIP | S_LEFTJUST;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  INSERT_LEVEL_TABLE_EMPTY_LINE
+
+  dsda_StringPrintF(&m_text, "%d / ", wad_stats_summary.best_secrets);
+  if (wad_stats_summary.completed_count)
+    dsda_StringCatF(&m_text, "%d", wad_stats_summary.max_secrets);
+  else
+    dsda_StringCat(&m_text, "-");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_LABEL | S_SKIP | S_LEFTJUST;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  INSERT_LEVEL_TABLE_EMPTY_LINE
+
+  if (wad_stats_summary.timed_count)
+    M_PrintTime(&m_text, wad_stats_summary.best_time);
+  else
+    dsda_StringPrintF(&m_text, "- : --");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_LABEL | S_SKIP | S_LEFTJUST;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  INSERT_LEVEL_TABLE_EMPTY_LINE
+
+  if (wad_stats_summary.max_timed_count)
+    M_PrintTime(&m_text, wad_stats_summary.best_max_time);
+  else
+    dsda_StringPrintF(&m_text, "- : --");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_LABEL | S_SKIP | S_LEFTJUST;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  INSERT_LEVEL_TABLE_EMPTY_LINE
+
+  if (wad_stats_summary.nm_timed_count)
+    M_PrintTime(&m_text, wad_stats_summary.best_nm_time);
+  else
+    dsda_StringPrintF(&m_text, "- : --");
+  level_table_page[page][base_i].m_text = m_text.string;
+  level_table_page[page][base_i].m_flags = S_LABEL | S_SKIP | S_LEFTJUST;
+  level_table_page[page][base_i].m_x = 162;
+  ++base_i;
+
+  level_table_page[page][base_i] = new_column_template;
+  ++base_i;
+
+  INSERT_LEVEL_TABLE_PREV_PAGE
+  INSERT_FINAL_LEVEL_TABLE_ENTRY
+}
+
+static void M_LevelTable(int choice)
+{
+  M_BuildLevelTable();
+  M_EnterSetup(&LevelTableDef, &level_table_active, level_table_page[0],
+               level_table_pages, arrlen(level_table_pages), level_table_page);
+}
+
+static void M_DrawLevelTable(void)
+{
+  M_ChangeMenu(NULL, mnact_full);
+
+  M_DrawBackground(g_menu_flat, 0);
+
+  M_DrawTitle(2, "LEVEL TABLE", cr_title); // M_LVLTBL
+  if (current_setup_menu != level_table_page[wad_stats_summary_page])
+    M_DrawInstructionString(cr_info_edit, "Press ENTER key to warp");
+
+  M_DrawSetupTabs(TABS_Y);
+  M_DrawScreenItems(current_setup_menu, DEFAULT_LIST_Y);
 }
 
 /////////////////////////////
@@ -3966,131 +4425,9 @@ static void M_SelectDone(setup_menu_t* ptr)
 {
   ptr->m_flags &= ~S_SELECT;
   ptr->m_flags |= S_HILITE;
-  S_StartSound(NULL,sfx_itemup);
+  S_StartOptionalSound(g_sfx_mnusel, g_sfx_itemup, false);
   setup_select = false;
   colorbox_active = false;
-  if (print_warning_about_changes)     // killough 8/15/98
-    print_warning_about_changes--;
-}
-
-// phares 4/21/98:
-// Array of setup screens used by M_ResetDefaults()
-
-static setup_menu_t **setup_screens[] =
-{
-  keys_settings,
-  weap_settings,
-  stat_settings,
-  auto_settings,
-  enem_settings,
-  mess_settings,
-  chat_settings,
-  gen_settings,      // killough 10/98
-  comp_settings,
-};
-
-// phares 4/19/98:
-// M_ResetDefaults() resets all values for a setup screen to default values
-//
-// killough 10/98: rewritten to fix bugs and warn about pending changes
-
-static void M_ResetDefaults(void)
-{
-  int i; //e6y
-
-  default_t *dp;
-  int warn = 0;
-
-  // Look through the defaults table and reset every variable that
-  // belongs to the group we're interested in.
-  //
-  // killough: However, only reset variables whose field in the
-  // current setup screen is the same as in the defaults table.
-  // i.e. only reset variables really in the current setup screen.
-
-  // e6y
-  // Fixed crash while trying to read data past array end
-  // All previous versions of prboom worked only by a lucky accident
-  // old code: for (dp = defaults; dp->name; dp++)
-  for (i = 0; i < numdefaults ; i++)
-  {
-    dp = &defaults[i];
-
-    if (dp->setupscreen == setup_screen)
-      {
-  setup_menu_t **l, *p;
-  for (l = setup_screens[setup_screen-1]; *l; l++)
-    for (p = *l; !(p->m_flags & S_END); p++)
-      if (p->m_flags & S_HASDEFPTR ? p->var.def == dp :
-    p->var.m_key == dp->location.pi ||
-    p->m_mouse == dp->location.pi ||
-    p->m_joy == dp->location.pi)
-        {
-    if (IS_STRING(*dp))
-    {
-      union { const char **c; char **s; } u; // type punning via unions
-
-      u.c = dp->location.ppsz;
-      free(*(u.s));
-      *(u.c) = strdup(dp->defaultvalue.psz);
-    }
-    else
-      *dp->location.pi = dp->defaultvalue.i;
-
-#if 0
-    if (p->m_flags & (S_LEVWARN | S_PRGWARN))
-      warn |= p->m_flags & (S_LEVWARN | S_PRGWARN);
-    else
-      if (dp->current)
-        if (allow_changes())
-          *dp->current = *dp->location.pi;
-        else
-          warn |= S_LEVWARN;
-#endif
-    if (p->action)
-      p->action();
-
-    goto end;
-        }
-      end:;
-      }
-  }
-
-  if (warn)
-    warn_about_changes(warn);
-}
-
-//
-// M_InitDefaults()
-//
-// killough 11/98:
-//
-// This function converts all setup menu entries consisting of cfg
-// variable names, into pointers to the corresponding default[]
-// array entry. var.name becomes converted to var.def.
-//
-
-static void M_InitDefaults(void)
-{
-  setup_menu_t *const *p, *t;
-  default_t *dp;
-  int i;
-  for (i = 0; i < ss_max-1; i++)
-  {
-    for (p = setup_screens[i]; *p; p++)
-    {
-      for (t = *p; !(t->m_flags & S_END); t++)
-      {
-        if (t->m_flags & S_HASDEFPTR)
-        {
-          if (!(dp = M_LookupDefault(t->var.name)))
-            I_Error("M_InitDefaults: Couldn't find config variable %s", t->var.name);
-          else
-            (t->var.def = dp)->setup_menu = t;
-        }
-      }
-    }
-  }
 }
 
 //
@@ -4120,7 +4457,7 @@ int extended_help_index;   // index of current extended help screen
 
 menuitem_t ExtHelpMenu[] =
 {
-  {1,"",M_ExtHelpNextScreen,0}
+  {M_ITEM_ACTION,"",M_ExtHelpNextScreen,0}
 };
 
 menu_t ExtHelpDef =
@@ -4136,7 +4473,7 @@ menu_t ExtHelpDef =
 // M_ExtHelpNextScreen establishes the number of the next HELP screen in
 // the series.
 
-void M_ExtHelpNextScreen(int choice)
+static void M_ExtHelpNextScreen(int choice)
 {
   choice = 0;
   if (++extended_help_index > extended_help_count)
@@ -4153,18 +4490,17 @@ void M_ExtHelpNextScreen(int choice)
 // Routine to look for HELPnn screens and create a menu
 // definition structure that defines extended help screens.
 
-void M_InitExtendedHelp(void)
+static void M_InitExtendedHelp(void)
 
 {
-  int index,i;
+  int index;
   char namebfr[] = { "HELPnn"} ;
 
   extended_help_count = 0;
   for (index = 1 ; index < 100 ; index++) {
-    namebfr[4] = index/10 + 0x30;
-    namebfr[5] = index%10 + 0x30;
-    i = W_CheckNumForName(namebfr);
-    if (i == -1) {
+    namebfr[4] = index/10 + '0';
+    namebfr[5] = index%10 + '0';
+    if (!W_LumpNameExists(namebfr)) {
       if (extended_help_count) {
         /* The Extended Help menu is accessed using the
          * Help hotkey (F1) or the "Read This!" menu item.
@@ -4176,24 +4512,26 @@ void M_InitExtendedHelp(void)
          * See also: https://www.doomworld.com/forum/topic/111465-boom-extended-help-screens-an-undocumented-feature/
          */
           HelpMenu[0].routine = M_ExtHelp;
-        if (gamemode == commercial) {
-          ExtHelpDef.prevMenu  = &ReadDef1; /* previous menu */
-          ReadMenu1[0].routine = M_ExtHelp;
-        } else {
+        if (raven) {
+          ExtHelpDef.prevMenu  = &InfoDef4; /* previous menu */
+          InfoMenu4[0].routine = M_ExtHelp;
+        } else if (gamemode == shareware || pwad_help2_check) {
           ExtHelpDef.prevMenu  = &ReadDef2; /* previous menu */
           ReadMenu2[0].routine = M_ExtHelp;
+        } else {
+          ExtHelpDef.prevMenu  = &ReadDef1; /* previous menu */
+          ReadMenu1[0].routine = M_ExtHelp;
         }
       }
       return;
     }
     extended_help_count++;
   }
-
 }
 
 // Initialization for the extended HELP screens.
 
-void M_ExtHelp(int choice)
+static void M_ExtHelp(int choice)
 {
   choice = 0;
   extended_help_index = 1; // Start with first extended help screen
@@ -4202,15 +4540,16 @@ void M_ExtHelp(int choice)
 
 // Initialize the drawing part of the extended HELP screens.
 
-void M_DrawExtHelp(void)
+static void M_DrawExtHelp(void)
 {
   char namebfr[10] = { "HELPnn" }; // CPhipps - make it local & writable
 
   inhelpscreens = true;              // killough 5/1/98
-  namebfr[4] = extended_help_index/10 + 0x30;
-  namebfr[5] = extended_help_index%10 + 0x30;
+  namebfr[4] = extended_help_index/10 + '0';
+  namebfr[5] = extended_help_index%10 + '0';
   // CPhipps - patch drawing updated
-  V_DrawNamePatch(0, 0, 0, namebfr, CR_DEFAULT, VPT_STRETCH);
+  V_ClearBorder(); // Redraw background for every ext HELP screen. Fixes widescreen overdraw.
+  V_DrawNamePatchFS(0, 0, 0, namebfr, CR_DEFAULT, VPT_STRETCH);
 }
 
 //
@@ -4218,21 +4557,7 @@ void M_DrawExtHelp(void)
 //
 ////////////////////////////////////////////////////////////////////////////
 
-////////////////////////////////////////////////////////////////////////////
-//
-// Dynamic HELP screen                     // phares 3/2/98
-//
-// Rather than providing the static HELP screens from DOOM and its versions,
-// BOOM provides the player with a dynamic HELP screen that displays the
-// current settings of major key bindings.
-//
-// The Dynamic HELP screen is defined in a manner similar to that used for
-// the Setup Screens above.
-//
-// M_GetKeyString finds the correct string to represent the key binding
-// for the current item being drawn.
-
-int M_GetKeyString(int c,int offset)
+static int M_GetKeyString(int c,int offset)
 {
   const char* s;
 
@@ -4260,8 +4585,11 @@ int M_GetKeyString(int c,int offset)
     // cph - Keypad keys, general code reorganisation to
     //  make this smaller and neater.
     if ((0x100 <= c) && (c < 0x200)) {
-      if (c == KEYD_KEYPADENTER)
+      if (c == KEYD_KEYPADENTER) {
   s = "PADE";
+  strcpy(&menu_buffer[offset], s);
+  offset+=4;
+      }
       else {
   strcpy(&menu_buffer[offset], "PAD");
   offset+=4;
@@ -4300,6 +4628,8 @@ int M_GetKeyString(int c,int offset)
       case KEYD_PAUSE:      s = "PAUS"; break;
       case KEYD_MWHEELDOWN: s = "MWDN"; break;
       case KEYD_MWHEELUP:   s = "MWUP"; break;
+      case KEYD_MWHEELLEFT: s = "MWLT"; break;
+      case KEYD_MWHEELRIGHT: s = "MWRT"; break;
       case KEYD_PRINTSC:    s = "PRSC"; break;
       case 0:               s = "NONE"; break;
       default:              s = "JUNK"; break;
@@ -4313,85 +4643,6 @@ int M_GetKeyString(int c,int offset)
   }
   return offset;
 }
-
-//
-// The Dynamic HELP screen table.
-
-#define KT_X1 283
-#define KT_X2 172
-#define KT_X3  87
-
-#define KT_Y1   2
-#define KT_Y2 118
-#define KT_Y3 102
-
-setup_menu_t helpstrings[] =  // HELP screen strings
-{
-  {"SCREEN"      ,S_SKIP|S_TITLE,m_null,KT_X1,KT_Y1},
-  {"HELP"        ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y1+ 1*8,{&key_help}},
-  {"MENU"        ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y1+ 2*8,{&key_escape}},
-  {"SETUP"       ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y1+ 3*8,{&key_setup}},
-  {"PAUSE"       ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y1+ 4*8,{&key_pause}},
-  {"AUTOMAP"     ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y1+ 5*8,{&key_map}},
-  {"SOUND VOLUME",S_SKIP|S_KEY,m_null,KT_X1,KT_Y1+ 6*8,{&key_soundvolume}},
-  {"HUD"         ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y1+ 7*8,{&key_hud}},
-  {"MESSAGES"    ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y1+ 8*8,{&key_messages}},
-  {"GAMMA FIX"   ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y1+ 9*8,{&key_gamma}},
-  {"SPY"         ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y1+10*8,{&key_spy}},
-  {"LARGER VIEW" ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y1+11*8,{&key_zoomin}},
-  {"SMALLER VIEW",S_SKIP|S_KEY,m_null,KT_X1,KT_Y1+12*8,{&key_zoomout}},
-
-  {"AUTOMAP"     ,S_SKIP|S_TITLE,m_null,KT_X1,KT_Y2},
-  {"FOLLOW MODE" ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y2+ 1*8,{&key_map_follow}},
-  {"ZOOM IN"     ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y2+ 2*8,{&key_map_zoomin}},
-  {"ZOOM OUT"    ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y2+ 3*8,{&key_map_zoomout}},
-  {"MARK PLACE"  ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y2+ 4*8,{&key_map_mark}},
-  {"CLEAR MARKS" ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y2+ 5*8,{&key_map_clear}},
-  {"FULL/ZOOM"   ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y2+ 6*8,{&key_map_gobig}},
-  {"GRID"        ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y2+ 7*8,{&key_map_grid}},
-  {"ROTATE"      ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y2+ 8*8,{&key_map_rotate}},
-  {"OVERLAY"     ,S_SKIP|S_KEY,m_null,KT_X1,KT_Y2+ 9*8,{&key_map_overlay}},
-
-  {"WEAPONS"     ,S_SKIP|S_TITLE,m_null,KT_X3,KT_Y1},
-  {"FIST"        ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y1+ 1*8,{&key_weapon1},&mb_weapon1},
-  {"PISTOL"      ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y1+ 2*8,{&key_weapon2},&mb_weapon2},
-  {"SHOTGUN"     ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y1+ 3*8,{&key_weapon3},&mb_weapon3},
-  {"CHAINGUN"    ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y1+ 4*8,{&key_weapon4},&mb_weapon4},
-  {"ROCKET"      ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y1+ 5*8,{&key_weapon5},&mb_weapon5},
-  {"PLASMA"      ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y1+ 6*8,{&key_weapon6},&mb_weapon6},
-  {"BFG 9000"    ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y1+ 7*8,{&key_weapon7},&mb_weapon7},
-  {"CHAINSAW"    ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y1+ 8*8,{&key_weapon8},&mb_weapon8},
-  {"SSG"         ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y1+ 9*8,{&key_weapon9},&mb_weapon9},
-  {"BEST"        ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y1+10*8,{&key_weapontoggle}},
-  {"FIRE"        ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y1+11*8,{&key_fire},&mousebfire,&joybfire},
-
-  {"MOVEMENT"    ,S_SKIP|S_TITLE,m_null,KT_X3,KT_Y3},
-  {"FORWARD"     ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+ 1*8,{&key_up},&mousebforward,&joybup},
-  {"BACKWARD"    ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+ 2*8,{&key_down},&mousebbackward,&joybdown},
-  {"TURN LEFT"   ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+ 3*8,{&key_left},&mousebturnleft,&joybleft},
-  {"TURN RIGHT"  ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+ 4*8,{&key_right},&mousebturnright,&joybright},
-  {"RUN"         ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+ 5*8,{&key_speed},&mousebspeed,&joybspeed},
-  {"STRAFE LEFT" ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+ 6*8,{&key_strafeleft},0,&joybstrafeleft},
-  {"STRAFE RIGHT",S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+ 7*8,{&key_straferight},0,&joybstraferight},
-  {"STRAFE"      ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+ 8*8,{&key_strafe},&mousebstrafe,&joybstrafe},
-  {"AUTORUN"     ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+ 9*8,{&key_autorun}},
-  {"180 TURN"    ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+10*8,{&key_reverse}},
-  {"USE"         ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+11*8,{&key_use},&mousebuse,&joybuse},
-
-  {"GAME"        ,S_SKIP|S_TITLE,m_null,KT_X2,KT_Y1},
-  {"SAVE"        ,S_SKIP|S_KEY,m_null,KT_X2,KT_Y1+ 1*8,{&key_savegame}},
-  {"LOAD"        ,S_SKIP|S_KEY,m_null,KT_X2,KT_Y1+ 2*8,{&key_loadgame}},
-  {"QUICKSAVE"   ,S_SKIP|S_KEY,m_null,KT_X2,KT_Y1+ 3*8,{&key_quicksave}},
-  {"END GAME"    ,S_SKIP|S_KEY,m_null,KT_X2,KT_Y1+ 4*8,{&key_endgame}},
-  {"QUICKLOAD"   ,S_SKIP|S_KEY,m_null,KT_X2,KT_Y1+ 5*8,{&key_quickload}},
-  {"QUIT"        ,S_SKIP|S_KEY,m_null,KT_X2,KT_Y1+ 6*8,{&key_quit}},
-
-  // Final entry
-
-  {0,S_SKIP|S_END,m_null}
-};
-
-#define SPACEWIDTH 4
 
 /* cph 2006/08/06
  * M_DrawString() is the old M_DrawMenuString, except that it is not tied to
@@ -4407,10 +4658,10 @@ static void M_DrawString(int cx, int cy, int color, const char* ch)
     c = toupper(c) - HU_FONTSTART;
     if (c < 0 || c> HU_FONTSIZE)
       {
-      cx += SPACEWIDTH;    // space
+      cx += menu_font->space_width;
       continue;
       }
-    w = hu_font[c].width;
+    w = menu_font->font[c].width;
     if (cx + w > 320)
       break;
 
@@ -4418,10 +4669,10 @@ static void M_DrawString(int cx, int cy, int color, const char* ch)
     // desired color, colrngs[color]
 
     // CPhipps - patch drawing updated
-    V_DrawNumPatch(cx, cy, 0, hu_font[c].lumpnum, color, VPT_STRETCH | VPT_TRANS);
+    V_DrawNumPatch(cx, cy, 0, menu_font->font[c].lumpnum, color, VPT_STRETCH | VPT_TRANS);
     // The screen is cramped, so trim one unit from each
     // character so they butt up against each other.
-    cx += w - 1;
+    cx += w + g_menu_font_spacing;
   }
 }
 
@@ -4445,13 +4696,13 @@ static int M_GetPixelWidth(const char* ch)
     c = toupper(c) - HU_FONTSTART;
     if (c < 0 || c > HU_FONTSIZE)
       {
-      len += SPACEWIDTH;   // space
+      len += menu_font->space_width;
       continue;
       }
-    len += hu_font[c].width;
-    len--; // adjust so everything fits
+    len += menu_font->font[c].width;
+    len += g_menu_font_spacing;
   }
-  len++; // replace what you took away on the last char only
+  len -= g_menu_font_spacing; // replace what you took away on the last char only
   return len;
 }
 
@@ -4465,86 +4716,73 @@ static void M_DrawStringCentered(int cx, int cy, int color, const char* ch)
 //
 // This displays the help screen
 
-void M_DrawHelp (void)
+static void M_DrawHelp (void)
 {
-  const int helplump = W_CheckNumForName("HELP");
+  const char* helplump = (gamemode == commercial) ? "HELP" : "HELP1";
 
-  menuactive = mnact_full;
+  M_ChangeMenu(NULL, mnact_full);
 
-  if (helplump >= 0 && lumpinfo[helplump].source != source_iwad)
-  {
-    V_FillBorder(-1, 0);
-    V_DrawNumPatch(0, 0, 0, helplump, CR_DEFAULT, VPT_STRETCH);
-  }
-  else
-  {
-    M_DrawBackground("FLOOR4_6", 0);
-    M_DrawScreenItems(helpstrings);
-  }
+  V_ClearBorder();
+  V_DrawNamePatchFS(0, 0, 0, helplump, CR_DEFAULT, VPT_STRETCH);
 }
 
 //
-// End of Dynamic HELP screen                // phares 3/2/98
+// M_DrawAd
 //
-////////////////////////////////////////////////////////////////////////////
+// This displays the help2 screen
 
-enum {
-  prog,
-  prog_stub,
-  prog_stub1,
-  prog_stub2,
-  adcr
-};
+static void M_DrawAd (void)
+{
+  const char* help2 = "HELP2";
 
-enum {
-  cr_prog=0,
-  cr_adcr=2,
-};
+  M_ChangeMenu(NULL, mnact_full);
 
-#define CR_S 9
+  V_ClearBorder();
+  if (pwad_help2_check || gamemode == shareware)
+    V_DrawNamePatchFS(0, 0, 0, help2, CR_DEFAULT, VPT_STRETCH);
+  else
+    M_DrawCredits();
+}
+
 #define CR_X 20
 #define CR_X2 50
-#define CR_Y 32
-#define CR_SH 9
 
 setup_menu_t cred_settings[]={
+  {"Programmers",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X},
+  {"Florian 'Proff' Schulze",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2},
+  {"Colin Phipps",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2},
+  {"Neil Stevens",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2},
+  {"Andrey Budko",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2},
+  EMPTY_LINE,
+  {"Additional Credit To",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X},
+  {"id Software for DOOM",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2},
+  {"TeamTNT for BOOM",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2},
+  {"Lee Killough for MBF",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2},
+  {"The DOSDoom-Team for DOSDOOM",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2},
+  {"Marisa Heit for ZDOOM",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2},
+  {"Michael 'Kodak' Ryssen for DOOMGL",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2},
+  {"Jess Haas for lSDLDoom",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2},
+  {"all others who helped (see AUTHORS file)",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2},
 
-  {"Programmers",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X, CR_Y + CR_S*prog + CR_SH*cr_prog},
-  {"Florian 'Proff' Schulze",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2, CR_Y + CR_S*(prog+1) + CR_SH*cr_prog},
-  {"Colin Phipps",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2, CR_Y + CR_S*(prog+2) + CR_SH*cr_prog},
-  {"Neil Stevens",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2, CR_Y + CR_S*(prog+3) + CR_SH*cr_prog},
-  {"Andrey Budko",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2, CR_Y + CR_S*(prog+4) + CR_SH*cr_prog},
-
-  {"Additional Credit To",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X, CR_Y + CR_S*adcr + CR_SH*cr_adcr},
-  {"id Software for DOOM",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2, CR_Y + CR_S*(adcr+1)+CR_SH*cr_adcr},
-  {"TeamTNT for BOOM",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2, CR_Y + CR_S*(adcr+2)+CR_SH*cr_adcr},
-  {"Lee Killough for MBF",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2, CR_Y + CR_S*(adcr+3)+CR_SH*cr_adcr},
-  {"The DOSDoom-Team for DOSDOOM",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2, CR_Y + CR_S*(adcr+4)+CR_SH*cr_adcr},
-  {"Randy Heit for ZDOOM",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2, CR_Y + CR_S*(adcr+5)+CR_SH*cr_adcr},
-  {"Michael 'Kodak' Ryssen for DOOMGL",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2, CR_Y + CR_S*(adcr+6)+CR_SH*cr_adcr},
-  {"Jess Haas for lSDLDoom",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2, CR_Y + CR_S*(adcr+7) + CR_SH*cr_adcr},
-  {"all others who helped (see AUTHORS file)",S_SKIP|S_CREDIT|S_LEFTJUST,m_null, CR_X2, CR_Y + CR_S*(adcr+8)+CR_SH*cr_adcr},
-
-  {0,S_SKIP|S_END,m_null}
+  FINAL_ENTRY
 };
 
 void M_DrawCredits(void)     // killough 10/98: credit screen
 {
-  const int creditlump = W_CheckNumForName("CREDIT");
-
   inhelpscreens = true;
-  if (creditlump >= 0 && lumpinfo[creditlump].source != source_iwad)
-  {
-    V_FillBorder(-1, 0);
-    V_DrawNumPatch(0, 0, 0, creditlump, CR_DEFAULT, VPT_STRETCH);
-  }
-  else
-  {
-    // Use V_DrawBackground here deliberately to force drawing a background
-    V_DrawBackground(gamemode==shareware ? "CEIL5_1" : "MFLR8_4", 0);
-    M_DrawTitle(81, 9, "PRBOOM", CR_GOLD, PACKAGE_NAME " v" PACKAGE_VERSION, CR_GOLD);
-    M_DrawScreenItems(cred_settings);
-  }
+
+  V_ClearBorder();
+  V_DrawNamePatchFS(0, 0, 0, "CREDIT", CR_DEFAULT, VPT_STRETCH);
+}
+
+void M_DrawCreditsDynamic(void)     // Dynamic Credits
+{
+  inhelpscreens = true;
+
+  // Use V_DrawBackground here deliberately to force drawing a background
+  V_DrawBackground(gamemode==shareware ? "CEIL5_1" : "MFLR8_4", 0);
+  M_DrawTitle(9, PROJECT_NAME " v" PROJECT_VERSION, cr_title); // PRBOOM
+  M_DrawScreenItems(cred_settings, 32);
 }
 
 static int M_IndexInChoices(const char *str, const char **choices) {
@@ -4576,6 +4814,77 @@ static inline int GetButtons(const unsigned int max, int data)
   return -1;
 }
 
+typedef struct {
+  int input;
+  dsda_config_identifier_t config_id;
+  int allowed_in_strict_mode;
+  dboolean persist;
+  const char* message;
+  dboolean invert_message;
+  dboolean play_sound;
+} toggle_input_t;
+
+static toggle_input_t toggle_inputs[] = {
+  { dsda_input_strict_mode, dsda_config_strict_mode, true, false, "Strict Mode" },
+  { dsda_input_novert, dsda_config_vertmouse, true, false, "Vertical Mouse Movement", .play_sound = true },
+  { dsda_input_mlook, dsda_config_freelook, true, true, "Free Look", .play_sound = true },
+  { dsda_input_autorun, dsda_config_autorun, true, true, "Auto Run", .play_sound = true },
+  { dsda_input_messages, dsda_config_show_messages, true, true, "Messages" },
+  { dsda_input_command_display, dsda_config_command_display, false, true, "Command Display" },
+  { dsda_input_coordinate_display, dsda_config_coordinate_display, false, true, "Coordinate Display" },
+  { dsda_input_fps, dsda_config_show_fps, true, true, "FPS" },
+  { dsda_input_exhud, dsda_config_exhud, true, true, "Extended HUD" },
+  { dsda_input_mute_sfx, dsda_config_mute_sfx, true, true, "SFX", true },
+  { dsda_input_mute_music, dsda_config_mute_music, true, true, "Music", true },
+  { dsda_input_cheat_codes, dsda_config_cheat_codes, false, true, "Cheat Codes" },
+  { -1 }
+};
+
+static void M_HandleToggles(void)
+{
+  toggle_input_t* toggle;
+
+  for (toggle = toggle_inputs; toggle->input != -1; toggle++) {
+    if (
+      dsda_InputActivated(toggle->input) &&
+      (toggle->allowed_in_strict_mode || !dsda_StrictMode())
+    )
+    {
+      int value;
+
+      value = dsda_ToggleConfig(toggle->config_id, toggle->persist);
+      doom_printf("%s %s", toggle->message, value ? toggle->invert_message ? "off" : "on"
+                                                  : toggle->invert_message ? "on"  : "off");
+
+      if (toggle->play_sound && dsda_IntConfig(dsda_config_movement_toggle_sfx))
+      {
+        if (toggle->invert_message ? !value : value)
+        {
+          S_StartOptionalSound(g_sfx_console, -1, true);
+        }
+        else
+        {
+          S_StartOptionalSound(g_sfx_mnuerr, g_sfx_oof, true);
+        }
+      }
+    }
+  }
+}
+
+dboolean M_ConsoleOpen(void)
+{
+  return menuactive && currentMenu == &dsda_ConsoleDef;
+}
+
+void M_LeaveSetupMenu(void)
+{
+  M_SetSetupMenuItemOn(set_menu_itemon);
+  menu_mouse_setup_scroll = KEYBOARD_NAV;
+  setup_active = false;
+  M_ClearSetupMenuState();
+  colorbox_active = false;
+}
+
 /////////////////////////////////////////////////////////////////////////////
 //
 // M_Responder
@@ -4584,615 +4893,374 @@ static inline int GetButtons(const unsigned int max, int data)
 // action based on the state of the system.
 //
 
-dboolean M_Responder (event_t* ev) {
-  int    ch;
-  int    i;
-  static int joywait   = 0;
-  static int mousewait = 0;
-
-  ch = -1; // will be changed to a legit char if we're going to use it here
-
-  // Process joystick input
-
-  if (ev->type == ev_joystick && joywait < I_GetTime())  {
-    if (ev->data3 > 0 || ev->data1&256)
-      {
-  ch = key_menu_up;                                // phares 3/7/98
-  joywait = I_GetTime() + 5;
-      }
-    else if (ev->data3 < 0 || ev->data1&512)
-      {
-  ch = key_menu_down;                              // phares 3/7/98
-  joywait = I_GetTime() + 5;
-      }
-
-    if (ev->data2 < 0 || ev->data1&1024)
-      {
-  ch = key_menu_left;                              // phares 3/7/98
-  joywait = I_GetTime() + 5;
-      }
-    else if (ev->data2 > 0 || ev->data1&2048)
-      {
-  ch = key_menu_right;                             // phares 3/7/98
-  joywait = I_GetTime() + 5;
-      }
-
-    if (ev->data1&1)
-      {
-  ch = key_menu_enter;                             // phares 3/7/98
-  joywait = I_GetTime() + 5;
-      }
-
-    if (ev->data1&2)
-      {
-  ch = key_menu_backspace;                         // phares 3/7/98
-  joywait = I_GetTime() + 5;
-      }
-    
-    if (ev->data1&8)
-      {
-  ch = 'y';                                        // phares 3/7/98
-  joywait = I_GetTime() + 5;
-      }
-
-    if (ev->data1&64)
-      {
-  ch = key_menu_escape;                            // phares 3/7/98
-  joywait = I_GetTime() + 5;
-      }
-
-    // phares 4/4/98:
-    // Handle joystick buttons 3 and 4, and allow them to pass down
-    // to where key binding can eat them.
-
-    if (setup_active && set_keybnd_active) {
-      if (ev->data1&4) {
-  ch = 0; // meaningless, just to get you past the check for -1
-  joywait = I_GetTime() + 5;
-      }
-      if (ev->data1&8) {
-  ch = 0; // meaningless, just to get you past the check for -1
-  joywait = I_GetTime() + 5;
-      }
-    }
-
-  } else {
-   // Process mouse input
-    if (ev->type == ev_mouse && mousewait < I_GetTime()) {
-
-      if (ev->data1&1)
+static dboolean M_KeyBndResponder(int ch, int action, event_t* ev)
+{
+  // changing an entry
+  if (setup_select)
   {
-    ch = key_menu_enter;                           // phares 3/7/98
-    mousewait = I_GetTime() + 15;
-  }
+    int i;
+    setup_menu_t *ptr1 = current_setup_menu + set_menu_itemon;
+    setup_menu_t *ptr2 = NULL;
 
-      if (ev->data1&2)
-  {
-    ch = key_menu_backspace;                       // phares 3/7/98
-    mousewait = I_GetTime() + 15;
-  }
+    int s_input = (ptr1->m_flags & S_INPUT) ? ptr1->input : 0;
 
-      // phares 4/4/98:
-      // Handle mouse button 3, and allow it to pass down
-      // to where key binding can eat it.
-
-      if (setup_active && set_keybnd_active)
-  if (ev->data1 >> 2)
+    if (ev->type == ev_joystick)
     {
-    ch = 0; // meaningless, just to get you past the check for -1
-    mousewait = I_GetTime() + 15;
+      setup_group group;
+      dboolean search = true;
+
+      if (!s_input)
+        return true; // not a legal action here (yet)
+
+      // see if the button is already bound elsewhere. if so, you
+      // have to swap bindings so the action where it's currently
+      // bound doesn't go dead. Since there is more than one
+      // keybinding screen, you have to search all of them for
+      // any duplicates. You're only interested in the items
+      // that belong to the same group as the one you're changing.
+
+      group  = ptr1->m_group;
+      if ((ch = GetButtons(MAX_JOY_BUTTONS, ev->data1.i)) == -1)
+        return true;
+
+      for (i = 0; keys_settings[i] && search; i++)
+        for (ptr2 = keys_settings[i]; !(ptr2->m_flags & S_END); ptr2++)
+          if (ptr2->m_group == group && ptr1 != ptr2)
+          {
+            if (ptr2->m_flags & S_INPUT)
+              if (dsda_InputMatchJoyB(ptr2->input, ch))
+              {
+                dsda_InputRemoveJoyB(ptr2->input, ch);
+                search = false;
+                break;
+              }
+          }
+
+      dsda_InputAddJoyB(s_input, ch);
     }
-    }
-    else
-
-      // Process keyboard input
-
-      if (ev->type == ev_keydown)
-        {
-        ch = ev->data1;               // phares 4/11/98:
-        if (ch == KEYD_RSHIFT)        // For chat string processing, need
-          shiftdown = true;           // to know when shift key is up or
-        }                             // down so you can get at the !,#,
-      else if (ev->type == ev_keyup)  // etc. keys. Keydowns are allowed
-        if (ev->data1 == KEYD_RSHIFT) // past this point, but keyups aren't
-          shiftdown = false;          // so we need to note the difference
-    }                                 // here using the 'shiftdown' dboolean.
-
-  if (ch == -1)
-    return false; // we can't use the event here
-
-  // Save Game string input
-
-  if (saveStringEnter) {
-#ifdef __3DS__
-    if (ch == key_menu_enter) {
-      char entered[SAVESTRINGSIZE];
-      memset(entered, 0, sizeof(entered));
-      if (I_SoftwareKeyboard("Enter save name...", savegamestrings[saveSlot], entered, SAVESTRINGSIZE - 1))
-      {
-        if (entered[0] != '\0')
-        {
-          strncpy(savegamestrings[saveSlot], entered, SAVESTRINGSIZE - 1);
-          savegamestrings[saveSlot][SAVESTRINGSIZE - 1] = '\0';
-          saveStringEnter = 0;
-          M_DoSave(saveSlot);
-          return true;
-        }
-      }
-      strcpy(savegamestrings[saveSlot], saveOldString);
-      saveStringEnter = 0;
-      return true;
-    }
-    else if (ch == key_menu_escape) {
-      saveStringEnter = 0;
-      strcpy(&savegamestrings[saveSlot][0],saveOldString);
-      return true;
-    }
-#endif
-    if (ch == key_menu_backspace)                            // phares 3/7/98
-      {
-      if (saveCharIndex > 0)
-        {
-        saveCharIndex--;
-        savegamestrings[saveSlot][saveCharIndex] = 0;
-        }
-      }
-
-      else if (ch == key_menu_escape)                    // phares 3/7/98
-  {
-    saveStringEnter = 0;
-    strcpy(&savegamestrings[saveSlot][0],saveOldString);
-  }
-
-      else if (ch == key_menu_enter)                     // phares 3/7/98
-  {
-    saveStringEnter = 0;
-    if (savegamestrings[saveSlot][0])
-      M_DoSave(saveSlot);
-  }
-
-      else
-  {
-  ch = toupper(ch);
-  if (ch >= 32 && ch <= 127 &&
-      saveCharIndex < SAVESTRINGSIZE-1 &&
-      M_StringWidth(savegamestrings[saveSlot]) < (SAVESTRINGSIZE-2)*8)
+    else if (ev->type == ev_mouse)
     {
-    savegamestrings[saveSlot][saveCharIndex++] = ch;
-    savegamestrings[saveSlot][saveCharIndex] = 0;
+      int i;
+      setup_group group;
+      dboolean search = true;
+
+      if (!s_input)
+        return true; // not a legal action here (yet)
+
+      // see if the button is already bound elsewhere. if so, you
+      // have to swap bindings so the action where it's currently
+      // bound doesn't go dead. Since there is more than one
+      // keybinding screen, you have to search all of them for
+      // any duplicates. You're only interested in the items
+      // that belong to the same group as the one you're changing.
+
+      group  = ptr1->m_group;
+      if ((ch = GetButtons(MAX_MOUSE_BUTTONS, ev->data1.i)) == -1)
+        return true;
+
+      for (i = 0 ; keys_settings[i] && search ; i++)
+        for (ptr2 = keys_settings[i]; !(ptr2->m_flags & S_END); ptr2++)
+          if (ptr2->m_group == group && ptr1 != ptr2)
+          {
+            if (ptr2->m_flags & S_INPUT)
+              if (dsda_InputMatchMouseB(ptr2->input, ch))
+              {
+                dsda_InputRemoveMouseB(ptr2->input, ch);
+                search = false;
+                break;
+              }
+          }
+
+      dsda_InputAddMouseB(s_input, ch);
     }
-  }
+    else  // keyboard key
+    {
+      int i;
+      setup_group group;
+      dboolean search = true;
+
+      // see if 'ch' is already bound elsewhere. if so, you have
+      // to swap bindings so the action where it's currently
+      // bound doesn't go dead. Since there is more than one
+      // keybinding screen, you have to search all of them for
+      // any duplicates. You're only interested in the items
+      // that belong to the same group as the one you're changing.
+
+      // if you find that you're trying to swap with an action
+      // that has S_KEEP set, you can't bind ch; it's already
+      // bound to that S_KEEP action, and that action has to
+      // keep that key.
+
+      group  = ptr1->m_group;
+      for (i = 0; keys_settings[i] && search; i++)
+        for (ptr2 = keys_settings[i]; !(ptr2->m_flags & S_END); ptr2++)
+          if (ptr2->m_group == group && ptr1 != ptr2)
+          {
+            if (ptr2->m_flags & (S_INPUT | S_KEEP))
+              if (dsda_InputMatchKey(ptr2->input, ch))
+              {
+                if (ptr2->m_flags & S_KEEP)
+                  return true; // can't have it!
+
+                dsda_InputRemoveKey(ptr2->input, ch);
+                search = false;
+                break;
+              }
+          }
+
+      dsda_InputAddKey(s_input, ch);
+    }
+
+    M_SelectDone(ptr1);       // phares 4/17/98
     return true;
   }
 
-  // Take care of any messages that need input
+  return false;
+}
 
-  if (messageToPrint) {
-    if (messageNeedsInput == true &&
-  !(ch == ' ' || ch == 'n' || ch == 'y' || ch == key_escape)) // phares
-      return false;
+static dboolean M_WeaponResponder(int ch, int action, event_t* ev)
+{
+  // changing an entry
+  if (setup_select)
+  {
+    setup_menu_t *ptr1 = current_setup_menu + set_menu_itemon;
+    setup_menu_t *ptr2 = NULL;
 
-    menuactive = messageLastMenuActive;
-    messageToPrint = 0;
-    if (messageRoutine)
-      messageRoutine(ch);
+    if (action != MENU_ENTER)
+    {
+      int old_value;
 
-    menuactive = mnact_inactive;
-    S_StartSound(NULL,sfx_swtchx);
+      ch -= '0'; // out of ascii
+      if (ch < 1 || ch > 9)
+        return true; // ignore
+
+      // see if 'ch' is already assigned elsewhere. if so,
+      // you have to swap assignments.
+      ptr2 = weap_priority_settings;
+      old_value = dsda_IntConfig(ptr1->config_id);
+      for (; !(ptr2->m_flags & S_END); ptr2++)
+        if (ptr2->m_flags & S_WEAP && ptr1 != ptr2 &&
+            dsda_IntConfig(ptr2->config_id) == ch)
+        {
+          dsda_UpdateIntConfig(ptr2->config_id, old_value, true);
+          break;
+        }
+
+      dsda_UpdateIntConfig(ptr1->config_id, ch, true);
+    }
+
+    M_SelectDone(ptr1);       // phares 4/17/98
     return true;
   }
 
-  // If there is no active menu displayed...
+  return false;
+}
 
-  if (!menuactive) {                                           // phares
-    if (ch == key_autorun)      // Autorun                          //  V
-      {
-      autorun = !autorun;
-      return true;
-      }
-
-    if (ch == key_help)      // Help key
-      {
-      M_StartControlPanel ();
-
-      currentMenu = &HelpDef;         // killough 10/98: new help screen
-
-      itemOn = 0;
-      S_StartSound(NULL,sfx_swtchn);
-      return true;
-      }
-
-    if (ch == key_savegame)     // Save Game
-      {
-      M_StartControlPanel();
-      S_StartSound(NULL,sfx_swtchn);
-      M_SaveGame(0);
-      return true;
-      }
-
-    if (ch == key_loadgame)     // Load Game
-      {
-      M_StartControlPanel();
-      S_StartSound(NULL,sfx_swtchn);
-      M_LoadGame(0);
-      return true;
-      }
-
-    if (ch == key_soundvolume)      // Sound Volume
-      {
-      M_StartControlPanel ();
-      currentMenu = &SoundDef;
-      itemOn = sfx_vol;
-      S_StartSound(NULL,sfx_swtchn);
-      return true;
-      }
-
-    if (ch == key_quicksave)      // Quicksave
-      {
-      S_StartSound(NULL,sfx_swtchn);
-      M_QuickSave();
-      return true;
-      }
-
-    if (ch == key_endgame)      // End game
-      {
-      S_StartSound(NULL,sfx_swtchn);
-      M_EndGame(0);
-      return true;
-      }
-
-    if (ch == key_messages)      // Toggle messages
-      {
-      M_ChangeMessages(0);
-      S_StartSound(NULL,sfx_swtchn);
-      return true;
-      }
-
-    if (ch == key_quickload)      // Quickload
-      {
-      S_StartSound(NULL,sfx_swtchn);
-      M_QuickLoad();
-      return true;
-      }
-
-    if (ch == key_quit)       // Quit DOOM
-      {
-      S_StartSound(NULL,sfx_swtchn);
-      M_QuitDOOM(0);
-      return true;
-      }
-
-    if (ch == key_gamma)       // gamma toggle
-      {
-        usegamma++;
-        if (usegamma > 4)
-          usegamma = 0;
-        
-        players[consoleplayer].message =
-          usegamma == 0 ? s_GAMMALVL0 :
-          usegamma == 1 ? s_GAMMALVL1 :
-          usegamma == 2 ? s_GAMMALVL2 :
-          usegamma == 3 ? s_GAMMALVL3 :
-          s_GAMMALVL4;
-        V_SetPalette(0);
-        return true;
-      }
-
-
-    if (ch == key_zoomout)     // zoom out
-      {
-      if ((automapmode & am_active) || chat_on)
-        return false;
-      M_SizeDisplay(0);
-      S_StartSound(NULL,sfx_stnmov);
-      return true;
-      }
-
-    if (ch == key_zoomin)               // zoom in
-      {                                 // jff 2/23/98
-      if ((automapmode & am_active) || chat_on)     // allow
-        return false;                   // key_hud==key_zoomin
-      M_SizeDisplay(1);                                             //  ^
-      S_StartSound(NULL,sfx_stnmov);                                //  |
-      return true;                                                  // phares
-      }
-
-    //e6y
-    if (ch == key_speed_default && (!netgame||demoplayback))               
+static dboolean M_AutoResponder(int ch, int action, event_t* ev)
+{
+  // changing an entry
+  if (setup_select)
+  {
+    if (action == MENU_DOWN)
     {
-      realtic_clock_rate = StepwiseSum(realtic_clock_rate, 0, speed_step, 3, 10000, 100);
-      I_Init2();
-      // Don't eat the keypress in this case.
-      // return true;
-    }
-    if (ch == key_speed_up && (!netgame||demoplayback))
-    {
-      realtic_clock_rate = StepwiseSum(realtic_clock_rate, 1, speed_step, 3, 10000, 100);
-      I_Init2();
-      // Don't eat the keypress in this case.
-      // return true;
-    }
-    if (ch == key_speed_down && (!netgame||demoplayback))
-    {
-      realtic_clock_rate = StepwiseSum(realtic_clock_rate, -1, speed_step, 3, 10000, 100);
-      I_Init2();
-      // Don't eat the keypress in this case.
-      // return true;
-    }
-    if (ch == key_nextlevel)
-    {
-      if (demoplayback && !doSkip && singledemo)
-      {
-        demo_stoponnext = true;
-        G_SkipDemoStart();
-        return true;
-      }
-      else
-      {
-        if (G_GotoNextLevel(NULL, NULL))
-          return true;
-      }
+      if (++color_palette_y == 16)
+        color_palette_y = 0;
+      S_StartOptionalSound(g_sfx_mnusel, g_sfx_itemup, false);
+      return true;
     }
 
-    if (ch == key_level_restart)
+    if (action == MENU_UP)
     {
-      if (G_ReloadLevel())
-        return true;
-    }
- 
-    if (ch == key_demo_endlevel)
-    {
-      if (demoplayback && !doSkip && singledemo)
-      {
-        demo_stoponend = true;
-        G_SkipDemoStart();
-        return true;
-      }
+      if (--color_palette_y < 0)
+        color_palette_y = 15;
+      S_StartOptionalSound(g_sfx_mnusel, g_sfx_itemup, false);
+      return true;
     }
 
-    if (ch == key_demo_skip)
+    if (action == MENU_LEFT)
     {
-      if (demoplayback && singledemo)
+      if (--color_palette_x < 0)
+        color_palette_x = 15;
+      S_StartOptionalSound(g_sfx_mnusel, g_sfx_itemup, false);
+      return true;
+    }
+
+    if (action == MENU_RIGHT)
+    {
+      if (++color_palette_x == 16)
+        color_palette_x = 0;
+      S_StartOptionalSound(g_sfx_mnusel, g_sfx_itemup, false);
+      return true;
+    }
+
+    if (action == MENU_ENTER)
+    {
+      setup_menu_t *ptr1 = current_setup_menu + set_menu_itemon;
+
+      dsda_UpdateIntConfig(ptr1->config_id, color_palette_x + 16 * color_palette_y, true);
+      M_SelectDone(ptr1);                         // phares 4/17/98
+      colorbox_active = false;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static dboolean M_StringResponder(int ch, int action, event_t* ev)
+{
+  // changing an entry
+  if (setup_select)
+  {
+    setup_menu_t *ptr1 = current_setup_menu + set_menu_itemon;
+
+    if (ptr1->m_flags & S_STRING) // creating/editing a string?
+    {
+      if (action == MENU_BACKSPACE) // backspace and DEL
       {
-        if (doSkip)
+        if (entry_string_index[entry_index] == 0)
         {
-          G_SkipDemoStop();
+          if (entry_index > 0)
+            entry_string_index[--entry_index] = 0;
         }
+        // shift the remainder of the text one char left
         else
         {
-          G_SkipDemoStart();
+          int i;
+
+          for (i = entry_index; entry_string_index[i + 1]; ++i)
+            entry_string_index[i] = entry_string_index[i + 1];
+          entry_string_index[i] = '\0';
         }
-        return true;
       }
-    }
-
-    if (ch == key_walkcamera)
-    {
-      if (demoplayback && gamestate == GS_LEVEL)
+      else if (action == MENU_LEFT) // move cursor left
       {
-        walkcamera.type = (walkcamera.type+1)%3;
-        P_SyncWalkcam (true, (walkcamera.type!=2));
-        R_ResetViewInterpolation ();
-        if (walkcamera.type==0)
-          R_SmoothPlaying_Reset(NULL);
-        // Don't eat the keypress in this case.
-        // return true;
+        if (entry_index > 0)
+          entry_index--;
       }
-    }
-
-#ifdef GL_DOOM
-    if (V_GetMode() == VID_MODEGL)
-    {
-      if (ch == key_showalive)
+      else if (action == MENU_RIGHT) // move cursor right
       {
-        show_alive = (show_alive + 1) % 3;
-        doom_printf("Show Alive Monsters %s",
-          (show_alive ? (show_alive == 1 ? "(mode 1) on" : "(mode 2) on" ) : "off"));
+        if (entry_string_index[entry_index] != 0)
+          entry_index++;
       }
-    }
-#endif
-
-    if (ch == key_mlook) // mouse look
-    {
-      movement_mouselook = !movement_mouselook;
-      M_ChangeMouseLook();
-      doom_printf("Mouselook %s", movement_mouselook ? "on" : "off");
-      // Don't eat the keypress in this case.
-      // return true;
-    }
-
-    if (ch == key_novert)
-    {
-      movement_mousenovert = !movement_mousenovert;
-      doom_printf("Vertical Mouse Movement %s", movement_mousenovert ? "off" : "on");
-      // Don't eat the keypress in this case.
-      // return true;
-    }
-
-    if (ch == key_hud)   // heads-up mode
+      else if ((action == MENU_ENTER) || (action == MENU_ESCAPE))
       {
-      if ((automapmode & am_active) || chat_on)    // jff 2/22/98
-        return false;                  // HUD mode control
-      if (screenSize<8)                // function on default F5
-        while (screenSize<8 || !hud_displayed) // make hud visible
-          M_SizeDisplay(1);            // when configuring it
-      else
+        dsda_UpdateStringConfig(ptr1->config_id, entry_string_index, true);
+        M_SelectDone(ptr1);   // phares 4/17/98
+      }
+
+      // Adding a char to the text. Has to be a printable
+      // char, and you can't overrun the buffer. If the
+      // string gets larger than what the screen can hold,
+      // it is dealt with when the string is drawn (above).
+
+      else if ((ch >= 32) && (ch <= 126))
+        if ((entry_index + 1) < ENTRY_STRING_BFR_SIZE)
         {
-        hud_displayed = 1;               //jff 3/3/98 turn hud on
-        HU_NextHud();
-        HU_MoveHud(true);                //jff 3/9/98 move it now to avoid glitch
+          if (shiftdown)
+            ch = shiftxform[ch];
+          if (entry_string_index[entry_index] == 0)
+          {
+            entry_string_index[entry_index++] = ch;
+            entry_string_index[entry_index] = 0;
+          }
+          else
+            entry_string_index[entry_index++] = ch;
         }
-      return true;
-      }
 
-    /* killough 10/98: allow key shortcut into Setup menu */
-    if (ch == key_setup) {
-      M_StartControlPanel();
-      S_StartSound(NULL,sfx_swtchn);
-      M_SetupNextMenu(&SetupDef);
       return true;
     }
+
+    M_SelectDone(ptr1);       // phares 4/17/98
+    return true;
   }
-  // Pop-up Main menu?
 
-  if (!menuactive)
-    {
-    if (ch == key_escape)                                     // phares
-      {
-      M_StartControlPanel ();
-      S_StartSound(NULL,sfx_swtchn);
-      return true;
-      }
-    return false;
-    }
+  return false;
+}
 
-  // [FG] delete a savegame
-
-  if (currentMenu == &LoadDef || currentMenu == &SaveDef)
+static dboolean M_LevelTableResponder(int ch, int action, event_t* ev)
+{
+  if (action == MENU_ENTER)
   {
-    if (delete_verify)
+    int skill;
+    int map_index;
+    map_stats_t *map;
+
+    if (current_setup_menu == level_table_page[wad_stats_summary_page])
+      return true;
+
+    map_index = set_menu_itemon - 1;
+    map = &wad_stats.maps[map_index];
+
+    skill = in_game ? gameskill : startskill;
+
+    G_DeferedInitNew(skill, map->episode, map->map);
+
+    M_LeaveSetupMenu();
+    M_ClearMenus();
+    S_StartOptionalSound(g_sfx_mnucls, g_sfx_swtchx, false);
+
+    return true;
+  }
+
+  return false;
+}
+
+static dboolean M_SetupCommonSelectResponder(int ch, int action, event_t* ev)
+{
+  // changing an entry
+  if (setup_select)
+  {
+    setup_menu_t* ptr1 = current_setup_menu + set_menu_itemon;
+
+    if (action == MENU_ESCAPE) // Exit key = no change
     {
-      if (toupper(ch) == 'Y')
-      {
-        M_DeleteGame(itemOn);
-        S_StartSound(NULL,sfx_itemup);
-        delete_verify = false;
-      }
-      else if (toupper(ch) == 'N')
-      {
-        S_StartSound(NULL,sfx_itemup);
-        delete_verify = false;
-      }
+      M_SelectDone(ptr1);                           // phares 4/17/98
+      setup_gather = false;   // finished gathering keys, if any
       return true;
     }
-  }
 
-  // phares 3/26/98 - 4/11/98:
-  // Setup screen key processing
-
-  if (setup_active) {
-    setup_menu_t* ptr1= current_setup_menu + set_menu_itemon;
-    setup_menu_t* ptr2 = NULL;
-
-    // phares 4/19/98:
-    // Catch the response to the 'reset to default?' verification
-    // screen
-
-    if (default_verify)
-      {
-  if (toupper(ch) == 'Y') {
-    M_ResetDefaults();
-    default_verify = false;
-    M_SelectDone(ptr1);
-  }
-  else if (toupper(ch) == 'N') {
-    default_verify = false;
-    M_SelectDone(ptr1);
-  }
-  return true;
+    if (ptr1->m_flags & S_YESNO) // yes or no setting?
+    {
+      if (action == MENU_ENTER) {
+        dsda_ToggleConfig(ptr1->config_id, true);
       }
-
-      // Common processing for some items
-
-      if (setup_select) { // changing an entry
-  if (ch == key_menu_escape) // Exit key = no change
-    {
-    M_SelectDone(ptr1);                           // phares 4/17/98
-    setup_gather = false;   // finished gathering keys, if any
-    return true;
+      M_SelectDone(ptr1);                           // phares 4/17/98
+      return true;
     }
 
-  if (ptr1->m_flags & S_YESNO) // yes or no setting?
-    {
-    if (ch == key_menu_enter) {
-      *ptr1->var.def->location.pi = !*ptr1->var.def->location.pi; // killough 8/15/98
-
-      // phares 4/14/98:
-      // If not in demoplayback, demorecording, or netgame,
-      // and there's a second variable in var2, set that
-      // as well
-
-      // killough 8/15/98: add warning messages
-
-      if (ptr1->m_flags & (S_LEVWARN | S_PRGWARN))
-        warn_about_changes(ptr1->m_flags &    // killough 10/98
-         (S_LEVWARN | S_PRGWARN));
-      else
-        M_UpdateCurrent(ptr1->var.def);
-
-      if (ptr1->action)      // killough 10/98
-        ptr1->action();
-    }
-    M_SelectDone(ptr1);                           // phares 4/17/98
-    return true;
-    }
-
-  if (ptr1->m_flags & S_CRITEM)
-    {
-    if (ch != key_menu_enter)
-      {
-      ch -= 0x30; // out of ascii
-      if (ch < 0 || ch > 9)
-        return true; // ignore
-      *ptr1->var.def->location.pi = ch;
-      }
-    if (ptr1->action)      // killough 10/98
-      ptr1->action();
-    M_SelectDone(ptr1);                      // phares 4/17/98
-    return true;
-    }
-
-  if (ptr1->m_flags & S_NUM) // number?
+    if (ptr1->m_flags & (S_NUM | S_CRITEM)) // number?
     {
       if (setup_gather) { // gathering keys for a value?
         /* killough 10/98: Allow negatives, and use a more
-         * friendly input method (e.g. don't clear value early,
-         * allow backspace, and return to original value if bad
-         * value is entered).
-         */
-        if (ch == key_menu_enter) {
-    if (gather_count) {     // Any input?
-      int value;
+          * friendly input method (e.g. don't clear value early,
+          * allow backspace, and return to original value if bad
+          * value is entered).
+          */
+        if (action == MENU_ENTER) {
+          if (gather_count) {     // Any input?
+            int value;
 
-      gather_buffer[gather_count] = 0;
-      value = atoi(gather_buffer);  // Integer value
+            gather_buffer[gather_count] = 0;
+            value = atoi(gather_buffer);  // Integer value
 
-      if ((ptr1->var.def->minvalue != UL &&
-           value < ptr1->var.def->minvalue) ||
-          (ptr1->var.def->maxvalue != UL &&
-           value > ptr1->var.def->maxvalue))
-        warn_about_changes(S_BADVAL);
-      else {
-        *ptr1->var.def->location.pi = value;
-
-        /* killough 8/9/98: fix numeric vars
-         * killough 8/15/98: add warning message
-         */
-        if (ptr1->m_flags & (S_LEVWARN | S_PRGWARN))
-          warn_about_changes(ptr1->m_flags &
-           (S_LEVWARN | S_PRGWARN));
-        else
-          M_UpdateCurrent(ptr1->var.def);
-
-        if (ptr1->action)      // killough 10/98
-          ptr1->action();
-      }
-    }
-    M_SelectDone(ptr1);     // phares 4/17/98
-    setup_gather = false; // finished gathering keys
-    return true;
+            dsda_UpdateIntConfig(ptr1->config_id, value, true);
+          }
+          M_SelectDone(ptr1);     // phares 4/17/98
+          setup_gather = false; // finished gathering keys
+          return true;
         }
 
-        if (ch == key_menu_backspace && gather_count) {
-    gather_count--;
-    return true;
+        if (action == MENU_BACKSPACE && gather_count) {
+          gather_count--;
+          return true;
         }
 
         if (gather_count >= MAXGATHER)
-    return true;
+          return true;
 
-        if (!isdigit(ch) && ch != '-')
-    return true; // ignore
+        if (!isdigit((unsigned char) ch) && ch != '-')
+          return true; // ignore
 
         /* killough 10/98: character-based numerical input */
         gather_buffer[gather_count++] = ch;
@@ -5200,404 +5268,174 @@ dboolean M_Responder (event_t* ev) {
       return true;
     }
 
-  if (ptr1->m_flags & S_CHOICE) // selection of choices?
+    if (ptr1->m_flags & S_CHOICE) // selection of choices?
     {
-    if (ch == key_menu_left) {
-      if (ptr1->var.def->type == def_int) {
-        int value = *ptr1->var.def->location.pi;
-      
-        value = value - 1;
-        if ((ptr1->var.def->minvalue != UL &&
-             value < ptr1->var.def->minvalue))
-          value = ptr1->var.def->minvalue;
-        if ((ptr1->var.def->maxvalue != UL &&
-             value > ptr1->var.def->maxvalue))
-          value = ptr1->var.def->maxvalue;
-        if (*ptr1->var.def->location.pi != value)
-          S_StartSound(NULL,sfx_pstop);
-        *ptr1->var.def->location.pi = value;
-      }
-      if (ptr1->var.def->type == def_str) {
-        int old_value, value;
-
-        old_value = M_IndexInChoices(*ptr1->var.def->location.ppsz,
-                                     ptr1->selectstrings);
-        value = old_value - 1;
-        if (value < 0)
-          value = 0;
-        if (old_value != value)
-          S_StartSound(NULL,sfx_pstop);
-        *ptr1->var.def->location.ppsz = ptr1->selectstrings[value];
-      }
-    }
-    if (ch == key_menu_right) {
-      if (ptr1->var.def->type == def_int) {
-        int value = *ptr1->var.def->location.pi;
-      
-        value = value + 1;
-        if ((ptr1->var.def->minvalue != UL &&
-             value < ptr1->var.def->minvalue))
-          value = ptr1->var.def->minvalue;
-        if ((ptr1->var.def->maxvalue != UL &&
-             value > ptr1->var.def->maxvalue))
-          value = ptr1->var.def->maxvalue;
-        if (*ptr1->var.def->location.pi != value)
-          S_StartSound(NULL,sfx_pstop);
-        *ptr1->var.def->location.pi = value;
-      }
-      if (ptr1->var.def->type == def_str) {
-        int old_value, value;
-
-        old_value = M_IndexInChoices(*ptr1->var.def->location.ppsz,
-                                     ptr1->selectstrings);
-        value = old_value + 1;
-        if (ptr1->selectstrings[value] == NULL)
-          value = old_value;
-        if (old_value != value)
-          S_StartSound(NULL,sfx_pstop);
-        *ptr1->var.def->location.ppsz = ptr1->selectstrings[value];
-      }
-    }
-    if (ch == key_menu_enter) {
-      // phares 4/14/98:
-      // If not in demoplayback, demorecording, or netgame,
-      // and there's a second variable in var2, set that
-      // as well
-
-      // killough 8/15/98: add warning messages
-
-      if (ptr1->m_flags & (S_LEVWARN | S_PRGWARN))
-        warn_about_changes(ptr1->m_flags &    // killough 10/98
-         (S_LEVWARN | S_PRGWARN));
-      else
-        M_UpdateCurrent(ptr1->var.def);
-
-      if (ptr1->action)      // killough 10/98
-        ptr1->action();
-      M_SelectDone(ptr1);                           // phares 4/17/98
-    }
-    return true;
-    }
-
-      }
-
-      // Key Bindings
-
-      if (set_keybnd_active) // on a key binding setup screen
-  if (setup_select)    // incoming key or button gets bound
-    {
-      if (ev->type == ev_joystick)
+      if (action == MENU_LEFT) {
+        if (ptr1->m_flags & S_STR)
         {
-    int oldbutton;
-    setup_group group;
-    dboolean search = true;
+          int old_value, value;
 
-    if (!ptr1->m_joy)
-      return true; // not a legal action here (yet)
-
-    // see if the button is already bound elsewhere. if so, you
-    // have to swap bindings so the action where it's currently
-    // bound doesn't go dead. Since there is more than one
-    // keybinding screen, you have to search all of them for
-    // any duplicates. You're only interested in the items
-    // that belong to the same group as the one you're changing.
-
-    oldbutton = *ptr1->m_joy;
-    group  = ptr1->m_group;
-    if (ev->data1 & 1)
-      ch = 0;
-    else if (ev->data1 & 2)
-      ch = 1;
-    else if (ev->data1 & 4)
-      ch = 2;
-    else if (ev->data1 & 8)
-      ch = 3;
-    else
-      return true;
-    for (i = 0 ; keys_settings[i] && search ; i++)
-      for (ptr2 = keys_settings[i] ; !(ptr2->m_flags & S_END) ; ptr2++)
-        if (ptr2->m_group == group && ptr1 != ptr2)
-          if (ptr2->m_flags & S_KEY && ptr2->m_joy)
-      if (*ptr2->m_joy == ch)
-        {
-          *ptr2->m_joy = oldbutton;
-          search = false;
-          break;
-        }
-    *ptr1->m_joy = ch;
-        }
-      else if (ev->type == ev_mouse)
-        {
-    int i,oldbutton;
-    setup_group group;
-    dboolean search = true;
-
-    if (!ptr1->m_mouse)
-      return true; // not a legal action here (yet)
-
-    // see if the button is already bound elsewhere. if so, you
-    // have to swap bindings so the action where it's currently
-    // bound doesn't go dead. Since there is more than one
-    // keybinding screen, you have to search all of them for
-    // any duplicates. You're only interested in the items
-    // that belong to the same group as the one you're changing.
-
-    oldbutton = *ptr1->m_mouse;
-    group  = ptr1->m_group;
-    if ((ch = GetButtons(MAX_MOUSEB, ev->data1)) == -1)
-      return true;
-    for (i = 0 ; keys_settings[i] && search ; i++)
-      for (ptr2 = keys_settings[i] ; !(ptr2->m_flags & S_END) ; ptr2++)
-        if (ptr2->m_group == group && ptr1 != ptr2)
-          if (ptr2->m_flags & S_KEY && ptr2->m_mouse)
-      if (*ptr2->m_mouse == ch)
-        {
-          *ptr2->m_mouse = oldbutton;
-          search = false;
-          break;
-        }
-    *ptr1->m_mouse = ch;
-        }
-      else  // keyboard key
-        {
-    int i,oldkey;
-    setup_group group;
-    dboolean search = true;
-
-    // see if 'ch' is already bound elsewhere. if so, you have
-    // to swap bindings so the action where it's currently
-    // bound doesn't go dead. Since there is more than one
-    // keybinding screen, you have to search all of them for
-    // any duplicates. You're only interested in the items
-    // that belong to the same group as the one you're changing.
-
-    // if you find that you're trying to swap with an action
-    // that has S_KEEP set, you can't bind ch; it's already
-    // bound to that S_KEEP action, and that action has to
-    // keep that key.
-
-    oldkey = *ptr1->var.m_key;
-    group  = ptr1->m_group;
-    for (i = 0 ; keys_settings[i] && search ; i++)
-      for (ptr2 = keys_settings[i] ; !(ptr2->m_flags & S_END) ; ptr2++)
-        if (ptr2->m_flags & (S_KEY|S_KEEP) &&
-      ptr2->m_group == group &&
-      ptr1 != ptr2)
-          if (*ptr2->var.m_key == ch)
-      {
-        if (ptr2->m_flags & S_KEEP)
-          return true; // can't have it!
-        *ptr2->var.m_key = oldkey;
-        search = false;
-        break;
-      }
-    *ptr1->var.m_key = ch;
-        }
-
-      M_SelectDone(ptr1);       // phares 4/17/98
-      return true;
-    }
-
-      // Weapons
-
-      if (set_weapon_active) // on the weapons setup screen
-  if (setup_select) // changing an entry
-    {
-      if (ch != key_menu_enter)
-        {
-    ch -= '0'; // out of ascii
-    if (ch < 1 || ch > 9)
-      return true; // ignore
-
-    // Plasma and BFG don't exist in shareware
-    // killough 10/98: allow it anyway, since this
-    // isn't the game itself, just setting preferences
-
-    // see if 'ch' is already assigned elsewhere. if so,
-    // you have to swap assignments.
-
-    // killough 11/98: simplified
-
-    for (i = 0; (ptr2 = weap_settings[i]); i++)
-      for (; !(ptr2->m_flags & S_END); ptr2++)
-        if (ptr2->m_flags & S_WEAP &&
-      *ptr2->var.def->location.pi == ch && ptr1 != ptr2)
+          old_value = M_IndexInChoices(entry_string_index, ptr1->selectstrings);
+          value = old_value - 1;
+          if (value < 0)
+            value = 0;
+          if (old_value != value)
           {
-      *ptr2->var.def->location.pi = *ptr1->var.def->location.pi;
-      goto end;
+            S_StartOptionalSound(g_sfx_mnumov, g_sfx_menu, true);
+            strncpy(entry_string_index, ptr1->selectstrings[value], ENTRY_STRING_BFR_SIZE - 1);
           }
-        end:
-    *ptr1->var.def->location.pi = ch;
         }
-
-      M_SelectDone(ptr1);       // phares 4/17/98
-      return true;
-    }
-
-      // Automap
-
-      if (set_auto_active) // on the automap setup screen
-  if (setup_select) // incoming key
-    {
-      if (ch == key_menu_down)
-        {
-    if (++color_palette_y == 16)
-      color_palette_y = 0;
-    S_StartSound(NULL,sfx_itemup);
-    return true;
-        }
-
-      if (ch == key_menu_up)
-        {
-    if (--color_palette_y < 0)
-      color_palette_y = 15;
-    S_StartSound(NULL,sfx_itemup);
-    return true;
-        }
-
-      if (ch == key_menu_left)
-        {
-    if (--color_palette_x < 0)
-      color_palette_x = 15;
-    S_StartSound(NULL,sfx_itemup);
-    return true;
-        }
-
-      if (ch == key_menu_right)
-        {
-    if (++color_palette_x == 16)
-      color_palette_x = 0;
-    S_StartSound(NULL,sfx_itemup);
-    return true;
-        }
-
-      if (ch == key_menu_enter)
-        {
-    *ptr1->var.def->location.pi = color_palette_x + 16*color_palette_y;
-    M_SelectDone(ptr1);                         // phares 4/17/98
-    colorbox_active = false;
-    return true;
-        }
-    }
-
-      // killough 10/98: consolidate handling into one place:
-      if (setup_select &&
-    set_enemy_active | set_general_active | set_chat_active |
-    set_mess_active | set_status_active | set_compat_active)
-  {
-    if (ptr1->m_flags & S_STRING) // creating/editing a string?
-      {
-        if (ch == key_menu_backspace) // backspace and DEL
-    {
-      if (chat_string_buffer[chat_index] == 0)
-        {
-          if (chat_index > 0)
-      chat_string_buffer[--chat_index] = 0;
-        }
-      // shift the remainder of the text one char left
-      else
-        strcpy(&chat_string_buffer[chat_index],
-         &chat_string_buffer[chat_index+1]);
-    }
-        else if (ch == key_menu_left) // move cursor left
-    {
-      if (chat_index > 0)
-        chat_index--;
-    }
-        else if (ch == key_menu_right) // move cursor right
-    {
-      if (chat_string_buffer[chat_index] != 0)
-        chat_index++;
-    }
-        else if ((ch == key_menu_enter) ||
-           (ch == key_menu_escape))
-    {
-      *ptr1->var.def->location.ppsz = chat_string_buffer;
-      M_SelectDone(ptr1);   // phares 4/17/98
-    }
-
-        // Adding a char to the text. Has to be a printable
-        // char, and you can't overrun the buffer. If the
-        // chat string gets larger than what the screen can hold,
-        // it is dealt with when the string is drawn (above).
-
-        else if ((ch >= 32) && (ch <= 126))
-    if ((chat_index+1) < CHAT_STRING_BFR_SIZE)
-      {
-        if (shiftdown)
-          ch = shiftxform[ch];
-        if (chat_string_buffer[chat_index] == 0)
-          {
-      chat_string_buffer[chat_index++] = ch;
-      chat_string_buffer[chat_index] = 0;
-          }
         else
-          chat_string_buffer[chat_index++] = ch;
-      }
-        return true;
-      }
+        {
+          int value = choice_value;
 
-    M_SelectDone(ptr1);       // phares 4/17/98
-    return true;
+          do {
+            --value;
+          } while (value > 0 && ptr1->selectstrings && ptr1->selectstrings[value][0] == '~');
+
+          if (value >= 0 && choice_value != value) {
+            S_StartOptionalSound(g_sfx_mnumov, g_sfx_menu, true);
+            choice_value = value;
+          }
+        }
+      }
+      else if (action == MENU_RIGHT) {
+        if (ptr1->m_flags & S_STR)
+        {
+          int old_value, value;
+
+          old_value = M_IndexInChoices(entry_string_index, ptr1->selectstrings);
+          value = old_value + 1;
+          if (ptr1->selectstrings[value] == NULL)
+            value = old_value;
+          if (old_value != value)
+          {
+            S_StartOptionalSound(g_sfx_mnumov, g_sfx_menu, true);
+            strncpy(entry_string_index, ptr1->selectstrings[value], ENTRY_STRING_BFR_SIZE - 1);
+          }
+        }
+        else
+        {
+          int value = choice_value;
+
+          do {
+            ++value;
+          } while (ptr1->selectstrings && ptr1->selectstrings[value] && ptr1->selectstrings[value][0] == '~');
+
+          if (ptr1->selectstrings[value] && choice_value != value) {
+            S_StartOptionalSound(g_sfx_mnumov, g_sfx_menu, true);
+            choice_value = value;
+          }
+        }
+      }
+      else if (action == MENU_ENTER) {
+        if (ptr1->m_flags & S_STR)
+        {
+          dsda_UpdateStringConfig(ptr1->config_id, entry_string_index, true);
+        }
+        else
+        {
+          dsda_UpdateIntConfig(ptr1->config_id, choice_value, true);
+        }
+        M_SelectDone(ptr1);                           // phares 4/17/98
+      }
+      return true;
+    }
+
+    if (ptr1->m_flags & S_THERMO)
+    {
+      if (action == MENU_LEFT) {
+        if (dsda_IntConfig(ptr1->config_id) > 0) {
+          dsda_DecrementIntConfig(ptr1->config_id, true);
+          S_StartOptionalSound(g_sfx_mnusli, g_sfx_stnmov, true);
+        }
+      }
+      else if (action == MENU_RIGHT) {
+        if (dsda_IntConfig(ptr1->config_id) < 15) {
+          dsda_IncrementIntConfig(ptr1->config_id, true);
+          S_StartOptionalSound(g_sfx_mnusli, g_sfx_stnmov, true);
+        }
+      }
+      else if (action == MENU_ENTER) {
+        M_SelectDone(ptr1);
+      }
+      return true;
+    }
   }
 
-      // Not changing any items on the Setup screens. See if we're
-      // navigating the Setup menus or selecting an item to change.
+  return false;
+}
 
-      if (ch == key_menu_down)
+static dboolean M_SetupNavigationResponder(int ch, int action, event_t* ev)
+{
+  setup_menu_t* ptr1 = current_setup_menu + set_menu_itemon;
+  setup_menu_t* ptr2 = NULL;
+
+  if (action == MENU_DOWN)
   {
+    if (ptr1->m_flags & S_NOSELECT)
+      return true;
+
     ptr1->m_flags &= ~S_HILITE;     // phares 4/17/98
     do
       if (ptr1->m_flags & S_END)
-        {
-    set_menu_itemon = 0;
-    ptr1 = current_setup_menu;
-        }
+      {
+        set_menu_itemon = 0;
+        ptr1 = current_setup_menu;
+      }
       else
-        {
-    set_menu_itemon++;
-    ptr1++;
-        }
+      {
+        set_menu_itemon++;
+        ptr1++;
+      }
     while (ptr1->m_flags & S_SKIP);
     M_SelectDone(ptr1);         // phares 4/17/98
     return true;
   }
 
-      if (ch == key_menu_up)
+  if (action == MENU_UP)
   {
+    if (ptr1->m_flags & S_NOSELECT)
+      return true;
+
     ptr1->m_flags &= ~S_HILITE;     // phares 4/17/98
     do
-      {
-        if (set_menu_itemon == 0)
-    do
-      set_menu_itemon++;
-    while(!((current_setup_menu + set_menu_itemon)->m_flags & S_END));
-        set_menu_itemon--;
-      }
+    {
+      if (set_menu_itemon == 0)
+        do
+          set_menu_itemon++;
+        while(!((current_setup_menu + set_menu_itemon)->m_flags & S_END));
+      set_menu_itemon--;
+    }
     while((current_setup_menu + set_menu_itemon)->m_flags & S_SKIP);
     M_SelectDone(current_setup_menu + set_menu_itemon);         // phares 4/17/98
     return true;
   }
 
-      if (ch == key_menu_clear)
+  if (action == MENU_CLEAR)
   {
-    if (ptr1->m_flags & S_KEY)
+    if (ptr1->m_flags & S_INPUT)
     {
-        if (ptr1->m_joy)
-          *ptr1->m_joy = -1;
-
-        if (ptr1->m_mouse)
-          *ptr1->m_mouse = -1;
-
-        *ptr1->var.m_key = 0;
+      if (ptr1->m_flags & S_NOCLEAR)
+      {
+        S_StartOptionalSound(g_sfx_mnuerr, g_sfx_oof, true);
+      }
+      else
+      {
+        dsda_InputReset(ptr1->input);
+        S_StartOptionalSound(g_sfx_mnusel, g_sfx_itemup, false);
+      }
     }
 
     return true;
   }
 
-      if (ch == key_menu_enter)
+  if (action == MENU_ENTER)
   {
     int flags = ptr1->m_flags;
+
+    if (dsda_StrictMode() && dsda_IsStrictConfig(ptr1->config_id))
+      return true;
 
     // You've selected an item to change. Highlight it, post a new
     // message about what to do, and get ready to process the
@@ -5605,336 +5443,910 @@ dboolean M_Responder (event_t* ev) {
     //
     // killough 10/98: use friendlier char-based input buffer
 
-    if (flags & S_NUM)
-      {
-#ifdef __3DS__
-        char init_buf[32];
-        char num_buf[32];
-        memset(init_buf, 0, sizeof(init_buf));
-        memset(num_buf, 0, sizeof(num_buf));
-        snprintf(init_buf, sizeof(init_buf), "%d", *ptr1->var.def->location.pi);
-        if (I_SoftwareKeyboardNumeric(ptr1->m_text, init_buf, num_buf, sizeof(num_buf) - 1))
-        {
-          int value = atoi(num_buf);
-          if ((ptr1->var.def->minvalue != UL && value < ptr1->var.def->minvalue) ||
-              (ptr1->var.def->maxvalue != UL && value > ptr1->var.def->maxvalue))
-          {
-            warn_about_changes(S_BADVAL);
-          }
-          else
-          {
-            *ptr1->var.def->location.pi = value;
-            if (ptr1->m_flags & (S_LEVWARN | S_PRGWARN))
-              warn_about_changes(ptr1->m_flags & (S_LEVWARN | S_PRGWARN));
-            else
-              M_UpdateCurrent(ptr1->var.def);
-            if (ptr1->action)
-              ptr1->action();
-          }
-          M_SelectDone(ptr1);
-          return true;
-        }
-        M_SelectDone(ptr1);
-        return true;
-#else
-        setup_gather = true;
-        print_warning_about_changes = false;
-        gather_count = 0;
-#endif
-      }
+    if (flags & (S_NUM | S_CRITEM))
+    {
+      setup_gather = true;
+      gather_count = 0;
+    }
     else if (flags & S_COLOR)
-      {
-        int color = *ptr1->var.def->location.pi;
+    {
+      int color = dsda_IntConfig(ptr1->config_id);
 
-        if (color < 0 || color > 255) // range check the value
-    color = 0;        // 'no show' if invalid
+      if (color < 0 || color > 255) // range check the value
+        color = 0;        // 'no show' if invalid
 
-        color_palette_x = *ptr1->var.def->location.pi & 15;
-        color_palette_y = *ptr1->var.def->location.pi >> 4;
-        colorbox_active = true;
-      }
+      color_palette_x = color & 15;
+      color_palette_y = color >> 4;
+      colorbox_active = true;
+    }
     else if (flags & S_STRING)
+    {
+      strncpy(entry_string_index, dsda_StringConfig(ptr1->config_id),
+              ENTRY_STRING_BFR_SIZE - 1);
+
+      entry_index = 0; // current cursor position in entry_string_index
+    }
+    else if (flags & S_CHOICE)
+    {
+      if (flags & S_STR)
       {
-        // copy chat string into working buffer; trim if needed.
-        // free the old chat string memory and replace it with
-        // the (possibly larger) new memory for editing purposes
-        //
-        // killough 10/98: fix bugs, simplify
-
-        chat_string_buffer = malloc(CHAT_STRING_BFR_SIZE);
-        strncpy(chat_string_buffer,
-          *ptr1->var.def->location.ppsz, CHAT_STRING_BFR_SIZE);
-
-        // guarantee null delimiter
-        chat_string_buffer[CHAT_STRING_BFR_SIZE-1] = 0;
-
-        // set chat table pointer to working buffer
-        // and free old string's memory.
-        {
-          union { const char **c; char **s; } u; // type punning via unions
-
-          u.c = ptr1->var.def->location.ppsz;
-          free(*(u.s));
-          *(u.c) = chat_string_buffer;
-        }
-        chat_index = 0; // current cursor position in chat_string_buffer
-#ifdef __3DS__
-        {
-          char entered[CHAT_STRING_BFR_SIZE];
-          memset(entered, 0, sizeof(entered));
-          if (I_SoftwareKeyboard(ptr1->m_text, chat_string_buffer, entered, CHAT_STRING_BFR_SIZE - 1))
-          {
-            strncpy(chat_string_buffer, entered, CHAT_STRING_BFR_SIZE - 1);
-            chat_string_buffer[CHAT_STRING_BFR_SIZE - 1] = 0;
-          }
-          *ptr1->var.def->location.ppsz = chat_string_buffer;
-          M_SelectDone(ptr1);
-          return true;
-        }
-#endif
-      }
-    else if (flags & S_RESET)
-      default_verify = true;
-
-    ptr1->m_flags |= S_SELECT;
-    setup_select = true;
-    S_StartSound(NULL,sfx_itemup);
-    return true;
-  }
-
-      if ((ch == key_menu_escape) || (ch == key_menu_backspace))
-  {
-    M_SetSetupMenuItemOn(set_menu_itemon);
-    if (ch == key_menu_escape) // Clear all menus
-      M_ClearMenus();
-    else // key_menu_backspace = return to Setup Menu
-      if (currentMenu->prevMenu)
-        {
-    currentMenu = currentMenu->prevMenu;
-    itemOn = currentMenu->lastOn;
-    S_StartSound(NULL,sfx_swtchn);
-        }
-    ptr1->m_flags &= ~(S_HILITE|S_SELECT);// phares 4/19/98
-    setup_active = false;
-    set_keybnd_active = false;
-    set_weapon_active = false;
-    set_status_active = false;
-    set_auto_active = false;
-    set_enemy_active = false;
-    set_mess_active = false;
-    set_chat_active = false;
-    colorbox_active = false;
-    default_verify = false;       // phares 4/19/98
-    set_general_active = false;    // killough 10/98
-          set_compat_active = false;    // killough 10/98
-    HU_Start();    // catch any message changes // phares 4/19/98
-    S_StartSound(NULL,sfx_swtchx);
-    return true;
-  }
-
-      // Some setup screens may have multiple screens.
-      // When there are multiple screens, m_prev and m_next items need to
-      // be placed on the appropriate screen tables so the user can
-      // move among the screens using the left and right arrow keys.
-      // The m_var1 field contains a pointer to the appropriate screen
-      // to move to.
-
-      if (ch == key_menu_left)
-  {
-    ptr2 = ptr1;
-    do
-      {
-        ptr2++;
-        if (ptr2->m_flags & S_PREV)
-    {
-      ptr1->m_flags &= ~S_HILITE;
-      mult_screens_index--;
-      M_SetSetupMenuItemOn(set_menu_itemon);
-      current_setup_menu = ptr2->var.menu;
-      set_menu_itemon = M_GetSetupMenuItemOn();
-      print_warning_about_changes = false; // killough 10/98
-      while (current_setup_menu[set_menu_itemon++].m_flags&S_SKIP);
-      current_setup_menu[--set_menu_itemon].m_flags |= S_HILITE;
-      S_StartSound(NULL,sfx_pstop);  // killough 10/98
-      return true;
-    }
-      }
-    while (!(ptr2->m_flags & S_END));
-  }
-
-      if (ch == key_menu_right)
-  {
-    ptr2 = ptr1;
-    do
-      {
-        ptr2++;
-        if (ptr2->m_flags & S_NEXT)
-    {
-      ptr1->m_flags &= ~S_HILITE;
-      mult_screens_index++;
-      M_SetSetupMenuItemOn(set_menu_itemon);
-      current_setup_menu = ptr2->var.menu;
-      set_menu_itemon = M_GetSetupMenuItemOn();
-      print_warning_about_changes = false; // killough 10/98
-      while (current_setup_menu[set_menu_itemon++].m_flags&S_SKIP);
-      current_setup_menu[--set_menu_itemon].m_flags |= S_HILITE;
-      S_StartSound(NULL,sfx_pstop);  // killough 10/98
-      return true;
-    }
-      }
-    while (!(ptr2->m_flags & S_END));
-  }
-
-    } // End of Setup Screen processing
-
-  // From here on, these navigation keys are used on the BIG FONT menus
-  // like the Main Menu.
-
-  if (ch == key_menu_down)                             // phares 3/7/98
-    {
-      do
-  {
-    if (itemOn+1 > currentMenu->numitems-1)
-      itemOn = 0;
-    else
-      itemOn++;
-    S_StartSound(NULL,sfx_pstop);
-  }
-      while(currentMenu->menuitems[itemOn].status==-1);
-      return true;
-    }
-
-  if (ch == key_menu_up)                               // phares 3/7/98
-    {
-      do
-  {
-    if (!itemOn)
-      itemOn = currentMenu->numitems-1;
-    else
-      itemOn--;
-    S_StartSound(NULL,sfx_pstop);
-  }
-      while(currentMenu->menuitems[itemOn].status==-1);
-      return true;
-    }
-
-  if (ch == key_menu_left)                             // phares 3/7/98
-    {
-      if (currentMenu->menuitems[itemOn].routine &&
-    currentMenu->menuitems[itemOn].status == 2)
-  {
-    S_StartSound(NULL,sfx_stnmov);
-    currentMenu->menuitems[itemOn].routine(0);
-  }
-      return true;
-    }
-
-  if (ch == key_menu_right)                            // phares 3/7/98
-    {
-      if (currentMenu->menuitems[itemOn].routine &&
-    currentMenu->menuitems[itemOn].status == 2)
-  {
-    S_StartSound(NULL,sfx_stnmov);
-    currentMenu->menuitems[itemOn].routine(1);
-  }
-      return true;
-    }
-
-  if (ch == key_menu_enter)                            // phares 3/7/98
-    {
-      if (currentMenu->menuitems[itemOn].routine &&
-    currentMenu->menuitems[itemOn].status)
-  {
-    currentMenu->lastOn = itemOn;
-    if (currentMenu->menuitems[itemOn].status == 2)
-      {
-        currentMenu->menuitems[itemOn].routine(1);   // right arrow
-        S_StartSound(NULL,sfx_stnmov);
-      }
-    else
-      {
-        currentMenu->menuitems[itemOn].routine(itemOn);
-        S_StartSound(NULL,sfx_pistol);
-      }
-  }
-      //jff 3/24/98 remember last skill selected
-      // killough 10/98 moved to skill-specific functions
-      return true;
-    }
-
-  if (ch == key_menu_escape)                           // phares 3/7/98
-    {
-      currentMenu->lastOn = itemOn;
-      M_ClearMenus ();
-      S_StartSound(NULL,sfx_swtchx);
-      return true;
-    }
-
-  if (ch == key_menu_backspace)                        // phares 3/7/98
-    {
-      currentMenu->lastOn = itemOn;
-
-      // phares 3/30/98:
-      // add checks to see if you're in the extended help screens
-      // if so, stay with the same menu definition, but bump the
-      // index back one. if the index bumps back far enough ( == 0)
-      // then you can return to the Read_Thisn menu definitions
-
-      if (currentMenu->prevMenu)
-  {
-    if (currentMenu == &ExtHelpDef)
-      {
-        if (--extended_help_index == 0)
-    {
-      currentMenu = currentMenu->prevMenu;
-      extended_help_index = 1; // reset
-    }
-      }
-    else
-      currentMenu = currentMenu->prevMenu;
-    itemOn = currentMenu->lastOn;
-    S_StartSound(NULL,sfx_swtchn);
-  }
-      return true;
-    }
-
-  // [FG] delete a savegame
-
-  else if (ch == key_menu_clear)
-  {
-    if (currentMenu == &LoadDef || currentMenu == &SaveDef)
-    {
-      if (LoadMenue[itemOn].status)
-      {
-        S_StartSound(NULL,sfx_itemup);
-        currentMenu->lastOn = itemOn;
-        delete_verify = true;
-        return true;
+        strncpy(entry_string_index, dsda_StringConfig(ptr1->config_id),
+                ENTRY_STRING_BFR_SIZE - 1);
       }
       else
       {
-        S_StartSound(NULL,sfx_oof);
+        choice_value = dsda_IntConfig(ptr1->config_id);
       }
+    }
+
+    ptr1->m_flags |= S_SELECT;
+    setup_select = true;
+    S_StartOptionalSound(g_sfx_mnusel, g_sfx_itemup, false);
+    return true;
+  }
+
+  if ((action == MENU_ESCAPE) || (action == MENU_BACKSPACE))
+  {
+    M_LeaveSetupMenu();
+    if (action == MENU_ESCAPE) // Clear all menus
+      M_ClearMenus();
+    else // MENU_BACKSPACE = return to Setup Menu
+      if (currentMenu->prevMenu)
+      {
+        M_ChangeMenu(currentMenu->prevMenu, mnact_nochange);
+        itemOn = currentMenu->lastOn;
+        S_StartOptionalSound(g_sfx_mnuopn, g_sfx_swtchn, true);
+      }
+    ptr1->m_flags &= ~(S_HILITE|S_SELECT);// phares 4/19/98
+    S_StartOptionalSound(g_sfx_mnucls, g_sfx_swtchx, true);
+    return true;
+  }
+
+  // Some setup screens may have multiple screens.
+  // When there are multiple screens, m_prev and m_next items need to
+  // be placed on the appropriate screen tables so the user can
+  // move among the screens using the left and right arrow keys.
+  // The m_var1 field contains a pointer to the appropriate screen
+  // to move to.
+
+  if (action == MENU_LEFT)
+  {
+    ptr2 = ptr1;
+    do
+    {
+      ptr2++;
+      if (ptr2->m_flags & S_PREV)
+      {
+        ptr1->m_flags &= ~S_HILITE;
+        M_SetSetupMenuItemOn(set_menu_itemon);
+        M_UpdateSetupMenu(ptr2->menu);
+        S_StartOptionalSound(g_sfx_mnumov, g_sfx_menu, true);
+        previous_page = current_page;
+        current_page--;
+        return true;
+      }
+    }
+    while (!(ptr2->m_flags & S_END));
+  }
+
+  if (action == MENU_RIGHT)
+  {
+    ptr2 = ptr1;
+    do
+    {
+      ptr2++;
+      if (ptr2->m_flags & S_NEXT)
+      {
+        ptr1->m_flags &= ~S_HILITE;
+        M_SetSetupMenuItemOn(set_menu_itemon);
+        M_UpdateSetupMenu(ptr2->menu);
+        S_StartOptionalSound(g_sfx_mnumov, g_sfx_menu, true);
+        previous_page = current_page;
+        current_page++;
+        return true;
+      }
+    }
+    while (!(ptr2->m_flags & S_END));
+  }
+
+  return false;
+}
+
+static dboolean M_SetupResponder(int ch, int action, event_t* ev)
+{
+  if (set_keybnd_active && setup_select && ev->type == ev_mouse)
+    if (M_KeyBndResponder(ch, action, ev))
+      return true;
+
+  if (M_SetupCommonSelectResponder(ch, action, ev))
+    return true;
+
+  if (set_keybnd_active) // on a key binding setup screen
+    if (M_KeyBndResponder(ch, action, ev))
+      return true;
+
+  if (set_weapon_active) // on the weapons setup screen
+    if (M_WeaponResponder(ch, action, ev))
+      return true;
+
+  if (set_auto_active) // on the automap setup screen
+    if (M_AutoResponder(ch, action, ev))
+      return true;
+
+  // killough 10/98: consolidate handling into one place:
+  if (set_general_active || set_demos_active || set_display_active)
+    if (M_StringResponder(ch, action, ev))
+      return true;
+
+  if (level_table_active)
+    if (M_LevelTableResponder(ch, action, ev))
+      return true;
+
+  // Not changing any items on the Setup screens. See if we're
+  // navigating the Setup menus or selecting an item to change.
+  if (M_SetupNavigationResponder(ch, action, ev))
+    return true;
+
+  return false;
+}
+
+static dboolean M_InactiveMenuResponder(int ch, int action, event_t* ev)
+{
+  if (dsda_InputActivated(dsda_input_help))                                         // phares
+  {
+    menu_t* F1_menu = raven ? &InfoDef1 : &ReadDef1;
+    M_StartControlPanel ();
+    M_ChangeMenu(F1_menu, mnact_nochange);
+
+    itemOn = 0;
+    S_StartOptionalSound(g_sfx_mnuopn, g_sfx_swtchn, true);
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_savegame))
+  {
+    M_StartControlPanel();
+    S_StartOptionalSound(g_sfx_mnuopn, g_sfx_swtchn, true);
+    M_SaveGame(0);
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_loadgame))
+  {
+    M_StartControlPanel();
+    S_StartOptionalSound(g_sfx_mnuopn, g_sfx_swtchn, true);
+    M_LoadGame(0);
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_level_table))
+  {
+    M_StartControlPanel();
+    S_StartOptionalSound(g_sfx_mnuopn, g_sfx_swtchn, true);
+    M_LevelTable(0);
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_soundvolume))
+  {
+    M_StartControlPanel ();
+    M_ChangeMenu(&SoundDef, mnact_nochange);
+    itemOn = sfx_vol;
+    S_StartOptionalSound(g_sfx_mnuopn, g_sfx_swtchn, true);
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_quicksave))
+  {
+    S_StartOptionalSound(g_sfx_mnuopn, g_sfx_swtchn, true);
+    M_QuickSave();
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_endgame))
+  {
+    S_StartOptionalSound(g_sfx_mnuopn, g_sfx_swtchn, true);
+    M_EndGame(0);
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_quickload))
+  {
+    S_StartOptionalSound(g_sfx_mnuopn, g_sfx_swtchn, true);
+    M_QuickLoad();
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_quit))
+  {
+    if (!dsda_SkipQuitPrompt())
+      S_StartOptionalSound(g_sfx_mnuopn, g_sfx_swtchn, true);
+    M_QuitDOOM(0);
+    return true;
+  }
+
+  // Toggle gamma
+  if (dsda_InputActivated(dsda_input_gamma))
+  {
+    //e6y
+    dsda_CycleConfig(dsda_config_usegamma, true);
+    dsda_AddMessage(usegamma == 0 ? s_GAMMALVL0 :
+                    usegamma == 1 ? s_GAMMALVL1 :
+                    usegamma == 2 ? s_GAMMALVL2 :
+                    usegamma == 3 ? s_GAMMALVL3 :
+                    s_GAMMALVL4);
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_cycle_profile))
+  {
+    int value = dsda_CycleConfig(dsda_config_input_profile, true);
+    doom_printf("Input Profile %d", value);
+    S_StartOptionalSound(g_sfx_mnuopn, g_sfx_swtchn, true);
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_cycle_palette))
+  {
+    dsda_CyclePlayPal();
+    doom_printf("Palette %s", dsda_PlayPalData(playpal_index)->lump_name);
+    S_StartOptionalSound(g_sfx_mnuopn, g_sfx_swtchn, true);
+    return true;
+  }
+
+  //e6y
+  if (dsda_InputActivated(dsda_input_speed_default) && !dsda_StrictMode())
+  {
+    int value = StepwiseSum(dsda_GameSpeed(), 0, 3, 10000, 100);
+    dsda_UpdateGameSpeed(value);
+    doom_printf("Game Speed %d", value);
+    // Don't eat the keypress in this case.
+    // return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_speed_up) && !dsda_StrictMode())
+  {
+    int value = StepwiseSum(dsda_GameSpeed(), 1, 3, 10000, 100);
+    dsda_UpdateGameSpeed(value);
+    doom_printf("Game Speed %d", value);
+    // Don't eat the keypress in this case.
+    // return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_speed_down) && !dsda_StrictMode())
+  {
+    int value = StepwiseSum(dsda_GameSpeed(), -1, 3, 10000, 100);
+    dsda_UpdateGameSpeed(value);
+    doom_printf("Game Speed %d", value);
+    // Don't eat the keypress in this case.
+    // return true;
+  }
+
+  // Pop-up Main menu?
+  if (ch == KEYD_ESCAPE || action == MENU_ESCAPE ||
+      (!in_game && (ch == KEYD_ENTER || ch == KEYD_SPACEBAR || ch == KEYD_KEYPADENTER ||
+       dsda_InputActivated(dsda_input_fire) || dsda_InputActivated(dsda_input_use) || dsda_InputActivated(dsda_input_menu_enter)))) // phares
+  {
+    M_StartControlPanel();
+    S_StartOptionalSound(g_sfx_mnuopn, g_sfx_swtchn, true);
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_console))
+  {
+    if (dsda_OpenConsole())
+      S_StartOptionalSound(g_sfx_mnuopn, g_sfx_swtchn, true);
+    return true;
+  }
+
+  {
+    int i;
+
+    for (i = 0; i < CONSOLE_SCRIPT_COUNT; ++i)
+      if (dsda_InputActivated(dsda_input_script_0 + i)) {
+        dsda_ExecuteConsoleScript(i);
+
+        return true;
+      }
+  }
+
+  if (dsda_InputActivated(dsda_input_zoomout))
+  {
+    if (automap_full)
+      return false;
+    M_SizeDisplay(0);
+    S_StartOptionalSound(g_sfx_mnusli, g_sfx_stnmov, true);
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_zoomin))
+  {
+    if (automap_full)
+      return false;
+    M_SizeDisplay(1);
+    S_StartOptionalSound(g_sfx_mnusli, g_sfx_stnmov, true);
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_nextlevel))
+  {
+    if (userplayback && !dsda_SkipMode())
+    {
+      dsda_SkipToNextMap();
+      return true;
+    }
+    else
+    {
+      if (G_GotoNextLevel())
+        return true;
     }
   }
 
+  if (dsda_InputActivated(dsda_input_prevlevel))
+  {
+    if (G_GotoPrevLevel())
+        return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_restart))
+  {
+    if (G_ReloadLevel())
+      return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_demo_endlevel))
+  {
+    if (userplayback && !dsda_SkipMode())
+    {
+      dsda_SkipToEndOfMap();
+      return true;
+    }
+  }
+
+  if (dsda_InputActivated(dsda_input_demo_skip))
+  {
+    if (userplayback)
+    {
+      dsda_ToggleSkipMode();
+      return true;
+    }
+  }
+
+  if (dsda_InputActivated(dsda_input_store_quick_key_frame))
+  {
+    if (
+      gamestate == GS_LEVEL &&
+      gameaction == ga_nothing &&
+      !dsda_StrictMode()
+    ) dsda_StoreQuickKeyFrame();
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_restore_quick_key_frame))
+  {
+    if (!dsda_StrictMode()) dsda_RestoreQuickKeyFrame();
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_rewind))
+  {
+    if (!dsda_StrictMode()) dsda_RewindAutoKeyFrame();
+    return true;
+  }
+
+  if (dsda_InputActivated(dsda_input_walkcamera))
+  {
+    if (demoplayback && gamestate == GS_LEVEL)
+    {
+      walkcamera.type = (walkcamera.type+1)%3;
+      P_SyncWalkcam (true, (walkcamera.type!=2));
+      R_ResetViewInterpolation ();
+      if (walkcamera.type==0)
+        R_SmoothPlaying_Reset(NULL);
+      // Don't eat the keypress in this case.
+      // return true;
+    }
+  }
+
+  if (dsda_InputActivated(dsda_input_showalive) && !dsda_StrictMode())
+  {
+    if (V_IsOpenGLMode())
+    {
+      const char* const show_alive_message[3] = { "off", "(mode 1) on", "(mode 2) on" };
+      int show_alive = dsda_CycleConfig(dsda_config_show_alive_monsters, false);
+
+      if (show_alive >= 0 && show_alive < 3)
+        doom_printf("Show Alive Monsters %s", show_alive_message[show_alive]);
+    }
+    else
+    {
+      dsda_UpdateIntConfig(dsda_config_show_alive_monsters,0,false);
+      doom_printf("Action Only Supported in OpenGL");
+    }
+  }
+
+  M_HandleToggles();
+
+  if (dsda_InputActivated(dsda_input_hud))   // heads-up mode
+  {
+    if (automap_full)                // jff 2/22/98
+      return false;                  // HUD mode control
+    M_SizeDisplay(2);
+    return true;
+  }
+
+  return false;
+}
+
+typedef enum {
+  confirmation_null = -1,
+  confirmation_no = 0,
+  confirmation_yes = 1,
+} confirmation_t;
+
+static confirmation_t M_EventToConfirmation(int ch, int action, event_t* ev)
+{
+  if (ch == 'y' || action == MENU_ENTER)
+    return confirmation_yes;
+  else if (ch == ' ' || ch == KEYD_ESCAPE || ch == 'n' || action == MENU_BACKSPACE)
+    return confirmation_no;
   else
+    return confirmation_null;
+}
+
+static dboolean M_MainNavigationResponder(int ch, int action, event_t* ev)
+{
+  if (action == MENU_DOWN)                             // phares 3/7/98
+  {
+    do
     {
-      for (i = itemOn+1;i < currentMenu->numitems;i++)
-  if (currentMenu->menuitems[i].alphaKey == ch)
+      if (itemOn + 1 > currentMenu->numitems - 1)
+        itemOn = 0;
+      else
+        itemOn++;
+      S_StartOptionalSound(g_sfx_mnumov, g_sfx_menu, true);
+    }
+    while(currentMenu->menuitems[itemOn].status == M_ITEM_SKIP);
+    return true;
+  }
+
+  if (action == MENU_UP)                               // phares 3/7/98
+  {
+    do
     {
-      itemOn = i;
-      S_StartSound(NULL,sfx_pstop);
+      if (!itemOn)
+        itemOn = currentMenu->numitems - 1;
+      else
+        itemOn--;
+      S_StartOptionalSound(g_sfx_mnumov, g_sfx_menu, true);
+    }
+    while(currentMenu->menuitems[itemOn].status == M_ITEM_SKIP);
+    return true;
+  }
+
+  if (action == MENU_LEFT)                             // phares 3/7/98
+  {
+    if (currentMenu->menuitems[itemOn].routine &&
+        currentMenu->menuitems[itemOn].status == M_ITEM_THERMO)
+    {
+      S_StartOptionalSound(g_sfx_mnusli, g_sfx_stnmov, false);
+      currentMenu->menuitems[itemOn].routine(0);
+    }
+    return true;
+  }
+
+  if (action == MENU_RIGHT)                            // phares 3/7/98
+  {
+    if (currentMenu->menuitems[itemOn].routine &&
+        currentMenu->menuitems[itemOn].status == M_ITEM_THERMO)
+    {
+      S_StartOptionalSound(g_sfx_mnusli, g_sfx_stnmov, false);
+      currentMenu->menuitems[itemOn].routine(1);
+    }
+    return true;
+  }
+
+  if (action == MENU_ENTER)                            // phares 3/7/98
+  {
+    if (currentMenu->menuitems[itemOn].routine &&
+        currentMenu->menuitems[itemOn].status)
+    {
+      currentMenu->lastOn = itemOn;
+      if (currentMenu->menuitems[itemOn].status == M_ITEM_THERMO)
+      {
+        currentMenu->menuitems[itemOn].routine(1);   // right arrow
+        S_StartOptionalSound(g_sfx_mnusli, g_sfx_stnmov, false);
+      }
+      else
+      {
+        currentMenu->menuitems[itemOn].routine(itemOn);
+        S_StartOptionalSound(g_sfx_mnuact, g_sfx_pistol, true);
+      }
+    }
+    //jff 3/24/98 remember last skill selected
+    // killough 10/98 moved to skill-specific functions
+    return true;
+  }
+
+  if (action == MENU_ESCAPE)                           // phares 3/7/98
+  {
+    currentMenu->lastOn = itemOn;
+    M_ClearMenus ();
+    S_StartOptionalSound(g_sfx_mnubak, g_sfx_swtchx, true);
+    return true;
+  }
+
+  if (action == MENU_BACKSPACE)                        // phares 3/7/98
+  {
+    currentMenu->lastOn = itemOn;
+
+    // phares 3/30/98:
+    // add checks to see if you're in the extended help screens
+    // if so, stay with the same menu definition, but bump the
+    // index back one. if the index bumps back far enough ( == 0)
+    // then you can return to the Read_Thisn menu definitions
+
+    if (currentMenu->prevMenu)
+    {
+      if (currentMenu == &ExtHelpDef)
+      {
+        if (--extended_help_index == 0)
+        {
+          M_ChangeMenu(currentMenu->prevMenu, mnact_nochange);
+          extended_help_index = 1; // reset
+        }
+      }
+      else
+        M_ChangeMenu(currentMenu->prevMenu, mnact_nochange);
+      itemOn = currentMenu->lastOn;
+      S_StartOptionalSound(g_sfx_mnubak, g_sfx_swtchn, true);
+    }
+    else
+    {
+      M_ClearMenus();
+      S_StartOptionalSound(g_sfx_mnubak, g_sfx_swtchx, true);
+    }
+    return true;
+  }
+  else
+  {
+    int i;
+
+    for (i = itemOn + 1; i < currentMenu->numitems; i++)
+      if (ch && currentMenu->menuitems[i].alphaKey == ch)
+      {
+        itemOn = i;
+        S_StartOptionalSound(g_sfx_mnumov, g_sfx_menu, true);
+        return true;
+      }
+
+    for (i = 0; i <= itemOn; i++)
+      if (ch && currentMenu->menuitems[i].alphaKey == ch)
+      {
+        itemOn = i;
+        S_StartOptionalSound(g_sfx_mnumov, g_sfx_menu, true);
+        return true;
+      }
+  }
+
+  return false;
+}
+
+static dboolean M_ConsoleResponder(int ch, int action, event_t* ev)
+{
+  if (ev->type == ev_text)
+  {
+    dsda_UpdateConsoleText(ev->text);
+    return true;
+  }
+  else if (action != MENU_NULL)
+  {
+    dsda_UpdateConsole(action);
+    return true;
+  }
+  else if (ch != MENU_NULL)
+    return true;
+
+  return false;
+}
+
+static dboolean M_SaveResponder(int ch, int action, event_t* ev)
+{
+  if (delete_verify) // [FG] delete a savegame
+  {
+    switch (M_EventToConfirmation(ch, action, ev))
+    {
+      case confirmation_yes:
+        M_DeleteSaveGame(itemOn + current_page * g_menu_save_page_size);
+        S_StartOptionalSound(g_sfx_mnusel, g_sfx_itemup, false);
+        delete_verify = false;
+        break;
+      case confirmation_no:
+        S_StartOptionalSound(g_sfx_mnusel, g_sfx_itemup, false);
+        delete_verify = false;
+        break;
+      case confirmation_null:
+        break;
+    }
+
+    return true;
+  }
+
+  if (saveStringEnter && (ch != MENU_NULL || action != MENU_NULL))
+  {
+    if (ch == KEYD_BACKSPACE || action == MENU_BACKSPACE)
+    {
+      if (saveCharIndex > 0)
+      {
+        if (!strcmp(savegamestrings[saveSlot], dsda_MapLumpName(gameepisode, gamemap)))
+        {
+          saveCharIndex = 0;
+        }
+        else
+        {
+          saveCharIndex--;
+        }
+        savegamestrings[saveSlot][saveCharIndex] = 0;
+      }
+    }
+    else if (action == MENU_ESCAPE)                    // phares 3/7/98
+    {
+      saveStringEnter = 0;
+      strcpy(&savegamestrings[saveSlot][0],saveOldString);
+    }
+    else if (action == MENU_ENTER)                     // phares 3/7/98
+    {
+      if (ev && ev->type == ev_mouse &&
+          currentMenu == &SaveDef &&
+          itemOn != saveSlot)
+        return true;
+
+      saveStringEnter = 0;
+      if (savegamestrings[saveSlot][0])
+        M_DoSave(saveSlot);
+    }
+    else if (ch > 0)
+    {
+      if (ch >= 32 && ch <= 127 &&
+          saveCharIndex < SAVESTRINGSIZE-1 &&
+          M_StringWidth(savegamestrings[saveSlot]) < (SAVESTRINGSIZE-2)*8)
+      {
+        if (!raven && shiftdown)
+          ch = shiftxform[ch];
+        else
+          ch = toupper(ch);
+
+        savegamestrings[saveSlot][saveCharIndex++] = ch;
+        savegamestrings[saveSlot][saveCharIndex] = 0;
+      }
+    }
+
+    return true;
+  }
+  else if (!saveStringEnter)
+  {
+    int diff = 0;
+
+    if (action == MENU_ENTER)
+    {
+      if (currentMenu->menuitems[itemOn].routine &&
+          currentMenu->menuitems[itemOn].status)
+      {
+        currentMenu->lastOn = itemOn;
+        currentMenu->menuitems[itemOn].routine(itemOn);
+
+        if (currentMenu == &SaveDef && current_page == 0)
+        S_StartOptionalSound(g_sfx_mnuerr, g_sfx_oof, true);
+        else
+          S_StartOptionalSound(g_sfx_mnuact, g_sfx_pistol, true);
+      }
+      else
+      {
+        S_StartOptionalSound(g_sfx_mnuerr, g_sfx_oof, true);
+      }
+
       return true;
     }
-      for (i = 0;i <= itemOn;i++)
-  if (currentMenu->menuitems[i].alphaKey == ch)
+
+    if (action == MENU_LEFT)
+      diff = -1;
+    else if (action == MENU_RIGHT)
+      diff = 1;
+
+    if (diff)
     {
-      itemOn = i;
-      S_StartSound(NULL,sfx_pstop);
+      S_StartOptionalSound(g_sfx_mnumov, g_sfx_menu, true);
+
+      current_page += diff;
+      if (current_page < 0)
+        current_page = save_page_limit - 1;
+      else if (current_page >= save_page_limit)
+        current_page = 0;
+
+      M_ReadSaveStrings();
+    }
+  }
+
+  if (action == MENU_CLEAR) // [FG] delete a savegame
+  {
+    if (LoadMenue[itemOn].status)
+    {
+      S_StartOptionalSound(g_sfx_mnusel, g_sfx_itemup, false);
+      currentMenu->lastOn = itemOn;
+      delete_verify = true;
       return true;
     }
+    else
+    {
+      S_StartOptionalSound(g_sfx_mnuerr, g_sfx_oof, true);
     }
+  }
+
+  return false;
+}
+
+static dboolean M_MessageResponder(int ch, int action, event_t* ev)
+{
+  dboolean confirmation = false;
+
+  if (messageNeedsInput)
+  { // phares
+    confirmation = M_EventToConfirmation(ch, action, ev);
+    if (confirmation == confirmation_null)
+      return true;
+  }
+
+  M_ChangeMenu(NULL, messageLastMenuActive);
+  messageToPrint = 0;
+  if (messageRoutine)
+    messageRoutine(confirmation);
+
+  M_ChangeMenu(NULL, mnact_inactive);
+  S_StartOptionalSound(g_sfx_mnucls, g_sfx_swtchx, true);
+  return true;
+}
+
+static int M_EventToCharacter(event_t* ev)
+{
+  if (ev->type == ev_joystick)
+  {
+    if (ev->data1.i)
+    {
+      static int wait;
+
+      if (wait < dsda_GetTick())
+      {
+        wait = dsda_GetTick() + 5;
+
+        return 0; // lets the input reach the binding responder
+      }
+    }
+  }
+  else if (ev->type == ev_mouse)
+  {
+    if (ev->data1.i)
+    {
+      static int wait;
+
+      if (wait < dsda_GetTick())
+      {
+        wait = dsda_GetTick() + 5;
+
+        return 0; // lets the input reach the binding responder
+      }
+    }
+  }
+  else if (ev->type == ev_keydown)
+  {
+    if (ev->data1.i == KEYD_RSHIFT) // phares 4/11/98
+      shiftdown = true;
+
+    return ev->data1.i;
+  }
+  else if (ev->type == ev_keyup)
+  {
+    if (ev->data1.i == KEYD_RSHIFT) // phares 4/11/98
+      shiftdown = false;
+  }
+
+  return MENU_NULL;
+}
+
+static int M_CurrentAction(void)
+{
+  if (dsda_InputActivated(dsda_input_menu_left))
+  {
+    return MENU_LEFT;
+  }
+  else if (dsda_InputActivated(dsda_input_menu_right))
+  {
+    return MENU_RIGHT;
+  }
+  else if (dsda_InputActivated(dsda_input_menu_up))
+  {
+    return MENU_UP;
+  }
+  else if (dsda_InputActivated(dsda_input_menu_down))
+  {
+    return MENU_DOWN;
+  }
+  else if (dsda_InputActivated(dsda_input_menu_backspace))
+  {
+    return MENU_BACKSPACE;
+  }
+  else if (dsda_InputActivated(dsda_input_menu_enter))
+  {
+    return MENU_ENTER;
+  }
+  else if (dsda_InputActivated(dsda_input_menu_escape))
+  {
+    return MENU_ESCAPE;
+  }
+  else if (dsda_InputActivated(dsda_input_menu_clear))
+  {
+    return MENU_CLEAR;
+  }
+
+  return MENU_NULL;
+}
+
+#include "m_mouse.inl"
+
+dboolean M_Responder(event_t* ev) {
+  int ch, action;
+
+  ch = M_EventToCharacter(ev);
+  action = M_CurrentAction();
+
+  if (M_ConsoleOpen() && action != MENU_ESCAPE)
+    if (M_ConsoleResponder(ch, action, ev))
+      return true;
+
+  if (M_MouseResponder(ev))
+    return true;
+
+  if (ch != MENU_NULL || action != MENU_NULL)
+  {
+    if (setup_active)
+      menu_mouse_setup_scroll = KEYBOARD_NAV;
+
+    M_MouseClearMainHover();
+    M_MouseClearTabHover();
+  }
+
+  if (currentMenu == &LoadDef || currentMenu == &SaveDef)
+    if (M_SaveResponder(ch, action, ev))
+      return true;
+
+  if (messageToPrint && ch != MENU_NULL)
+    if (M_MessageResponder(ch, action, ev))
+      return true;
+
+  // killough 2/22/98: add support for screenshot key:
+  // Don't eat the keypress in this case. See sf bug #1843280.
+  if (dsda_InputActivated(dsda_input_screenshot))
+    I_QueueScreenshot();
+
+  if (!menuactive)
+  {
+    if (M_InactiveMenuResponder(ch, action, ev))
+      return true;
+
+    return false;
+  }
+
+  if (ch == MENU_NULL && action == MENU_NULL)
+    return false; // we can't use the event here
+
+  if (setup_active)
+    if (M_SetupResponder(ch, action, ev))
+      return true;
+
+  // From here on, these navigation keys are used on the BIG FONT menus
+  // like the Main Menu.
+  if (M_MainNavigationResponder(ch, action, ev))
+    return true;
+
   return false;
 }
 
@@ -5951,6 +6363,75 @@ dboolean M_Responder (event_t* ev) {
 // Plus a variety of routines that control the Big Font menu display.
 // Plus some initialization for game-dependant situations.
 
+static void M_InitializeSkillMenu(void)
+{
+  extern skill_info_t *skill_infos;
+  int i;
+
+  SkillDef.lastOn = dsda_IntConfig(dsda_config_default_skill) - 1;
+
+  SkillDef.numitems = num_skills;
+  SkillDef.menuitems = Z_Calloc(num_skills, sizeof(*SkillDef.menuitems));
+
+  for (i = 0; i < num_skills; ++i)
+  {
+    SkillDef.menuitems[i].status = M_ITEM_ACTION;
+
+    if (skill_infos[i].pic_name)
+      strncpy(SkillDef.menuitems[i].name, skill_infos[i].pic_name, 8);
+
+    SkillDef.menuitems[i].alttext = skill_infos[i].name;
+    SkillDef.menuitems[i].color = skill_infos[i].text_color;
+
+    SkillDef.menuitems[i].routine = M_ChooseSkill;
+    SkillDef.menuitems[i].alphaKey = skill_infos[i].key;
+
+    if (skill_infos[i].flags & SI_DEFAULT_SKILL)
+      SkillDef.lastOn = i;
+  }
+
+  if (SkillDef.lastOn >= num_skills)
+    SkillDef.lastOn = num_skills - 1;
+}
+
+static void M_InitializeEpisodeMenu(void)
+{
+  int i;
+
+  EpiDef.numitems = num_episodes;
+  EpiDef.menuitems = Z_Calloc(num_episodes, sizeof(*EpiDef.menuitems));
+
+  for (i = 0; i < num_episodes; ++i)
+  {
+    EpiDef.menuitems[i].status = M_ITEM_ACTION;
+
+    if (episodes[i].pic_name)
+      strncpy(EpiDef.menuitems[i].name, episodes[i].pic_name, 8);
+
+    EpiDef.menuitems[i].alttext = episodes[i].name;
+
+    EpiDef.menuitems[i].routine = M_Episode;
+    EpiDef.menuitems[i].alphaKey = episodes[i].key;
+  }
+
+  if (!raven)
+  {
+    if (EpiDef.numitems <= 4)
+    {
+      EpiDef.y = 63;
+    }
+    else
+    {
+      EpiDef.y = 63 - (EpiDef.numitems - 4) * (LINEHEIGHT / 2);
+    }
+  }
+
+  if (num_episodes > 1)
+    SkillDef.prevMenu = &EpiDef;
+  else
+    SkillDef.prevMenu = &MainDef;
+}
+
 void M_StartControlPanel (void)
 {
   // intro might call this repeatedly
@@ -5958,34 +6439,67 @@ void M_StartControlPanel (void)
   if (menuactive)
     return;
 
-  //jff 3/24/98 make default skill menu choice follow -skill or defaultskill
-  //from command line or config file
-  //
-  // killough 10/98:
-  // Fix to make "always floating" with menu selections, and to always follow
-  // defaultskill, instead of -skill.
+  M_MouseResetButtons();
 
-  NewDef.lastOn = defaultskill - 1;
+  DO_ONCE
+    M_InitializeSkillMenu();
+    M_InitializeEpisodeMenu();
+  END_ONCE
 
-  // e6y
-  // We need to remove the fourth episode for pre-ultimate complevels.
-  // It is located here instead of M_Init() because of TNTCOMP cheat.
-  if (!EpiCustom)
+  M_ChangeMenu(&MainDef, mnact_float);
+  itemOn = currentMenu->lastOn;   // JDC
+}
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu Shaded Overlay Stuff
+//
+// This displays a dark overlay under certain screens of the menus
+
+dboolean fadeBG(void)
+{
+  return dsda_IntConfig(dsda_config_menu_background) == 1;
+}
+
+dboolean M_MenuIsShaded(void)
+{
+  int Options = (setup_active || currentMenu == &OptionsDef);
+  return fadeBG() && Options;
+}
+
+void M_ShadedScreen(int scrn)
+{
+  V_DrawShaded(scrn, 0, 0, SCREENWIDTH, SCREENHEIGHT, FULLSHADE);
+}
+
+static dboolean M_OptionalLumpMissing(const menuitem_t *item)
+{
+  // if not optional, return
+  if (!(item->flags & MENUF_OPTLUMP))
+    return false;
+
+  return item->name[0] && !W_LumpNameExists(item->name);
+}
+
+static dboolean M_MenuHasMissingRequiredLumps(const menu_t *menu)
+{
+  int i;
+
+  if (!menu)
+    return false;
+
+  for (i = 0; i < menu->numitems; i++)
   {
-	  EpiDef.numitems = ep_end;
-	  if (gamemode != commercial
-		  && (compatibility_level < ultdoom_compatibility
-			  || W_CheckNumForName(EpiDef.menuitems[ep4].name) == -1))
-	  {
-		  EpiDef.numitems--;
-	  }
+    const menuitem_t *item = &menu->menuitems[i];
+
+    if (item->status != M_ITEM_SKIP &&
+        !(item->flags & MENUF_OPTLUMP) &&
+        (!item->name[0] || !W_LumpNameExists(item->name)))
+      return true;
   }
 
-  default_verify = 0;                  // killough 10/98
-  menuactive = mnact_float;
-  currentMenu = &MainDef;         // JDC
-  itemOn = currentMenu->lastOn;   // JDC
-  print_warning_about_changes = false;   // killough 11/98
+  return false;
 }
 
 //
@@ -5998,75 +6512,124 @@ void M_StartControlPanel (void)
 
 void M_Drawer (void)
 {
+  V_BeginUIDraw();
+
   inhelpscreens = false;
 
   // Horiz. & Vertically center string and print it.
   // killough 9/29/98: simplified code, removed 40-character width limit
   if (messageToPrint)
+  {
+    char* ms;
+    char* p;
+    int y;
+
+    if (raven)
     {
-      /* cph - strdup string to writable memory */
-      char *ms = strdup(messageString);
-      char *p = ms;
-
-      int y = 100 - M_StringHeight(messageString)/2;
-      while (*p)
-      {
-        char *string = p, c;
-        while ((c = *p) && *p != '\n')
-          p++;
-        *p = 0;
-        M_WriteText(160 - M_StringWidth(string)/2, y, string, CR_DEFAULT);
-        y += hu_font[0].height;
-        if ((*p = c))
-          p++;
-      }
-      free(ms);
+      MN_DrawMessage(messageString);
+      V_EndUIDraw();
+      return;
     }
-  else
-    if (menuactive)
-      {
-  int x,y,max,i;
-  int lumps_missing = 0;
 
-  menuactive = mnact_float; // Boom-style menu drawers will set mnact_full
+    /* cph - Z_Strdup string to writable memory */
+    ms = Z_Strdup(messageString);
+    p = ms;
 
-  if (currentMenu->routine)
-    currentMenu->routine();     // call Draw routine
-
-  // DRAW MENU
-
-  x = currentMenu->x;
-  y = currentMenu->y;
-  max = currentMenu->numitems;
-
-  for (i = 0; i < max; i++)
-    if (currentMenu->menuitems[i].name[0])
-      if (W_CheckNumForName(currentMenu->menuitems[i].name) < 0)
-        lumps_missing++;
-
-  if (lumps_missing == 0)
-    for (i=0;i<max;i++)
+    y = 100 - M_StringHeight(messageString)/2;
+    while (*p)
     {
-      if (currentMenu->menuitems[i].name[0])
-        V_DrawNamePatch(x,y,0,currentMenu->menuitems[i].name,
-            CR_DEFAULT, VPT_STRETCH);
-      y += LINEHEIGHT;
+      char *string = p, c;
+      while ((c = *p) && *p != '\n')
+        p++;
+      *p = 0;
+      M_WriteText(160 - M_StringWidth(string)/2, y, string, CR_DEFAULT);
+      y += menu_font->line_height;
+      if ((*p = c))
+        p++;
     }
-  else
+    Z_Free(ms);
+  }
+  else if (menuactive)
+  {
+    int x, y, max, i;
+    dboolean lumps_missing;
+
+    M_ChangeMenu(NULL, mnact_float);
+
+    if (currentMenu->routine)
+      currentMenu->routine();     // call Draw routine
+
+    if (raven)
+    {
+      MN_Drawer();
+      V_EndUIDraw();
+      return;
+    }
+
+    // DRAW MENU
+
+    x = currentMenu->x;
+    y = currentMenu->y;
+    max = currentMenu->numitems;
+    lumps_missing = M_MenuHasMissingRequiredLumps(currentMenu);
+
     for (i = 0; i < max; i++)
     {
-      const char *alttext = currentMenu->menuitems[i].alttext;
-      if (alttext)
-        M_WriteText(x, y+8-(M_StringHeight(alttext)/2), alttext, CR_DEFAULT);
+      const menuitem_t *item = &currentMenu->menuitems[i];
+      int color = M_HighlightColor(M_MouseHovered(i), item->color);
+      int flags = VPT_STRETCH | M_AddColorFlag(color);
+
+      if (!lumps_missing && item->name[0] && !M_OptionalLumpMissing(item))
+        V_DrawNamePatch(x, y, 0, item->name, color, flags);
+      else if (item->alttext)
+        M_WriteText(x, y + 8 - (M_StringHeight(item->alttext) / 2),
+                    item->alttext, color);
+
       y += LINEHEIGHT;
     }
 
-  // DRAW SKULL
+    // DRAW SKULL
+    if (max > 0)
+      // CPhipps - patch drawing updated
+      V_DrawNamePatch(x + SKULLXOFF, currentMenu->y - 5 + itemOn*LINEHEIGHT,0,
+          skullName[whichSkull], CR_DEFAULT, VPT_STRETCH);
+  }
 
-  // CPhipps - patch drawing updated
-  V_DrawNamePatch(x + SKULLXOFF, currentMenu->y - 5 + itemOn*LINEHEIGHT,0,
-      skullName[whichSkull], CR_DEFAULT, VPT_STRETCH);
-      }
+  V_EndUIDraw();
+}
+
+void M_ChangeMenu(menu_t *menudef, menuactive_t mnact)
+{
+  if (menudef && menudef != currentMenu)
+  {
+    M_MouseClearMainHover();
+    M_MouseClearTabHover();
+  }
+
+  if (menudef)
+    currentMenu = menudef;
+
+  if (mnact != mnact_nochange)
+    menuactive = mnact;
+
+  if (mnact == mnact_inactive)
+  {
+    M_MouseClearMainHover();
+    M_MouseClearTabHover();
+    M_MouseResetButtons();
+  }
+
+  if (mnact > mnact_inactive && gamestate == GS_LEVEL)
+    dsda_TrackFeature(uf_menu);
+
+#ifndef __3DS__
+  if (SDL_IsTextInputActive()) {
+    if (!(currentMenu && currentMenu->flags & MENUF_TEXTINPUT))
+      SDL_StopTextInput();
+  }
+  else if (currentMenu && currentMenu->flags & MENUF_TEXTINPUT)
+    SDL_StartTextInput();
+#endif
 }
 
 //
@@ -6076,14 +6639,9 @@ void M_Drawer (void)
 
 void M_ClearMenus (void)
 {
-  menuactive = mnact_inactive;
-  print_warning_about_changes = 0;     // killough 8/15/98
-  default_verify = 0;                  // killough 10/98
+  M_ChangeMenu(&MainDef, mnact_inactive);
 
   BorderNeedRefresh = true;
-
-  // if (!netgame && usergame && paused)
-  //     sendpause = true;
 }
 
 //
@@ -6091,10 +6649,14 @@ void M_ClearMenus (void)
 //
 void M_SetupNextMenu(menu_t *menudef)
 {
-  currentMenu = menudef;
+  M_ChangeMenu(menudef, mnact_nochange);
   itemOn = currentMenu->lastOn;
 
   BorderNeedRefresh = true;
+
+  current_page = 0;
+  previous_page = 0;
+  M_MouseClearTabHover();
 }
 
 /////////////////////////////
@@ -6103,11 +6665,14 @@ void M_SetupNextMenu(menu_t *menudef)
 //
 void M_Ticker (void)
 {
+  // The skull counter is also used for non-skull pointers
   if (--skullAnimCounter <= 0)
-    {
-      whichSkull ^= 1;
-      skullAnimCounter = 8;
-    }
+  {
+    whichSkull ^= 1;
+    skullAnimCounter = 8;
+  }
+
+  if (raven) return MN_Ticker();
 }
 
 /////////////////////////////
@@ -6115,20 +6680,20 @@ void M_Ticker (void)
 // Message Routines
 //
 
-void M_StartMessage (const char* string,void* routine,dboolean input)
+static void M_StartMessage (const char* string,void* routine,dboolean input)
 {
   messageLastMenuActive = menuactive;
   messageToPrint = 1;
   messageString = string;
   messageRoutine = routine;
   messageNeedsInput = input;
-  menuactive = mnact_float;
+  M_ChangeMenu(NULL, mnact_float);
   return;
 }
 
-void M_StopMessage(void)
+static void M_StopMessage(void)
 {
-  menuactive = messageLastMenuActive;
+  M_ChangeMenu(NULL, messageLastMenuActive);
   messageToPrint = 0;
 }
 
@@ -6144,41 +6709,60 @@ void M_StopMessage(void)
 // proff/nicolas 09/20/98 -- changed for hi-res
 // CPhipps - patch drawing updated
 //
-void M_DrawThermo(int x,int y,int thermWidth,int thermDot )
+static void M_DrawThermo(int x, int y, int thermWidth, int thermRange, int thermDot, int color)
 {
-  int          xx;
-  int           i;
-  /*
-   * Modification By Barry Mead to allow the Thermometer to have vastly
-   * larger ranges. (the thermWidth parameter can now have a value as
-   * large as 200.      Modified 1-9-2000  Originally I used it to make
-   * the sensitivity range for the mouse better. It could however also
-   * be used to improve the dynamic range of music and sound affect
-   * volume controls for example.
-   */
-  int horizScaler; //Used to allow more thermo range for mouse sensitivity.
-  thermWidth = (thermWidth > 200) ? 200 : thermWidth; //Clamp to 200 max
-  horizScaler = (thermWidth > 23) ? (200 / thermWidth) : 8; //Dynamic range
+  int xx;
+  int i;
+  int dot_offset;
+  int flags;
+
+  if (raven) return MN_DrawSlider(x, y, thermWidth, thermRange, thermDot, color);
+
+  // [AR] We check both if the item is selected and highlight
+  // to include the label on the sound screen
+  flags = VPT_STRETCH | M_AddColorFlag(color);
+
   xx = x;
-  V_DrawNamePatch(xx, y, 0, "M_THERML", CR_DEFAULT, VPT_STRETCH);
+  V_DrawNamePatch(xx, y, 0, "M_THERML", color, flags);
   xx += 8;
   for (i=0;i<thermWidth;i++)
-    {
-    V_DrawNamePatch(xx, y, 0, "M_THERMM", CR_DEFAULT, VPT_STRETCH);
-    xx += horizScaler;
-    }
+  {
+    V_DrawNamePatch(xx, y, 0, "M_THERMM", color, flags);
+    xx += 8;
+  }
+  V_DrawNamePatch(xx, y, 0, "M_THERMR", color, flags);
 
-  xx += (8 - horizScaler);  /* make the right end look even */
+  if (thermDot >= thermRange)
+  {
+    thermDot = thermRange - 1;
+  }
 
-  V_DrawNamePatch(xx, y, 0, "M_THERMR", CR_DEFAULT, VPT_STRETCH);
-  V_DrawNamePatch((x+8)+thermDot*horizScaler,y,0,"M_THERMO",CR_DEFAULT,VPT_STRETCH);
+  dot_offset = 8 * thermDot * thermWidth / thermRange;
+  dot_offset -= thermRange / thermWidth;
+  V_DrawNamePatch(x + 8 + dot_offset, y, 0, "M_THERMO", color, flags);
+}
+
+static void M_DrawThermoSmall(int x, int y, int thermWidth, int thermRange, int thermDot, const setup_menu_t *setup_item)
+{
+  dboolean selected = setup_item->m_flags & S_HILITE;
+  int color = M_ItemDisabled(setup_item) ? CR_DARKEN : M_HighlightColor(selected, CR_DEFAULT);
+
+  M_DrawThermo(x, y, thermWidth, thermRange, thermDot, color );
+}
+
+void M_DrawThermoBig(int x, int y, int thermWidth, int thermRange, int thermDot, int menu_item)
+{
+  dboolean highlight = (itemOn == menu_item) && M_MouseHovered(menu_item);
+  int color = M_HighlightColor(highlight, CR_DEFAULT);
+
+  M_DrawThermo(x, y, thermWidth, thermRange, thermDot, color );
 }
 
 //
 // Draw an empty cell in the thermometer
 //
 
-void M_DrawEmptyCell (menu_t* menu,int item)
+static void M_DrawEmptyCell (menu_t* menu,int item)
 {
   // CPhipps - patch drawing updated
   V_DrawNamePatch(menu->x - 10, menu->y+item*LINEHEIGHT - 1, 0,
@@ -6189,7 +6773,7 @@ void M_DrawEmptyCell (menu_t* menu,int item)
 // Draw a full cell in the thermometer
 //
 
-void M_DrawSelCell (menu_t* menu,int item)
+static void M_DrawSelCell (menu_t* menu,int item)
 {
   // CPhipps - patch drawing updated
   V_DrawNamePatch(menu->x - 10, menu->y+item*LINEHEIGHT - 1, 0,
@@ -6202,35 +6786,35 @@ void M_DrawSelCell (menu_t* menu,int item)
 //
 
 //
-// Find string width from hu_font chars
+// Find string width from menu_font chars
 //
 
-int M_StringWidth(const char* string)
+static int M_StringWidth(const char* string)
 {
   int i, c, w = 0;
   for (i = 0;(size_t)i < strlen(string);i++)
     w += (c = toupper(string[i]) - HU_FONTSTART) < 0 || c >= HU_FONTSIZE ?
-      4 : hu_font[c].width;
+      menu_font->space_width : menu_font->font[c].width;
   return w;
 }
 
 //
-//    Find string height from hu_font chars
+//    Find string height from menu_font chars
 //
 
-int M_StringHeight(const char* string)
+static int M_StringHeight(const char* string)
 {
-  int i, h, height = h = hu_font[0].height;
+  int i, h = menu_font->height;
   for (i = 0;string[i];i++)            // killough 1/31/98
     if (string[i] == '\n')
-      h += height;
+      h += menu_font->line_height;
   return h;
 }
 
 //
-//    Write a string using the hu_font
+//    Write a string using the menu_font
 //
-void M_WriteText (int x,int y, const char* string, int cm)
+static void M_WriteText (int x,int y, const char* string, int cm)
 {
   int   w;
   const char* ch;
@@ -6243,9 +6827,7 @@ void M_WriteText (int x,int y, const char* string, int cm)
   cx = x;
   cy = y;
 
-  flags = VPT_STRETCH;
-  if (cm != CR_DEFAULT)
-    flags |= VPT_TRANS;
+  flags = VPT_STRETCH | M_AddColorFlag(cm);
 
   while(1) {
     c = *ch++;
@@ -6263,35 +6845,23 @@ void M_WriteText (int x,int y, const char* string, int cm)
       continue;
     }
 
-    w = hu_font[c].width;
+    w = menu_font->font[c].width;
     if (cx+w > BASE_WIDTH)
       break;
     // proff/nicolas 09/20/98 -- changed for hi-res
     // CPhipps - patch drawing updated
-    V_DrawNumPatch(cx, cy, 0, hu_font[c].lumpnum, cm, flags);
+    V_DrawNumPatch(cx, cy, 0, menu_font->font[c].lumpnum, cm, flags);
     cx+=w;
   }
 }
 
-void M_DrawTitle(int x, int y, const char *patch, int cm,
-                 const char *alttext, int altcm)
+static void M_DrawTitle(int y, const char *text, int cm)
 {
-  int lumpnum = W_CheckNumForName(patch);
+  if (raven) return MN_DrawTitle(y, text, cm);
 
-  if (lumpnum >= 0)
-  {
-    int flags = VPT_STRETCH;
-    if (cm != CR_DEFAULT)
-      flags |= VPT_TRANS;
-    V_DrawNumPatch(x, y, 0, lumpnum, cm, flags);
-  }
-  else
-  {
-    // patch doesn't exist, draw some text in place of it
-    M_WriteText(160-(M_StringWidth(alttext)/2),
-                y+8-(M_StringHeight(alttext)/2), // assumes patch height 16
-                alttext, altcm);
-  }
+  M_WriteText(160 - (M_StringWidth(text) / 2),
+              y + 8 - (M_StringHeight(text) / 2), // assumes patch height 16
+              text, cm);
 }
 
 /////////////////////////////
@@ -6299,102 +6869,90 @@ void M_DrawTitle(int x, int y, const char *patch, int cm,
 // Initialization Routines to take care of one-time setup
 //
 
-// phares 4/08/98:
-// M_InitHelpScreen() clears the weapons from the HELP
-// screen that don't exist in this version of the game.
-
-void M_InitHelpScreen(void)
-{
-  setup_menu_t* src;
-
-  src = helpstrings;
-  while (!(src->m_flags & S_END)) {
-
-    if ((strncmp(src->m_text,"PLASMA",6) == 0) && (gamemode == shareware))
-      src->m_flags = S_SKIP; // Don't show setting or item
-    if ((strncmp(src->m_text,"BFG",3) == 0) && (gamemode == shareware))
-      src->m_flags = S_SKIP; // Don't show setting or item
-    if ((strncmp(src->m_text,"SSG",3) == 0) && (gamemode != commercial))
-      src->m_flags = S_SKIP; // Don't show setting or item
-    src++;
-  }
-}
-
 //
 // M_Init
 //
 void M_Init(void)
 {
-  M_InitDefaults();                // killough 11/98
-  currentMenu = &MainDef;
-  menuactive = mnact_inactive;
+  if (raven) MN_Init();
+
+  M_LoadTextColors();
+  M_LoadMenuFont();
+
+  M_ChangeMenu(&MainDef, mnact_inactive);
   itemOn = currentMenu->lastOn;
   whichSkull = 0;
   skullAnimCounter = 10;
-  screenSize = screenblocks - 3;
   messageToPrint = 0;
   messageString = NULL;
   messageLastMenuActive = menuactive;
-  quickSaveSlot = -1;
+
+  M_InitExtendedHelp(); // init extended help screens // phares 3/30/98
 
   // Here we could catch other version dependencies,
   //  like HELP1/2, and four episodes.
 
-  switch(gamemode)
+  //
+  // Raven code moved to MN_Init() for
+  // Heretic / Hexen 3-4 screen support.
+  if (!raven) {
+    if (gamemode == commercial) {
+        // This is used because DOOM 2 had only one HELP
+        //  page. I use CREDIT as second page now, but
+        //  kept this hack for educational purposes.
+
+        // "Help" and "ReadMe!" now use the same
+        // routine to match Vanilla routines.
+        MainDef.y += 8;
+        ReadDef1.routine = M_DrawReadThis2;
+        ReadDef1.x = 330;
+        ReadDef1.y = 165;
+
+        // Allowed "Read Me!" in commerical gamemodes
+        // by default if Extended Help screens are found.
+        //
+        // Otherwise remove "Read Me!" menu option
+        if (!extended_help_count)
+        {
+          MainMenu[readthis] = MainMenu[quitdoom];
+          MainDef.numitems = quitdoom;
+          ReadMenu1[0].routine = M_FinishReadThis;
+        }
+    }
+    else
     {
-    case commercial:
-      // This is used because DOOM 2 had only one HELP
-      //  page. I use CREDIT as second page now, but
-      //  kept this hack for educational purposes.
-      MainMenu[readthis] = MainMenu[quitdoom];
-      MainDef.numitems--;
-      MainDef.y += 8;
-      if (!EpiCustom)
-        NewDef.prevMenu = &MainDef;
-      ReadDef1.routine = M_DrawReadThis1;
-      ReadDef1.x = 330;
-      ReadDef1.y = 165;
-      ReadMenu1[0].routine = M_FinishReadThis;
-      break;
-    case registered:
       // Episode 2 and 3 are handled,
       //  branching to an ad screen.
 
       // killough 2/21/98: Fix registered Doom help screen
       // killough 10/98: moved to second screen, moved up to the top
-      ReadDef2.y = 15;
-      // fallthrough
 
-    case shareware:
-      // We need to remove the fourth episode.
-      EpiDef.numitems--;
-      break;
-    case retail:
-      // We are fine.
-    default:
-      break;
+      // If shareware or PWAD HELP2, use ad screen (w/ offset)
+      // with HELP1 screen, else cut to only HELP1 screen
+      if (pwad_help2_check || gamemode == shareware)
+        ReadDef1.y = 15;
+      else
+      {
+        ReadDef1.routine = M_DrawReadThis2;
+        if (!extended_help_count)
+          ReadMenu1[0].routine = M_FinishReadThis;
+      }
     }
+  }
 
-  M_InitHelpScreen();   // init the help screen       // phares 4/08/98
-  M_InitExtendedHelp(); // init extended help screens // phares 3/30/98
-  
   //e6y
   M_ChangeSpeed();
-  M_ChangeMaxViewPitch();
-  M_ChangeMouseLook();
-  M_ChangeMouseInvert();
+  M_ChangeSkyMode();
   M_ChangeFOV();
-#ifdef GL_DOOM
-  M_ChangeSpriteClip();
-  M_ChangeAllowBoomColormaps();
-#endif
 
   M_ChangeDemoSmoothTurns();
-  M_ChangeDemoExtendedFormat();
 
+  M_ChangeMapTextured();
   M_ChangeMapMultisamling();
 
-  render_stretch_hud = render_stretch_hud_default;
+  M_ChangeStretch();
+
+  M_ChangeMIDIPlayer();
 }
 
 //

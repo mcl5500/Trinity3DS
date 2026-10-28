@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -38,13 +38,7 @@
 #include "d_event.h"
 #include "w_wad.h"
 
-#ifdef __GNUG__
-#pragma interface
-#endif
-
 /* CPhipps - removed wadfiles[] stuff to w_wad.h */
-
-extern char *basesavegame;      // killough 2/16/98: savegame path
 
 //jff 1/24/98 make command line copies of play modes available
 extern dboolean clnomonsters; // checkparm of -nomonsters
@@ -54,8 +48,6 @@ extern dboolean clfastparm; // checkparm of -fast
 
 extern dboolean nosfxparm;
 extern dboolean nomusicparm;
-extern dboolean umapinfo_loaded;
-extern int ffmap;
 
 // Called by IO functions when input is detected.
 void D_PostEvent(event_t* ev);
@@ -75,13 +67,18 @@ void D_StartTitle(void);
 void D_DoomMain(void);
 void D_AddFile (const char *file, wad_source_t source);
 
-void AddIWAD(const char *iwad);
-const char *BaseName(const char *filename);
+extern char* iwadlump;
 
-/* cph - MBF-like wad/deh/bex autoload code */
-/* proff 2001/7/1 - added prboom.wad as last entry so it's always loaded and
-   doesn't overlap with the cfg settings */
-#define MAXLOADFILES 3
-extern const char *wad_files[MAXLOADFILES], *deh_files[MAXLOADFILES];
+void AddIWAD(const char *iwad);
+
+extern const char *port_wad_file;
+
+typedef struct
+{
+  void (*func)(const char *);
+  const char *name;
+} demostate_t;
+
+void D_SetPage(const char* name, int tics, int music);
 
 #endif

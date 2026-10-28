@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -73,6 +73,8 @@
 #include "v_video.h"
 #include <assert.h>
 
+#include "dsda/palette.h"
+
 // posts are runs of non masked source pixels
 typedef struct
 {
@@ -109,70 +111,37 @@ static rpatch_t *texture_composites = 0;
 // indices of two duplicate PLAYPAL entries, second is -1 if none found
 static int playpal_transparent, playpal_duplicate;
 
-static dboolean DuplicatePaletteEntry(const char *playpal, int i, int j) {
-  int colormap_i;
-
-  if (playpal[3 * i + 0] != playpal[3 * j + 0] ||
-      playpal[3 * i + 1] != playpal[3 * j + 1] ||
-      playpal[3 * i + 2] != playpal[3 * j + 2])
-    return false;
-
-  for (colormap_i = 0; colormap_i < NUMCOLORMAPS; ++colormap_i)
-    if (colormaps[0][colormap_i * 256 + i] != colormaps[0][colormap_i * 256 + j])
-      return false;
-
-  return true;
-}
+// indices of darkest and lightest colors
+int playpal_darkest;
+int playpal_lightest;
 
 //---------------------------------------------------------------------------
 void R_InitPatches(void) {
   if (!patches)
   {
-    patches = malloc(numlumps * sizeof(rpatch_t));
+    patches = Z_Malloc(numlumps * sizeof(rpatch_t));
     // clear out new patches to signal they're uninitialized
     memset(patches, 0, sizeof(rpatch_t)*numlumps);
   }
   if (!texture_composites)
   {
-    texture_composites = malloc(numtextures * sizeof(rpatch_t));
+    texture_composites = Z_Malloc(numtextures * sizeof(rpatch_t));
     // clear out new patches to signal they're uninitialized
     memset(texture_composites, 0, sizeof(rpatch_t)*numtextures);
   }
 
-  if (!playpal_duplicate)
-  {
-    int lump = W_GetNumForName("PLAYPAL");
-    const byte *playpal = W_CacheLumpNum(lump);
+  dsda_InitAllPlayPals();
+  R_UpdatePlayPal();
+}
 
-    // find two duplicate palette entries. use one for transparency.
-    // rewrite source pixels in patches to the other on composition.
+void R_UpdatePlayPal(void) {
+  dsda_playpal_t* playpal_data;
 
-    int i, j, found = 0;
-
-    for (i = 0; i < 256; i++)
-    {
-      for (j = i+1; j < 256; j++)
-      {
-        if (DuplicatePaletteEntry(playpal, i, j))
-        {
-          found = 1;
-          break;
-        }
-      }
-      if (found)
-        break;
-    }
-
-    if (found) { // found duplicate
-      playpal_transparent = i;
-      playpal_duplicate   = j;
-    } else { // no duplicate: use 255 for transparency, as done previously
-      playpal_transparent = 255;
-      playpal_duplicate   = -1;
-    }
-
-    W_UnlockLumpNum(lump);
-  }
+  playpal_data = dsda_PlayPalData(playpal_index);
+  playpal_transparent = playpal_data->transparent;
+  playpal_duplicate = playpal_data->duplicate;
+  playpal_darkest = playpal_data->darkest;
+  playpal_lightest = playpal_data->lightest;
 }
 
 //---------------------------------------------------------------------------
@@ -181,18 +150,15 @@ void R_FlushAllPatches(void) {
 
   if (patches)
   {
-    for (i=0; i < numlumps; i++)
-      if (patches[i].locks > 0)
-        I_Error("R_FlushAllPatches: patch number %i still locked",i);
-    free(patches);
+    Z_Free(patches);
     patches = NULL;
   }
   if (texture_composites)
   {
     for (i=0; i<numtextures; i++)
       if (texture_composites[i].data)
-        free(texture_composites[i].data);
-    free(texture_composites);
+        Z_Free(texture_composites[i].data);
+    Z_Free(texture_composites);
     texture_composites = NULL;
   }
 }
@@ -200,18 +166,16 @@ void R_FlushAllPatches(void) {
 //---------------------------------------------------------------------------
 int R_NumPatchWidth(int lump)
 {
-  const rpatch_t *patch = R_CachePatchNum(lump);
+  const rpatch_t *patch = R_PatchByNum(lump);
   int width = patch->width;
-  R_UnlockPatchNum(lump);
   return width;
 }
 
 //---------------------------------------------------------------------------
 int R_NumPatchHeight(int lump)
 {
-  const rpatch_t *patch = R_CachePatchNum(lump);
+  const rpatch_t *patch = R_PatchByNum(lump);
   int height = patch->height;
-  R_UnlockPatchNum(lump);
   return height;
 }
 
@@ -285,7 +249,7 @@ static void FillEmptySpace(rpatch_t *patch)
 
   // alternate between two buffers to avoid "overlapping memcpy"-like symptoms
   orig = patch->pixels;
-  copy = malloc(numpix);
+  copy = Z_Malloc(numpix);
 
   for (pass = 0; pass < 8; pass++) // arbitrarily chosen limit (must be even)
   {
@@ -334,10 +298,10 @@ static void FillEmptySpace(rpatch_t *patch)
       break;
     }
     else if (transparent == numpix)
-      break; // avoid infinite loop on entirely transparent patches (STBR127)
+      break; // avoid infinite loop on entirely transparent patches
   }
 
-  free(copy);
+  Z_Free(copy);
 
   // copy top row of patch into any space at bottom, and vice versa
   // a hack to fix erroneous row of pixels at top of firing chaingun
@@ -360,20 +324,20 @@ static void FillEmptySpace(rpatch_t *patch)
 //
 //==========================================================================
 
-static dboolean CheckIfPatch(int lump)
+dboolean R_IsPatchLump(int lumpnum)
 {
   int size;
   int width, height;
   const patch_t * patch;
   dboolean result;
 
-  size = W_LumpLength(lump);
-  
+  size = W_LumpLength(lumpnum);
+
   // minimum length of a valid Doom patch
   if (size < 13)
     return false;
 
-  patch = (const patch_t *)W_CacheLumpNum(lump);
+  patch = (const patch_t *)W_LumpByNum(lumpnum);
 
   width = LittleShort(patch->width);
   height = LittleShort(patch->height);
@@ -383,7 +347,7 @@ static dboolean CheckIfPatch(int lump)
   if (result)
   {
     // The dimensions seem like they might be valid for a patch, so
-    // check the column directory for extra security. All columns 
+    // check the column directory for extra security. All columns
     // must begin after the column directory, and none of them must
     // point past the end of the patch.
     int x;
@@ -401,7 +365,6 @@ static dboolean CheckIfPatch(int lump)
     }
   }
 
-  W_UnlockLumpNum(lump);
   return result;
 }
 
@@ -436,13 +399,13 @@ static void createPatch(int id) {
     I_Error("createPatch: %i >= numlumps", id);
 #endif
 
-  if (!CheckIfPatch(patchNum))
+  if (!R_IsPatchLump(patchNum))
   {
     I_Error("createPatch: Unknown patch format %s.",
       (patchNum < numlumps ? lumpinfo[patchNum].name : NULL));
   }
 
-  oldPatch = (const patch_t*)W_CacheLumpNum(patchNum);
+  oldPatch = (const patch_t*)W_LumpByNum(patchNum);
 
   patch = &patches[id];
   // proff - 2003-02-16 What about endianess?
@@ -455,25 +418,23 @@ static void createPatch(int id) {
   if (getPatchIsNotTileable(oldPatch))
     patch->flags |= PATCH_ISNOTTILEABLE;
 
-#ifdef GL_DOOM
   // Width of M_THERMM patch is 9, but Doom interprets it as 8-columns lump
   // during drawing. It is not a problem for software mode and GL_NEAREST,
   // but looks wrong with filtering. So I need to patch it during loading.
-  if (V_GetMode() == VID_MODEGL)
+  if (V_IsOpenGLMode())
   {
     if (!strncasecmp(lumpinfo[id].name, "M_THERMM", 8) && patch->width > 8)
     {
       patch->width--;
     }
   }
-#endif
 
   // work out how much memory we need to allocate for this patch's data
   pixelDataSize = (patch->width * patch->height + 4) & ~3;
   columnsDataSize = sizeof(rcolumn_t) * patch->width;
 
   // count the number of posts in each column
-  numPostsInColumn = malloc(sizeof(int) * patch->width);
+  numPostsInColumn = Z_Malloc(sizeof(int) * patch->width);
   numPostsTotal = 0;
 
   for (x=0; x<patch->width; x++) {
@@ -490,7 +451,7 @@ static void createPatch(int id) {
 
   // allocate our data chunk
   dataSize = pixelDataSize + columnsDataSize + postsDataSize;
-  patch->data = (unsigned char*)Z_Malloc(dataSize, PU_CACHE, (void **)&patch->data);
+  patch->data = (unsigned char*) Z_Malloc(dataSize);
   memset(patch->data, 0, dataSize);
 
   // set out pixel, column, and post pointers into our data array
@@ -580,8 +541,7 @@ static void createPatch(int id) {
 
   FillEmptySpace(patch);
 
-  W_UnlockLumpNum(patchNum);
-  free(numPostsInColumn);
+  Z_Free(numPostsInColumn);
 }
 
 typedef struct {
@@ -662,13 +622,13 @@ static void createTextureCompositePatch(int id) {
   columnsDataSize = sizeof(rcolumn_t) * composite_patch->width;
 
   // count the number of posts in each column
-  countsInColumn = (count_t *)calloc(sizeof(count_t), composite_patch->width);
+  countsInColumn = (count_t *)Z_Calloc(sizeof(count_t), composite_patch->width);
   numPostsTotal = 0;
 
   for (i=0; i<texture->patchcount; i++) {
     texpatch = &texture->patches[i];
     patchNum = texpatch->patch;
-    oldPatch = (const patch_t*)W_CacheLumpNum(patchNum);
+    oldPatch = (const patch_t*)W_LumpByNum(patchNum);
 
     for (x=0; x<LittleShort(oldPatch->width); x++) {
       int tx = texpatch->originx + x;
@@ -687,15 +647,13 @@ static void createTextureCompositePatch(int id) {
         oldColumn = (const column_t *)((const byte *)oldColumn + oldColumn->length + 4);
       }
     }
-
-    W_UnlockLumpNum(patchNum);
   }
 
   postsDataSize = numPostsTotal * sizeof(rpost_t);
 
   // allocate our data chunk
   dataSize = pixelDataSize + columnsDataSize + postsDataSize;
-  composite_patch->data = (unsigned char*)Z_Malloc(dataSize, PU_STATIC, (void **)&composite_patch->data);
+  composite_patch->data = (unsigned char*) Z_Malloc(dataSize);
   memset(composite_patch->data, 0, dataSize);
 
   // set out pixel, column, and post pointers into our data array
@@ -724,7 +682,7 @@ static void createTextureCompositePatch(int id) {
   for (i=0; i<texture->patchcount; i++) {
     texpatch = &texture->patches[i];
     patchNum = texpatch->patch;
-    oldPatch = (const patch_t*)W_CacheLumpNum(patchNum);
+    oldPatch = (const patch_t*)W_LumpByNum(patchNum);
 
     for (x=0; x<LittleShort(oldPatch->width); x++) {
       int top = -1;
@@ -829,8 +787,6 @@ static void createTextureCompositePatch(int id) {
         assert(countsInColumn[tx].posts_used <= countsInColumn[tx].posts);
       }
     }
-
-    W_UnlockLumpNum(patchNum);
   }
 
   for (x=0; x<texture->width; x++) {
@@ -867,15 +823,13 @@ static void createTextureCompositePatch(int id) {
 
   FillEmptySpace(composite_patch);
 
-  free(countsInColumn);
+  Z_Free(countsInColumn);
 }
 
 //---------------------------------------------------------------------------
-const rpatch_t *R_CachePatchNum(int id) {
-  const int locks = 1;
-
+const rpatch_t *R_PatchByNum(int id) {
   if (!patches)
-    I_Error("R_CachePatchNum: Patches not initialized");
+    I_Error("R_PatchByNum: Patches not initialized");
 
 #ifdef RANGECHECK
   if (id >= numlumps)
@@ -885,46 +839,13 @@ const rpatch_t *R_CachePatchNum(int id) {
   if (!patches[id].data)
     createPatch(id);
 
-  /* cph - if wasn't locked but now is, tell z_zone to hold it */
-  if (!patches[id].locks && locks) {
-    Z_ChangeTag(patches[id].data,PU_STATIC);
-#ifdef TIMEDIAG
-    patches[id].locktic = gametic;
-#endif
-  }
-  patches[id].locks += locks;
-
-#ifdef SIMPLECHECKS
-  if (!((patches[id].locks+1) & 0xf))
-    lprintf(LO_DEBUG, "R_CachePatchNum: High lock on %.8s (%d)\n",
-	    lumpinfo[id].name, patches[id].locks);
-#endif
-
   return &patches[id];
 }
 
-void R_UnlockPatchNum(int id)
-{
-  const int unlocks = 1;
-#ifdef SIMPLECHECKS
-  if ((signed short)patches[id].locks < unlocks)
-    lprintf(LO_DEBUG, "R_UnlockPatchNum: Excess unlocks on %8s (%d-%d)\n", 
-	    lumpinfo[id].name, patches[id].locks, unlocks);
-#endif
-  patches[id].locks -= unlocks;
-  /* cph - Note: must only tell z_zone to make purgeable if currently locked, 
-   * else it might already have been purged
-   */
-  if (unlocks && !patches[id].locks)
-    Z_ChangeTag(patches[id].data, PU_CACHE);
-}
-
 //---------------------------------------------------------------------------
-const rpatch_t *R_CacheTextureCompositePatchNum(int id) {
-  const int locks = 1;
-
+const rpatch_t *R_TextureCompositePatchByNum(int id) {
   if (!texture_composites)
-    I_Error("R_CacheTextureCompositePatchNum: Composite patches not initialized");
+    I_Error("R_TextureCompositePatchByNum: Composite patches not initialized");
 
 #ifdef RANGECHECK
   if (id >= numtextures)
@@ -934,39 +855,8 @@ const rpatch_t *R_CacheTextureCompositePatchNum(int id) {
   if (!texture_composites[id].data)
     createTextureCompositePatch(id);
 
-  /* cph - if wasn't locked but now is, tell z_zone to hold it */
-  if (!texture_composites[id].locks && locks) {
-    Z_ChangeTag(texture_composites[id].data,PU_STATIC);
-#ifdef TIMEDIAG
-    texture_composites[id].locktic = gametic;
-#endif
-  }
-  texture_composites[id].locks += locks;
-
-#ifdef SIMPLECHECKS
-  if (!((texture_composites[id].locks+1) & 0xf))
-    lprintf(LO_DEBUG, "R_CacheTextureCompositePatchNum: High lock on %.8s (%d)\n",
-	    textures[id]->name, texture_composites[id].locks);
-#endif
-
   return &texture_composites[id];
 
-}
-
-void R_UnlockTextureCompositePatchNum(int id)
-{
-  const int unlocks = 1;
-#ifdef SIMPLECHECKS
-  if ((signed short)texture_composites[id].locks < unlocks)
-    lprintf(LO_DEBUG, "R_UnlockTextureCompositePatchNum: Excess unlocks on %8s (%d-%d)\n", 
-	    textures[id]->name, texture_composites[id].locks, unlocks);
-#endif
-  texture_composites[id].locks -= unlocks;
-  /* cph - Note: must only tell z_zone to make purgeable if currently locked, 
-   * else it might already have been purged
-   */
-  if (unlocks && !texture_composites[id].locks)
-    Z_ChangeTag(texture_composites[id].data, PU_CACHE);
 }
 
 //---------------------------------------------------------------------------
@@ -988,4 +878,3 @@ const rcolumn_t *R_GetPatchColumn(const rpatch_t *patch, int columnIndex) {
   if (patch->flags&PATCH_ISNOTTILEABLE) return R_GetPatchColumnClamped(patch, columnIndex);
   else return R_GetPatchColumnWrapped(patch, columnIndex);
 }
-

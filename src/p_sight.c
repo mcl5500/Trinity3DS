@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -42,6 +42,7 @@
 #include "g_overflow.h"
 #include "e6y.h" //e6y
 
+#include "dsda/map_format.h"
 
 /*
 ==============================================================================
@@ -76,21 +77,21 @@ dboolean PTR_SightTraverse(intercept_t *in)
   //
   // crosses a two sided line
   //
-  P_LineOpening(li);
+  P_LineOpening(li, NULL);
 
-  if (openbottom >= opentop)  // quick test for totally closed doors
+  if (line_opening.bottom >= line_opening.top)  // quick test for totally closed doors
     return false;  // stop
 
   if (li->frontsector->floorheight != li->backsector->floorheight)
   {
-    slope = FixedDiv(openbottom - sightzstart , in->frac);
+    slope = FixedDiv(line_opening.bottom - sightzstart , in->frac);
     if (slope > bottomslope)
       bottomslope = slope;
   }
 
   if (li->frontsector->ceilingheight != li->backsector->ceilingheight)
   {
-    slope = FixedDiv(opentop - sightzstart, in->frac);
+    slope = FixedDiv(line_opening.top - sightzstart, in->frac);
     if (slope < topslope)
       topslope = slope;
   }
@@ -111,46 +112,83 @@ dboolean PTR_SightTraverse(intercept_t *in)
 ===================
 */
 
+static dboolean P_SightCheckLine(line_t *ld)
+{
+  int s1, s2;
+  divline_t dl;
+
+  if (ld->validcount == validcount)
+    return true; // line has already been checked
+
+  ld->validcount = validcount;
+
+  s1 = P_PointOnDivlineSide(ld->v1->x, ld->v1->y, &trace);
+  s2 = P_PointOnDivlineSide(ld->v2->x, ld->v2->y, &trace);
+  if (s1 == s2)
+    return true; // line isn't crossed
+
+  P_MakeDivline(ld, &dl);
+
+  s1 = P_PointOnDivlineSide(trace.x, trace.y, &dl);
+  s2 = P_PointOnDivlineSide(trace.x + trace.dx, trace.y + trace.dy, &dl);
+  if (s1 == s2)
+    return true; // line isn't crossed
+
+  if (!ld->backsector)
+    return false; // stop checking
+
+  check_intercept(); // killough
+
+  // store the line for later intersection testing
+  intercept_p->d.line = ld;
+  intercept_p++;
+
+  return true;
+}
+
 dboolean P_SightBlockLinesIterator(int x, int y)
 {
   int offset;
   int *list;
-  line_t *ld;
-  int s1, s2;
-  divline_t dl;
 
-  offset = y*bmapwidth+x;
+  offset = y * bmapwidth + x;
+
+  // Invalid block, ignore this one
+  if (offset < 0)
+    return true;
+
+  if (map_format.polyobjs)
+  {
+    polyblock_t *polyLink;
+    seg_t **segList;
+    int i;
+    extern polyblock_t **PolyBlockMap;
+
+    polyLink = PolyBlockMap[offset];
+    while (polyLink)
+    {
+      if (polyLink->polyobj)
+      {                       // only check non-empty links
+        if (polyLink->polyobj->validcount != validcount)
+        {
+          segList = polyLink->polyobj->segs;
+
+          for (i = 0; i < polyLink->polyobj->numsegs; i++, segList++)
+            if (!P_SightCheckLine((*segList)->linedef))
+              return false;
+
+          polyLink->polyobj->validcount = validcount;
+        }
+      }
+      polyLink = polyLink->next;
+    }
+  }
 
   offset = *(blockmap+offset);
 
-  for (list = blockmaplump+offset; *list != -1; list++)
-  {
-    ld = &lines[*list];
-    if (ld->validcount == validcount)
-      continue;    // line has already been checked
-    ld->validcount = validcount;
-
-    s1 = P_PointOnDivlineSide(ld->v1->x, ld->v1->y, &trace);
-    s2 = P_PointOnDivlineSide(ld->v2->x, ld->v2->y, &trace);
-    if (s1 == s2)
-      continue;    // line isn't crossed
-    P_MakeDivline (ld, &dl);
-    s1 = P_PointOnDivlineSide(trace.x, trace.y, &dl);
-    s2 = P_PointOnDivlineSide(trace.x+trace.dx, trace.y+trace.dy, &dl);
-    if (s1 == s2)
-      continue; // line isn't crossed
-
-    // try to early out the check
-    if (!ld->backsector)
-      return false; // stop checking
-
-    check_intercept();    // killough
-
-    // store the line for later intersection testing
-    intercept_p->d.line = ld;
-    intercept_p++;
-
-  }
+  for (list = blockmaplump + offset; *list != -1; list++)
+    if (!P_SightCheckLine(&lines[*list]))
+      return false;
 
   return true; // everything was checked
 }
@@ -178,12 +216,12 @@ dboolean P_SightTraverseIntercepts(void)
   for (scan = intercepts; scan<intercept_p; scan++)
   {
     P_MakeDivline(scan->d.line, &dl);
-    scan->frac = P_InterceptVector(&trace, &dl);    
+    scan->frac = P_InterceptVector(&trace, &dl);
   }
 
   //
   // go through in order
-  //  
+  //
   in = 0; // shut up compiler warning
 
   while (count--)
@@ -270,7 +308,7 @@ dboolean P_SightPathTraverse(fixed_t x1, fixed_t y1, fixed_t x2, fixed_t y2)
     mapxstep = 0;
     partial = FRACUNIT;
     ystep = 256*FRACUNIT;
-  }  
+  }
   yintercept = (y1>>MAPBTOFRAC) + FixedMul (partial, ystep);
 
 
@@ -291,7 +329,7 @@ dboolean P_SightPathTraverse(fixed_t x1, fixed_t y1, fixed_t x2, fixed_t y2)
     mapystep = 0;
     partial = FRACUNIT;
     xstep = 256*FRACUNIT;
-  }  
+  }
   xintercept = (x1>>MAPBTOFRAC) + FixedMul (partial, xstep);
 
 
@@ -370,7 +408,7 @@ dboolean P_CheckSight_12(mobj_t *t1, mobj_t *t2)
 
   //
   // check precisely
-  //    
+  //
   sightzstart = t1->z + t1->height - (t1->height>>2);
   topslope = (t2->z+t2->height) - sightzstart;
   bottomslope = (t2->z) - sightzstart;
@@ -413,62 +451,7 @@ INLINE static int P_DivlineSide(fixed_t x, fixed_t y, const divline_t *node)
 
 INLINE static int P_DivlineCrossed(fixed_t x1, fixed_t y1, fixed_t x2, fixed_t y2, divline_t *node)
 {
-#if 1
    return (P_DivlineSide(x1, y1, node) == P_DivlineSide(x2, y2, node));
-#else
-  if (!node->dx)
-  {
-    if (x1 == node->x)
-      return (x2 == node->x);
-    if (x2 == node->x)
-      return (x1 == node->x);
-    if (x1 < node->x)
-      return (x2 < node->x);
-    return (x2 > node->x);
-  }
-
-  if (!node->dy)
-  {
-    fixed_t _y1, _y2;
-    if (compatibility_level < prboom_4_compatibility)
-    {
-      _y1 = x1;
-      _y2 = x2;
-    }
-    else
-    {
-      _y1 = y1;
-      _y2 = y2;
-    }
-    //if ((compatibility_level < prboom_4_compatibility ? x1 : y1) == node->y)
-    //  return (x2 == node->y);
-    if (_y1 == node->y)
-      return (_y2 == node->y);
-    if (_y2 == node->y)
-      return (_y1 == node->y);
-    if (y1 <= node->y)
-      return (y2 < node->y);
-    return (y2 > node->y);
-  }
-
-  {
-    fixed_t node_dx = (node->dx >> FRACBITS);
-    fixed_t node_dy = (node->dy >> FRACBITS);
-
-    fixed_t left1  = node_dy * ((x1 - node->x) >> FRACBITS);
-    fixed_t right1 = ((y1 - node->y) >> FRACBITS) * node_dx;
-    fixed_t left2  = node_dy * ((x2 - node->x) >> FRACBITS);
-    fixed_t right2 = ((y2 - node->y) >> FRACBITS) * node_dx;
-
-    if (right1 < left1)
-      return (right2 < left2);
-
-    if (left1 == right1)
-      return (left2 == right2);
-
-    return (right2 > left2);
-  }
-#endif
 }
 
 
@@ -478,6 +461,67 @@ INLINE static int P_DivlineCrossed(fixed_t x1, fixed_t y1, fixed_t x2, fixed_t y
 //  if strace crosses the given subsector successfully.
 //
 // killough 4/19/98: made static and cleaned up
+
+dboolean P_CrossSubsector_Poly(int num)
+{
+  if (map_format.zdoom && subsectors[num].poly)
+  {
+    int polyCount;
+    seg_t **polySeg;
+
+    polyCount = subsectors[num].poly->numsegs;
+    polySeg = subsectors[num].poly->segs;
+
+    while (polyCount--)
+    {
+      divline_t divl;
+      line_t *line;
+
+      line = (*polySeg++)->linedef;
+      if (line->validcount == validcount)
+        continue;
+
+      // OPTIMIZE: killough 4/20/98: Added quick bounding-box rejection test
+
+      if (line->bbox[BOXLEFT  ] > los.bbox[BOXRIGHT ] ||
+          line->bbox[BOXRIGHT ] < los.bbox[BOXLEFT  ] ||
+          line->bbox[BOXBOTTOM] > los.bbox[BOXTOP   ] ||
+          line->bbox[BOXTOP]    < los.bbox[BOXBOTTOM])
+      {
+        line->validcount = validcount;
+        continue;
+      }
+
+      // line isn't crossed?
+      if (P_DivlineCrossed(line->v1->x, line->v1->y, line->v2->x, line->v2->y, &los.strace))
+      {
+        line->validcount = validcount;
+        continue;
+      }
+
+      divl.dx = line->v2->x - (divl.x = line->v1->x);
+      divl.dy = line->v2->y - (divl.y = line->v1->y);
+
+      // line isn't crossed?
+      if (P_DivlineCrossed(los.strace.x, los.strace.y, los.t2x, los.t2y, &divl))
+      {
+        line->validcount = validcount;
+        continue;
+      }
+
+      // already checked other side?
+      if (line->validcount == validcount)
+        continue;
+
+      line->validcount = validcount;
+
+      // stop because it is not two sided anyway
+      return false;
+    }
+  }
+
+  return true;
+}
 
 dboolean P_CrossSubsector_PrBoom(int num)
 {
@@ -542,7 +586,7 @@ dboolean P_CrossSubsector_PrBoom(int num)
       // no wall to block sight with?
       if (front->floorheight == back->floorheight
         && front->ceilingheight == back->ceilingheight)
-        continue;	
+        continue;
 
       // possible occluder
       // because of ceiling height differences
@@ -566,9 +610,9 @@ dboolean P_CrossSubsector_PrBoom(int num)
 
     { // crosses a two sided line
       /* cph 2006/07/15 - oops, we missed this in 2.4.0 & .1;
-       *  use P_InterceptVector2 for those compat levels only. */ 
+       *  use P_InterceptVector2 for those compat levels only. */
       fixed_t frac = (compatibility_level == prboom_5_compatibility || compatibility_level == prboom_6_compatibility) ?
-		      P_InterceptVector2(&los.strace, &divl) : 
+		      P_InterceptVector2(&los.strace, &divl) :
 		      P_InterceptVector(&los.strace, &divl);
 
       if (front->floorheight != back->floorheight)
@@ -650,7 +694,7 @@ dboolean P_CrossSubsector_Doom(int num)
     // no wall to block sight with?
     if (front->floorheight == back->floorheight
       && front->ceilingheight == back->ceilingheight)
-      continue;	
+      continue;
 
     // possible occluder
     // because of ceiling height differences
@@ -738,7 +782,8 @@ dboolean P_CrossSubsector_Boom(int num)
     ssline->linedef->validcount = validcount;
 
     // stop because it is not two sided anyway
-    if (!(ssline->linedef->flags & ML_TWOSIDED))
+    if (!(ssline->linedef->flags & ML_TWOSIDED) ||
+        ssline->linedef->flags & (ML_BLOCKEVERYTHING | ML_BLOCKSIGHT))
       return false;
 
     // crosses a two sided line
@@ -780,6 +825,10 @@ dboolean P_CrossSubsector_Boom(int num)
     if (los.topslope <= los.bottomslope)
       return false;               // stop
   }
+
+  if (!P_CrossSubsector_Poly(num))
+    return false;
+
   // passed the subsector ok
   return true;
 }
@@ -937,4 +986,24 @@ dboolean P_CheckSight(mobj_t *t1, mobj_t *t2)
 
   // the head node is the last node output
   return P_CrossBSPNode(numnodes-1);
+}
+
+//
+// P_CheckFov
+// Returns true if t2 is within t1's field of view.
+// Not directly related to P_CheckSight, but often
+// used in tandem.
+//
+// Adapted from Eternity, so big thanks to Quasar
+//
+dboolean P_CheckFov(mobj_t *t1, mobj_t *t2, angle_t fov)
+{
+  angle_t angle, minang, maxang;
+
+  angle = R_PointToAngle2(t1->x, t1->y, t2->x, t2->y);
+  minang = t1->angle - fov / 2;
+  maxang = t1->angle + fov / 2;
+
+  return((minang > maxang) ? angle >= minang || angle <= maxang
+                           : angle >= minang && angle <= maxang);
 }

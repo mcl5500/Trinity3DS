@@ -10,12 +10,20 @@
 #include "p_mobj.h"
 #include "p_map.h"
 #include "p_spec.h"
-#include "version.h"
+#include "trinity_version.h"
 #include "g_game.h"
 #include "s_sound.h"
 #include "sounds.h"
 #include "i_system.h"
 #include "i_main.h"
+
+void I_ResetToLauncher(void);
+#include "dsda/mapinfo.h"
+const char *G_GetCurrentMap(void) {
+    return dsda_MapLumpName(gameepisode, gamemap);
+}
+char *dsda_SaveGameName(int slot, dboolean temp);
+void doom_printf(const char *s, ...);
 
 #include <3ds.h>
 #include <3ds/applets/swkbd.h>
@@ -133,15 +141,15 @@ void DS_QuickSave(void)
     if (gamestate != GS_LEVEL) return;
     if (players[consoleplayer].playerstate == PST_DEAD) {
         S_StartSound(NULL, sfx_oof);
-        players[consoleplayer].message = "CAN'T SAVE WHILE DEAD!";
+        doom_printf("CAN'T SAVE WHILE DEAD!");
         return;
     }
 
     char desc[24];
-    snprintf(desc, sizeof(desc), "QUICKSAVE %s", lumpinfo[maplumpnum].name);
+    snprintf(desc, sizeof(desc), "QUICKSAVE %s", G_GetCurrentMap());
     G_SaveGame(0, desc);
     S_StartSound(NULL, sfx_swtchx);
-    players[consoleplayer].message = "GAME SAVED (QUICKSAVE)";
+    doom_printf("GAME SAVED (QUICKSAVE)");
     ds_save_flash = 12;
 }
 
@@ -149,18 +157,18 @@ void DS_QuickLoad(void)
 {
     if (gamestate != GS_LEVEL) return;
 
-    char path[256];
-    G_SaveGameName(path, sizeof(path), 0, false);
-    if (access(path, R_OK) == 0) {
+    char *path = dsda_SaveGameName(0, false);
+    if (path && access(path, R_OK) == 0) {
         G_LoadGame(0, false);
         S_StartSound(NULL, sfx_swtchx);
-        players[consoleplayer].message = "GAME LOADED (QUICKSAVE)";
+        doom_printf("GAME LOADED (QUICKSAVE)");
         ds_load_flash = 12;
     } else {
         S_StartSound(NULL, sfx_oof);
-        players[consoleplayer].message = "NO QUICKSAVE FOUND!";
+        doom_printf("NO QUICKSAVE FOUND!");
         ds_load_flash = -12;
     }
+    if (path) Z_Free(path);
 }
 
 // Draw a line with configurable thickness (1 or 2 pixels)
@@ -221,7 +229,7 @@ static void DS_LoadPalette(void)
     if (ds_pal_loaded) return;
     int lump = W_CheckNumForName("PLAYPAL");
     if (lump >= 0) {
-        const u8 *data = (const u8 *)W_CacheLumpNum(lump);
+        const u8 *data = (const u8 *)W_LockLumpNum(lump);
         if (data) {
             memcpy(ds_palette, data, 768);
             ds_pal_loaded = true;
@@ -238,7 +246,7 @@ static void DS_DrawWadPatch(u8 *fb, int dest_x, int dest_y, const char *patch_na
     int lump = W_CheckNumForName(patch_name);
     if (lump < 0) return;
 
-    const u8 *data = (const u8 *)W_CacheLumpNum(lump);
+    const u8 *data = (const u8 *)W_LockLumpNum(lump);
     if (!data) return;
 
     short w = *(const short *)(data + 0);
@@ -287,7 +295,7 @@ static void DS_DrawWadPatchSub(u8 *fb, int dest_x, int dest_y, const char *patch
     int lump = W_CheckNumForName(patch_name);
     if (lump < 0) return;
 
-    const u8 *data = (const u8 *)W_CacheLumpNum(lump);
+    const u8 *data = (const u8 *)W_LockLumpNum(lump);
     if (!data) return;
 
     short w = *(const short *)(data + 0);
@@ -331,7 +339,7 @@ static void DS_DrawWadPatchDimmed(u8 *fb, int dest_x, int dest_y, const char *pa
     int lump = W_CheckNumForName(patch_name);
     if (lump < 0) return;
 
-    const u8 *data = (const u8 *)W_CacheLumpNum(lump);
+    const u8 *data = (const u8 *)W_LockLumpNum(lump);
     if (!data) return;
 
     short w = *(const short *)(data + 0);
@@ -452,7 +460,7 @@ static void DS_DrawAuthenticStatusBar(u8 *fb)
     DS_DrawWadPatch(fb, 143, ST_Y, face_name);
 
     // 6. Armor (Right-aligned at original position X: 221, Y: ST_Y + 3)
-    DS_DrawDoomNumber(fb, 221, ST_Y + 3, plr->armorpoints, 3);
+    DS_DrawDoomNumber(fb, 221, ST_Y + 3, plr->armorpoints[ARMOR_ARMOR], 3);
     DS_DrawWadPatch(fb, 221, ST_Y + 3, "STTPRCNT");
 
     // 7. Keycards / Skulls (Original position X: 239)

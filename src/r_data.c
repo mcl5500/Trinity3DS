@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -44,7 +44,10 @@
 #include "lprintf.h"  // jff 08/03/98 - declaration of lprintf
 #include "p_tick.h"
 
-#include "m_io.h"
+#include "dsda/args.h"
+#include "dsda/configuration.h"
+#include "dsda/map_format.h"
+#include "dsda/utility.h"
 
 //
 // Graphics.
@@ -103,10 +106,17 @@ int       *texturetranslation;
 //
 
 const byte *R_GetTextureColumn(const rpatch_t *texpatch, int col) {
+  const int width = texpatch->width;
+  const unsigned int mask = texpatch->widthmask;
+
   while (col < 0)
-    col += texpatch->width;
-  col &= texpatch->widthmask;
-  
+    col += width;
+
+  if (mask + 1 == width)
+    col &= mask;
+  else
+    col %= width;
+
   return texpatch->columns[col].pixels;
 }
 
@@ -115,6 +125,26 @@ const byte *R_GetTextureColumn(const rpatch_t *texpatch, int col) {
 // Initializes the texture list
 //  with the textures from the world map.
 //
+
+static dboolean R_IsPNGLump(int lump_num)
+{
+  return W_LumpLength(lump_num) >= 8 &&
+         !memcmp(W_LumpByNum(lump_num), "\211PNG\r\n\032\n", 8);
+}
+
+static int R_FilterValidPatch(int lump_num, const char *name)
+{
+  if (lump_num != LUMP_NOT_FOUND)
+  {
+    if (R_IsPNGLump(lump_num))
+    {
+      lprintf(LO_WARN, "Warning: patch %s is in an unsupported format (PNG)\n", name);
+      lump_num = W_CheckNumForName2("TNT1A0", ns_sprites);
+    }
+  }
+
+  return lump_num;
+}
 
 static void R_InitTextures (void)
 {
@@ -140,16 +170,16 @@ static void R_InitTextures (void)
 
   // Load the patch names from pnames.lmp.
   name[8] = 0;
-  names = W_CacheLumpNum(names_lump = W_GetNumForName("PNAMES"));
+  names = W_LumpByNum(names_lump = W_GetNumForName("PNAMES"));
   nummappatches = LittleLong(*((const int *)names));
   name_p = names+4;
-  patchlookup = malloc(nummappatches*sizeof(*patchlookup));  // killough
+  patchlookup = Z_Malloc(nummappatches*sizeof(*patchlookup));  // killough
 
   for (i=0 ; i<nummappatches ; i++)
     {
       strncpy (name,name_p+i*8, 8);
       patchlookup[i] = W_CheckNumForName(name);
-      if (patchlookup[i] == -1)
+      if (patchlookup[i] == LUMP_NOT_FOUND)
         {
           // killough 4/17/98:
           // Some wads use sprites as wall patches, so repeat check and
@@ -159,27 +189,24 @@ static void R_InitTextures (void)
           // appear first in a wad. This is a kludgy solution to the wad
           // lump namespace problem.
 
-          patchlookup[i] = (W_CheckNumForName)(name, ns_sprites);
-
-          if (patchlookup[i] == -1 && devparm)
-            //jff 8/3/98 use logical output routine
-            lprintf(LO_WARN,"\nWarning: patch %.8s, index %d does not exist",name,i);
+          patchlookup[i] = W_CheckNumForName2(name, ns_sprites);
         }
+
+      patchlookup[i] = R_FilterValidPatch(patchlookup[i], name);
     }
-  W_UnlockLumpNum(names_lump); // cph - release the lump
 
   // Load the map texture definitions from textures.lmp.
   // The data is contained in one or two lumps,
   //  TEXTURE1 for shareware, plus TEXTURE2 for commercial.
 
-  maptex = maptex1 = W_CacheLumpNum(maptex_lump[0] = W_GetNumForName("TEXTURE1"));
+  maptex = maptex1 = W_LumpByNum(maptex_lump[0] = W_GetNumForName("TEXTURE1"));
   numtextures1 = LittleLong(*maptex);
   maxoff = W_LumpLength(maptex_lump[0]);
   directory = maptex+1;
 
-  if (W_CheckNumForName("TEXTURE2") != -1)
+  if (W_LumpNameExists("TEXTURE2"))
     {
-      maptex2 = W_CacheLumpNum(maptex_lump[1] = W_GetNumForName("TEXTURE2"));
+      maptex2 = W_LumpByNum(maptex_lump[1] = W_GetNumForName("TEXTURE2"));
       numtextures2 = LittleLong(*maptex2);
       maxoff2 = W_LumpLength(maptex_lump[1]);
     }
@@ -194,8 +221,8 @@ static void R_InitTextures (void)
   // killough 4/9/98: make column offsets 32-bit;
   // clean up malloc-ing to use sizeof
 
-  textures = Z_Malloc(numtextures*sizeof*textures, PU_STATIC, 0);
-  textureheight = Z_Malloc(numtextures*sizeof*textureheight, PU_STATIC, 0);
+  textures = Z_Malloc(numtextures*sizeof*textures);
+  textureheight = Z_Malloc(numtextures*sizeof*textureheight);
 
   for (i=0 ; i<numtextures ; i++, directory++)
     {
@@ -215,15 +242,13 @@ static void R_InitTextures (void)
       mtexture = (const maptexture_t *) ( (const byte *)maptex + offset);
 
       texture = textures[i] =
-        Z_Malloc(sizeof(texture_t) +
-                 sizeof(texpatch_t)*(LittleShort(mtexture->patchcount)-1),
-                 PU_STATIC, 0);
+        Z_Malloc(sizeof(texture_t) + sizeof(texpatch_t)*(LittleShort(mtexture->patchcount)-1));
 
       texture->width = LittleShort(mtexture->width);
       texture->height = LittleShort(mtexture->height);
       texture->patchcount = LittleShort(mtexture->patchcount);
 
-        /* Mattias Engdegård emailed me of the following explenation of
+        /* Mattias Engdegï¿½rd emailed me of the following explenation of
          * why memcpy doesnt work on some systems:
          * "I suppose it is the mad unaligned allocation
          * going on (and which gcc in some way manages to cope with
@@ -263,19 +288,33 @@ static void R_InitTextures (void)
       mpatch = mtexture->patches;
       patch = texture->patches;
 
-      for (j=0 ; j<texture->patchcount ; j++, mpatch++, patch++)
+      for (j=0 ; j<texture->patchcount ; j++, mpatch++)
         {
+          int patchindex = LittleShort(mpatch->patch);
+
+          // Check if patch is in PNAMES bounds
+          if (patchindex < 0 || patchindex >= nummappatches)
+            {
+              lprintf(LO_WARN, "\nR_InitTextures: Texture %.8s references patch index %d outside PNAMES table (%d entries)",
+                      texture->name, patchindex, nummappatches);
+              continue;
+            }
+
           patch->originx = LittleShort(mpatch->originx);
           patch->originy = LittleShort(mpatch->originy);
-          patch->patch = patchlookup[LittleShort(mpatch->patch)];
+          patch->patch = patchlookup[patchindex];
           if (patch->patch == -1)
             {
               //jff 8/3/98 use logical output routine
               lprintf(LO_ERROR,"\nR_InitTextures: Missing patch %d in texture %.8s",
-                     LittleShort(mpatch->patch), texture->name); // killough 4/17/98
+                     patchindex, texture->name); // killough 4/17/98
               ++errors;
             }
+
+          ++patch;
         }
+
+      texture->patchcount = (short)(patch - texture->patches);
 
       for (j=1; j*2 <= texture->width; j<<=1)
         ;
@@ -283,42 +322,23 @@ static void R_InitTextures (void)
       textureheight[i] = texture->height<<FRACBITS;
     }
 
-  free(patchlookup);         // killough
-
-  for (i=0; i<2; i++) // cph - release the TEXTUREx lumps
-    if (maptex_lump[i] != -1)
-      W_UnlockLumpNum(maptex_lump[i]);
+  Z_Free(patchlookup);         // killough
 
   if (errors)
   {
-    const lumpinfo_t* info = W_GetLumpInfoByNum(names_lump);
-    lprintf(LO_INFO, "\nR_InitTextures: The file %s seems to be incompatible with \"%s\".\n",
-      info->wadfile->name,
-      (doomverstr ? doomverstr : "DOOM"));
-    I_Error("R_InitTextures: %d errors", errors);
-  }
+    const lumpinfo_t* info;
 
-  // Precalculate whatever possible.
-  if (devparm) // cph - If in development mode, generate now so all errors are found at once
-  {
-    R_InitPatches(); //e6y
-    for (i=0 ; i<numtextures ; i++)
-    {
-      // proff - This is for the new renderer now
-      R_CacheTextureCompositePatchNum(i);
-      R_UnlockTextureCompositePatchNum(i);
-    }
-  }
+    info = W_GetLumpInfoByNum(names_lump);
 
-  if (errors)
-    I_Error("R_InitTextures: %d errors", errors);
+    I_Error("Texture errors: %d!\n%s seems to be incompatible with %s.\nAre you using the right IWAD?",
+            errors, dsda_BaseName(info->wadfile->name), doomverstr);
+  }
 
   // Create translation table for global animation.
   // killough 4/9/98: make column offsets 32-bit;
   // clean up malloc-ing to use sizeof
 
-  texturetranslation =
-    Z_Malloc((numtextures+1)*sizeof*texturetranslation, PU_STATIC, 0);
+  texturetranslation = Z_Malloc((numtextures+1)*sizeof*texturetranslation);
 
   for (i=0 ; i<numtextures ; i++)
     texturetranslation[i] = i;
@@ -349,8 +369,7 @@ static void R_InitFlats(void)
   // killough 4/9/98: make column offsets 32-bit;
   // clean up malloc-ing to use sizeof
 
-  flattranslation =
-    Z_Malloc((numflats+1)*sizeof(*flattranslation), PU_STATIC, 0);
+  flattranslation = Z_Malloc((numflats+1)*sizeof(*flattranslation));
 
   for (i=0 ; i<numflats ; i++)
     flattranslation[i] = i;
@@ -381,13 +400,25 @@ static void R_InitSpriteLumps(void)
 static void R_InitColormaps(void)
 {
   int i;
-  firstcolormaplump = W_GetNumForName("C_START");
-  lastcolormaplump  = W_GetNumForName("C_END");
-  numcolormaps = lastcolormaplump - firstcolormaplump;
-  colormaps = Z_Malloc(sizeof(*colormaps) * numcolormaps, PU_STATIC, 0);
-  colormaps[0] = (const lighttable_t *)W_CacheLumpName("COLORMAP");
+  extern const byte* colormap_lump;
+  // MAP_FORMAT_TODO: not sure about this
+  if (hexen)
+  {
+    firstcolormaplump = -1;
+    lastcolormaplump = -1;
+    numcolormaps = 1;
+  }
+  else
+  {
+    firstcolormaplump = W_GetNumForName("C_START");
+    lastcolormaplump  = W_GetNumForName("C_END");
+    numcolormaps = lastcolormaplump - firstcolormaplump;
+  }
+  colormaps = Z_Malloc(sizeof(*colormaps) * numcolormaps);
+  colormap_lump = W_LumpByName("COLORMAP");
+  colormaps[0] = (const lighttable_t *)colormap_lump;
   for (i=1; i<numcolormaps; i++)
-    colormaps[i] = (const lighttable_t *)W_CacheLumpNum(i+firstcolormaplump);
+    colormaps[i] = (const lighttable_t *)W_LumpByNum(i+firstcolormaplump);
   // cph - always lock
 }
 
@@ -399,134 +430,9 @@ int R_ColormapNumForName(const char *name)
 {
   register int i = 0;
   if (strncasecmp(name,"COLORMAP",8))     // COLORMAP predefined to return 0
-    if ((i = (W_CheckNumForName)(name, ns_colormaps)) != -1)
+    if ((i = W_CheckNumForName2(name, ns_colormaps)) != LUMP_NOT_FOUND)
       i -= firstcolormaplump;
   return i;
-}
-
-//
-// R_InitTranMap
-//
-// Initialize translucency filter map
-//
-// By Lee Killough 2/21/98
-//
-
-int tran_filter_pct = 66;       // filter percent
-
-#define TSC 12        /* number of fixed point digits in filter percent */
-
-void R_InitTranMap(int progress)
-{
-  int lump = W_CheckNumForName("TRANMAP");
-
-  // If a tranlucency filter map lump is present, use it
-
-  if (lump != -1)  // Set a pointer to the translucency filter maps.
-    main_tranmap = W_CacheLumpNum(lump);   // killough 4/11/98
-  else if (W_CheckNumForName("PLAYPAL")!=-1) // can be called before WAD loaded
-    {   // Compose a default transparent filter map based on PLAYPAL.
-      const byte *playpal = W_CacheLumpName("PLAYPAL");
-      byte       *my_tranmap;
-
-      char *fname;
-      int fnlen;
-      struct {
-        unsigned char pct;
-        unsigned char playpal[256*3];
-      } cache;
-      FILE *cachefp;
-
-      fnlen = doom_snprintf(NULL, 0, "%s/tranmap.dat", I_DoomExeDir());
-      fname = malloc(fnlen+1);
-      doom_snprintf(fname, fnlen+1, "%s/tranmap.dat", I_DoomExeDir());
-      cachefp = M_fopen(fname, "rb");
-
-      main_tranmap = my_tranmap = Z_Malloc(256*256, PU_STATIC, 0);  // killough 4/11/98
-
-      // Use cached translucency filter if it's available
-
-      if (!cachefp ||
-          fread(&cache, 1, sizeof cache, cachefp) != sizeof cache ||
-          cache.pct != tran_filter_pct ||
-          memcmp(cache.playpal, playpal, sizeof cache.playpal) ||
-          fread(my_tranmap, 256, 256, cachefp) != 256 ) // killough 4/11/98
-        {
-          long pal[3][256], tot[256], pal_w1[3][256];
-          long w1 = ((unsigned long) tran_filter_pct<<TSC)/100;
-          long w2 = (1l<<TSC)-w1;
-
-          if (progress)
-            lprintf(LO_INFO, "Tranmap build [        ]\x08\x08\x08\x08\x08\x08\x08\x08\x08");
-
-          // First, convert playpal into long int type, and transpose array,
-          // for fast inner-loop calculations. Precompute tot array.
-
-          {
-            register int i = 255;
-            register const unsigned char *p = playpal+255*3;
-            do
-              {
-                register long t,d;
-                pal_w1[0][i] = (pal[0][i] = t = p[0]) * w1;
-                d = t*t;
-                pal_w1[1][i] = (pal[1][i] = t = p[1]) * w1;
-                d += t*t;
-                pal_w1[2][i] = (pal[2][i] = t = p[2]) * w1;
-                d += t*t;
-                p -= 3;
-                tot[i] = d << (TSC-1);
-              }
-            while (--i>=0);
-          }
-
-          // Next, compute all entries using minimum arithmetic.
-
-          {
-            int i,j;
-            byte *tp = my_tranmap;
-            for (i=0;i<256;i++)
-              {
-                long r1 = pal[0][i] * w2;
-                long g1 = pal[1][i] * w2;
-                long b1 = pal[2][i] * w2;
-                if (!(i & 31) && progress)
-                  //jff 8/3/98 use logical output routine
-                  lprintf(LO_INFO,".");
-                for (j=0;j<256;j++,tp++)
-                  {
-                    register int color = 255;
-                    register long err;
-                    long r = pal_w1[0][j] + r1;
-                    long g = pal_w1[1][j] + g1;
-                    long b = pal_w1[2][j] + b1;
-                    long best = LONG_MAX;
-                    do
-                      if ((err = tot[color] - pal[0][color]*r
-                          - pal[1][color]*g - pal[2][color]*b) < best)
-                        best = err, *tp = color;
-                    while (--color >= 0);
-                  }
-              }
-          }
-          if ((cachefp = M_fopen(fname,"wb")) != NULL) // write out the cached translucency map
-            {
-              cache.pct = tran_filter_pct;
-              memcpy(cache.playpal, playpal, sizeof cache.playpal);
-              fseek(cachefp, 0, SEEK_SET);
-              fwrite(&cache, 1, sizeof cache, cachefp);
-              fwrite(main_tranmap, 256, 256, cachefp);
-              // CPhipps - leave close for a few lines...
-            }
-        }
-
-      if (cachefp)              // killough 11/98: fix filehandle leak
-        fclose(cachefp);
-
-      free(fname);
-
-      W_UnlockLumpName("PLAYPAL");
-    }
 }
 
 //
@@ -538,14 +444,12 @@ void R_InitTranMap(int progress)
 
 void R_InitData(void)
 {
-  lprintf(LO_INFO, "Textures ");
+  lprintf(LO_DEBUG, "Textures ");
   R_InitTextures();
-  lprintf(LO_INFO, "Flats ");
+  lprintf(LO_DEBUG, "Flats ");
   R_InitFlats();
-  lprintf(LO_INFO, "Sprites ");
+  lprintf(LO_DEBUG, "Sprites ");
   R_InitSpriteLumps();
-  if (default_translucency)             // killough 3/1/98
-    R_InitTranMap(1);                   // killough 2/21/98, 3/6/98
   R_InitColormaps();                    // killough 3/20/98
 }
 
@@ -558,15 +462,15 @@ void R_InitData(void)
 
 int R_FlatNumForName(const char *name)    // killough -- const added
 {
-  int i = (W_CheckNumForName)(name, ns_flats);
-  if (i == -1)
+  int i = W_CheckNumForName2(name, ns_flats);
+  if (i == LUMP_NOT_FOUND)
   {
     // e6y
     // Ability to play wads with wrong flat names
-    // Unknown flats will be replaced with "NO TEXTURE" preset from prboom-plus.wad
+    // Unknown flats will be replaced with "NO TEXTURE" preset from dsda-doom.wad
     lprintf(LO_DEBUG, "R_FlatNumForName: %.8s not found\n", name);
-    i = (W_CheckNumForName)("-N0_TEX-", ns_flats);
-    if (i == -1)
+    i = W_CheckNumForName2("-N0_TEX-", ns_flats);
+    if (i == LUMP_NOT_FOUND)
     {
       I_Error("R_FlatNumForName: -N0_TEX- not found");
     }
@@ -609,12 +513,14 @@ int PUREFUNC R_TextureNumForName(const char *name)  // const added -- killough
   int i = R_CheckTextureNumForName(name);
   if (i == -1)
   {
-    int lump = W_GetNumForName("TEXTURE1");
-    const lumpinfo_t* info = W_GetLumpInfoByNum(lump);
-    lprintf(LO_INFO, "R_TextureNumForName: The file %s seems to be incompatible with \"%s\".\n",
-      info->wadfile->name,
-      (doomverstr ? doomverstr : "DOOM"));
-    I_Error("R_TextureNumForName: %.8s not found", name);
+    int lump;
+    const lumpinfo_t* info;
+
+    lump = W_GetNumForName("TEXTURE1");
+    info = W_GetLumpInfoByNum(lump);
+
+    I_Error("Texture not found: %.8s!\n%s seems to be incompatible with %s.\nAre you using the right IWAD?",
+            name, dsda_BaseName(info->wadfile->name), doomverstr);
   }
   return i;
 }
@@ -627,7 +533,7 @@ int PUREFUNC R_SafeTextureNumForName(const char *name, int snum)
   int i = R_CheckTextureNumForName(name);
   if (i == -1) {
     i = NO_TEXTURE; // e6y - return "no texture"
-    lprintf(LO_DEBUG,"bad texture '%s' in sidedef %d\n",name,snum);
+    lprintf(LO_DEBUG,"bad texture '%.8s' in sidedef %d\n",name,snum);
   }
   return i;
 }
@@ -642,7 +548,7 @@ int PUREFUNC R_SafeTextureNumForName(const char *name, int snum)
 
 static inline void precache_lump(int l)
 {
-  W_CacheLumpNum(l); W_UnlockLumpNum(l);
+  W_LumpByNum(l);
 }
 
 void R_PrecacheLevel(void)
@@ -654,8 +560,8 @@ void R_PrecacheLevel(void)
     return;
 
   {
-    int size = numflats > numsprites  ? numflats : numsprites;
-    hitlist = malloc(numtextures > size ? numtextures : size);
+    int size = numflats > num_sprites  ? numflats : num_sprites;
+    hitlist = Z_Malloc(numtextures > size ? numtextures : size);
   }
 
   // Precache flats.
@@ -685,7 +591,15 @@ void R_PrecacheLevel(void)
   //  a wall texture, with an episode dependend
   //  name.
 
-  hitlist[skytexture] = 1;
+  if (map_format.doublesky)
+  {
+    hitlist[Sky1Texture] = 1;
+    hitlist[Sky2Texture] = 1;
+  }
+  else
+  {
+    hitlist[skytexture] = 1;
+  }
 
   for (i = numtextures; --i >= 0; )
     if (hitlist[i])
@@ -697,7 +611,7 @@ void R_PrecacheLevel(void)
       }
 
   // Precache sprites.
-  memset(hitlist, 0, numsprites);
+  memset(hitlist, 0, num_sprites);
 
   {
     thinker_t *th = NULL;
@@ -706,7 +620,7 @@ void R_PrecacheLevel(void)
         hitlist[((mobj_t *)th)->sprite] = 1;
   }
 
-  for (i=numsprites; --i >= 0;)
+  for (i=num_sprites; --i >= 0;)
     if (hitlist[i])
       {
         int j = sprites[i].numframes;
@@ -719,36 +633,34 @@ void R_PrecacheLevel(void)
             while (--k >= 0);
           }
       }
-  free(hitlist);
+  Z_Free(hitlist);
 }
 
 // Proff - Added for OpenGL
 void R_SetPatchNum(patchnum_t *patchnum, const char *name)
 {
-  const rpatch_t *patch = R_CachePatchName(name);
+  const rpatch_t *patch = R_PatchByName(name);
   patchnum->width = patch->width;
   patchnum->height = patch->height;
   patchnum->leftoffset = patch->leftoffset;
   patchnum->topoffset = patch->topoffset;
   patchnum->lumpnum = W_GetNumForName(name);
-  R_UnlockPatchName(name);
 }
 
 void R_SetSpriteByNum(patchnum_t *patchnum, int lump)
 {
-  const rpatch_t *patch = R_CachePatchNum(lump);
+  const rpatch_t *patch = R_PatchByNum(lump);
   patchnum->width = patch->width;
   patchnum->height = patch->height;
   patchnum->leftoffset = patch->leftoffset;
   patchnum->topoffset = patch->topoffset;
   patchnum->lumpnum = lump;
-  R_UnlockPatchNum(lump);
 }
 
 int R_SetSpriteByIndex(patchnum_t *patchnum, spritenum_t item)
 {
   int result = false;
-  if (item < NUMSPRITES)
+  if (item < num_sprites)
   {
     int lump = firstspritelump + sprites[item].spriteframes->lump[0];
     R_SetSpriteByNum(patchnum, lump);
@@ -757,11 +669,21 @@ int R_SetSpriteByIndex(patchnum_t *patchnum, spritenum_t item)
   return result;
 }
 
+int R_NumPatchForSpriteIndex(spritenum_t item)
+{
+  if (item < 0 || item >= num_sprites)
+  {
+    return -1;
+  }
+
+  return firstspritelump + sprites[item].spriteframes->lump[0];
+}
+
 int R_SetSpriteByName(patchnum_t *patchnum, const char *name)
 {
   int result = false;
-  patchnum->lumpnum = (W_CheckNumForName)(name, ns_sprites);
-  if (patchnum->lumpnum != -1)
+  patchnum->lumpnum = W_CheckNumForName2(name, ns_sprites);
+  if (patchnum->lumpnum != LUMP_NOT_FOUND)
   {
     R_SetSpriteByNum(patchnum, patchnum->lumpnum);
     result = true;
@@ -773,7 +695,7 @@ int R_SetPatchByName(patchnum_t *patchnum, const char *name)
 {
   int result = false;
   int lump = W_CheckNumForName(name);
-  if (lump != -1)
+  if (lump != LUMP_NOT_FOUND)
   {
     R_SetPatchNum(patchnum, name);
     result = true;

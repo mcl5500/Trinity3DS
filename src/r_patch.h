@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -39,7 +39,7 @@ typedef enum {
   RDRAW_EDGESLOPE_BOT_UP   = (1<<2),
   RDRAW_EDGESLOPE_BOT_DOWN = (1<<3),
   RDRAW_EDGESLOPE_TOP_MASK = 0x3,
-  RDRAW_EDGESLOPE_BOT_MASK = 0xc,  
+  RDRAW_EDGESLOPE_BOT_MASK = 0xc,
 } edgeslope_t;
 
 //e6y
@@ -65,35 +65,29 @@ typedef struct {
   int width;
   int height;
   unsigned  widthmask;
-    
+
   int leftoffset;
   int topoffset;
-  
-  // this is the single malloc'ed/free'd array 
+
+  // this is the single malloc'ed/free'd array
   // for this patch
   unsigned char *data;
-  
+
   // these are pointers into the data array
   unsigned char *pixels;
   rcolumn_t *columns;
   rpost_t *posts;
 
-#ifdef TIMEDIAG
-  int locktic;
-#endif
-  unsigned int locks;
   unsigned int flags;//e6y
 } rpatch_t;
 
 
-const rpatch_t *R_CachePatchNum(int id);
-void R_UnlockPatchNum(int id);
-#define R_CachePatchName(name) R_CachePatchNum(W_GetNumForName(name))
-#define R_UnlockPatchName(name) R_UnlockPatchNum(W_GetNumForName(name))
+const rpatch_t *R_PatchByNum(int id);
+#define R_PatchByName(name) R_PatchByNum(W_GetNumForName(name))
 
-const rpatch_t *R_CacheTextureCompositePatchNum(int id);
-void R_UnlockTextureCompositePatchNum(int id);
+const rpatch_t *R_TextureCompositePatchByNum(int id);
 
+dboolean R_IsPatchLump(int lumpnum);
 
 // Size query funcs
 int R_NumPatchWidth(int lump) ;
@@ -112,6 +106,10 @@ const rcolumn_t *R_GetPatchColumn(const rpatch_t *patch, int columnIndex);
 
 
 void R_InitPatches();
+void R_UpdatePlayPal();
 void R_FlushAllPatches();
+
+extern int playpal_darkest;
+extern int playpal_lightest;
 
 #endif

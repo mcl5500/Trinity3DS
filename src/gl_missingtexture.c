@@ -1,4 +1,4 @@
-/* Emacs style mode select   -*- C++ -*-
+/* Emacs style mode select   -*- C -*-
  *-----------------------------------------------------------------------------
  *
  *
@@ -35,8 +35,14 @@
 #include "config.h"
 #endif
 
+#include <assert.h>
+
 #include "gl_opengl.h"
 
+#include <SDL.h>
+#ifdef HAVE_LIBSDL2_IMAGE
+#include <SDL_image.h>
+#endif
 #include "doomstat.h"
 #include "v_video.h"
 #include "gl_intern.h"
@@ -47,8 +53,6 @@
 #include "hu_stuff.h"
 #include "r_main.h"
 #include "e6y.h"
-
-#ifdef GL_DOOM
 
 typedef struct
 {
@@ -61,9 +65,9 @@ typedef struct
 
 typedef struct
 {
-    sector_t *source; // The sector to receive a fake bleed-through flat
-    sector_t *target; // The floor sector whose properties should be copied
-    int ceiling;      // Ceiling or floor
+  sector_t *source; // The sector to receive a fake bleed-through flat
+  sector_t *target; // The floor sector whose properties should be copied
+  enum bleedtype type; // Ceiling or floor, occlusion-based or not
 } bleedthrough_t;
 
 static int numfakeplanes = 0;
@@ -74,7 +78,7 @@ static int numbleedsectors = 0;
 
 static void gld_PrepareSectorSpecialEffects(void);
 static void gld_PreprocessFakeSector(int ceiling, sector_t *sector, int groupid);
-static void gld_RegisterBleedthroughSector(sector_t* source, sector_t* target, int ceiling);
+static void gld_RegisterBleedthroughSector(sector_t* source, sector_t* target, enum bleedtype type);
 
 static void gld_PrepareSectorSpecialEffects(void)
 {
@@ -83,9 +87,9 @@ static void gld_PrepareSectorSpecialEffects(void)
   /* free memory if allocated by previous maps */
   if (bleedsectors)
   {
-      free(bleedsectors);
-      numbleedsectors = 0;
-      bleedsectors = NULL;
+    Z_Free(bleedsectors);
+    numbleedsectors = 0;
+    bleedsectors = NULL;
   }
 
   for (num = 0; num < numsectors; num++)
@@ -95,64 +99,62 @@ static void gld_PrepareSectorSpecialEffects(void)
 
     for (i=0; i<sectors[num].linecount; i++)
     {
-      unsigned short sidenum0 = sectors[num].lines[i]->sidenum[0];
-      unsigned short sidenum1 = sectors[num].lines[i]->sidenum[1];
-
+      int32_t sidenum0 = sectors[num].lines[i]->sidenum[0];
+      int32_t sidenum1 = sectors[num].lines[i]->sidenum[1];
       side_t *side0 = (sidenum0 == NO_INDEX ? NULL : &sides[sidenum0]);
       side_t *side1 = (sidenum1 == NO_INDEX ? NULL : &sides[sidenum1]);
-      
-      if (side0 && side1)
-      {
-        if (side0->toptexture != NO_TEXTURE)
-          sectors[num].flags &= ~NO_TOPTEXTURES;
-        if (side0->bottomtexture != NO_TEXTURE)
-          sectors[num].flags &= ~NO_BOTTOMTEXTURES;
-        if (side1->toptexture != NO_TEXTURE)
-          sectors[num].flags &= ~NO_TOPTEXTURES;
-        if (side1->bottomtexture != NO_TEXTURE)
-          sectors[num].flags &= ~NO_BOTTOMTEXTURES;
+      side_t *front;
+      side_t *back;
+      dboolean needs_front_lower, needs_front_upper;
 
-        /* sides should not have null sectors, but we check anyway */
-        if (side0->sector && side1->sector)
-        {
-            dboolean front_floor_is_sky = (side0->sector->floorpic == skyflatnum);
-            dboolean front_ceil_is_sky = (side0->sector->ceilingpic == skyflatnum);
-
-            dboolean back_floor_is_sky = (side1->sector->floorpic == skyflatnum);
-            dboolean back_ceil_is_sky = (side1->sector->ceilingpic == skyflatnum);
-
-            dboolean needs_back_lower = !(front_floor_is_sky) && (side0->sector->floorheight > side1->sector->floorheight);
-            dboolean needs_front_lower = !(back_floor_is_sky) && (side0->sector->floorheight < side1->sector->floorheight);
-
-            dboolean needs_front_upper = !(back_ceil_is_sky) && (side0->sector->ceilingheight > side1->sector->ceilingheight);
-            dboolean needs_back_upper = !(front_ceil_is_sky) && (side0->sector->ceilingheight < side1->sector->ceilingheight);
-
-            /* now mark the sectors that may require HOM bleed-through */
-            if (needs_front_upper && side0->toptexture == NO_TEXTURE) {
-                side1->sector->flags |= MISSING_TOPTEXTURES;
-                gld_RegisterBleedthroughSector(side1->sector,side0->sector,1);
-            }
-
-            if (needs_back_upper && side1->toptexture == NO_TEXTURE) {
-                side0->sector->flags |= MISSING_TOPTEXTURES;
-                gld_RegisterBleedthroughSector(side0->sector,side1->sector,1);
-            }
-
-            if (needs_back_lower && side1->bottomtexture == NO_TEXTURE) {
-                side0->sector->flags |= MISSING_BOTTOMTEXTURES;
-                gld_RegisterBleedthroughSector(side0->sector,side1->sector,0);
-            }
-
-            if (needs_front_lower && side0->bottomtexture == NO_TEXTURE) {
-                side1->sector->flags |= MISSING_BOTTOMTEXTURES;
-                gld_RegisterBleedthroughSector(side1->sector,side0->sector,0);
-            }
-        }
-      }
-      else
+      if (!side0 || !side1 || side0->sector == side1->sector)
       {
         sectors[num].flags &= ~NO_TOPTEXTURES;
         sectors[num].flags &= ~NO_BOTTOMTEXTURES;
+        continue;
+      }
+
+      if (side0->sector == &sectors[num])
+      {
+        front = side0;
+        back = side1;
+      }
+      else
+      {
+        front = side1;
+        back = side0;
+      }
+
+      if (front->toptexture != NO_TEXTURE)
+        sectors[num].flags &= ~NO_TOPTEXTURES;
+      if (front->bottomtexture != NO_TEXTURE)
+        sectors[num].flags &= ~NO_BOTTOMTEXTURES;
+      if (back->toptexture != NO_TEXTURE)
+        sectors[num].flags &= ~NO_TOPTEXTURES;
+      if (back->bottomtexture != NO_TEXTURE)
+        sectors[num].flags &= ~NO_BOTTOMTEXTURES;
+
+      needs_front_lower =
+          back->sector->floorpic != skyflatnum &&
+          front->sector->floorheight < back->sector->floorheight;
+      needs_front_upper =
+          back->sector->ceilingpic != skyflatnum &&
+          front->sector->ceilingheight > back->sector->ceilingheight;
+
+      /* now mark the sectors if they require flat bleed-through */
+      if (needs_front_upper && front->toptexture == NO_TEXTURE)
+      {
+        back->sector->flags |= MISSING_TOPTEXTURES;
+        gld_RegisterBleedthroughSector(front->sector, back->sector, BLEED_CEILING);
+        front->sector->flags |= MISSING_TOPTEXTURES;
+        gld_RegisterBleedthroughSector(back->sector, front->sector, BLEED_CEILING | BLEED_OCCLUDE);
+      }
+      if (needs_front_lower && front->bottomtexture == NO_TEXTURE)
+      {
+        back->sector->flags |= MISSING_BOTTOMTEXTURES;
+        gld_RegisterBleedthroughSector(front->sector, back->sector, BLEED_NONE);
+        front->sector->flags |= MISSING_BOTTOMTEXTURES;
+        gld_RegisterBleedthroughSector(back->sector, front->sector, BLEED_OCCLUDE);
       }
     }
 #ifdef PRBOOM_DEBUG
@@ -164,56 +166,48 @@ static void gld_PrepareSectorSpecialEffects(void)
   }
 }
 
-static void gld_RegisterBleedthroughSector(sector_t* source, sector_t* target, int ceiling)
+static void gld_RegisterBleedthroughSector(sector_t* source, sector_t* target, enum bleedtype type)
 {
-    int i;
-    int source_idx = -1;
-    assert(source);
-    assert(target);
+  int i;
+  int idx = -1;
+  assert(source);
+  assert(target);
 
-    /* check whether the sector is processed already */
-    for (i = 0; i < numbleedsectors && source_idx == -1; i++)
-        if (bleedsectors[i].source == source && bleedsectors[i].ceiling == ceiling)
-            source_idx = i;
-    
-    if (source_idx == -1)
-    {
-        /* allocate memory for new sector */
-        bleedsectors = (bleedthrough_t*) realloc(bleedsectors, (numbleedsectors + 1) * sizeof(bleedthrough_t));
-        if(!bleedsectors) I_Error("gld_RegisterBleedthroughSector: Out of memory");
-        memset(&bleedsectors[numbleedsectors], 0, sizeof(bleedthrough_t));
-        numbleedsectors++;
+  /* check whether the target sector is processed already */
+  for (i = 0; i < numbleedsectors && idx == -1; i++)
+    if (bleedsectors[i].target == target && bleedsectors[i].type == type)
+      idx = i;
 
-        source_idx = numbleedsectors - 1;
-    }
+  if (idx == -1)
+  {
+    /* allocate memory for new sector */
+    bleedsectors = (bleedthrough_t*) Z_Realloc(bleedsectors, (numbleedsectors + 1) * sizeof(bleedthrough_t));
+    if(!bleedsectors) I_Error("gld_RegisterBleedthroughSector: Out of memory");
+    memset(&bleedsectors[numbleedsectors], 0, sizeof(bleedthrough_t));
+    numbleedsectors++;
 
-    bleedsectors[source_idx].source = source;
-    bleedsectors[source_idx].ceiling = ceiling;
+    idx = numbleedsectors - 1;
+  }
 
-    /* either register the proposed target since it is first,
-     * or check if the new proposed target is a better option
-     * and register it instead */
-    if ((bleedsectors[source_idx].target == NULL) ||
-        (bleedsectors[source_idx].target &&
-         (
-          (ceiling && bleedsectors[source_idx].target->ceilingheight > target->ceilingheight)
-           ||
-          (bleedsectors[source_idx].target->floorheight < target->floorheight)
-         )
-        )
-       )
-    {
-        bleedsectors[source_idx].target = target;
-    }
+  bleedsectors[idx].type = type;
+  bleedsectors[idx].target = target;
+
+  /* either register the proposed source since it is first,
+   * or check if the new proposed source is a better option
+   * and register it instead */
+  if (bleedsectors[idx].source == NULL ||
+      ((type & BLEED_CEILING) && bleedsectors[idx].source->ceilingheight > source->ceilingheight) ||
+      (!(type & BLEED_CEILING) && bleedsectors[idx].source->floorheight < source->floorheight))
+    bleedsectors[idx].source = source;
 }
 
-sector_t* GetBestBleedSector(sector_t* source, int ceiling)
+sector_t* GetBestBleedSector(sector_t* target, enum bleedtype type)
 {
-    int i;
-    for (i = 0; i < numbleedsectors; i++)
-        if (bleedsectors[i].source == source && bleedsectors[i].ceiling == ceiling)
-            return bleedsectors[i].target;
-    return NULL;
+  int i;
+  for (i = 0; i < numbleedsectors; i++)
+    if (bleedsectors[i].target == target && bleedsectors[i].type == type)
+      return bleedsectors[i].source;
+  return NULL;
 }
 
 //
@@ -229,7 +223,7 @@ static void gld_PreprocessFakeSector(int ceiling, sector_t *sector, int groupid)
     sector->fakegroup[ceiling] = groupid;
     if (groupid >= numfakeplanes)
     {
-      fakeplanes = realloc(fakeplanes, (numfakeplanes + 1) * sizeof(fakegroup_t));
+      fakeplanes = Z_Realloc(fakeplanes, (numfakeplanes + 1) * sizeof(fakegroup_t));
       memset(&fakeplanes[numfakeplanes], 0, sizeof(fakegroup_t));
       numfakeplanes++;
     }
@@ -271,24 +265,31 @@ void gld_PreprocessFakeSectors(void)
   int i, j, k, ceiling;
   int groupid;
 
+  if (gl_use_stencil)
+  {
+    // precalculate NO_TOPTEXTURES and NO_BOTTOMTEXTURES flags
+    gld_PrepareSectorSpecialEffects();
+    return;
+  }
+
   // free memory
   if (fakeplanes)
   {
     for (i = 0; i < numfakeplanes; i++)
     {
       fakeplanes[i].count = 0;
-      free(fakeplanes[i].list);
+      Z_Free(fakeplanes[i].list);
       fakeplanes[i].list = NULL;
     }
     numfakeplanes = 0;
-    free(fakeplanes);
+    Z_Free(fakeplanes);
     fakeplanes = NULL;
   }
   if (sectors2)
   {
-    free(sectors2);
+    Z_Free(sectors2);
   }
-  sectors2 = malloc(numsectors * sizeof(sector_t*));
+  sectors2 = Z_Malloc(numsectors * sizeof(sector_t*));
 
   // reset all groups with fake floors and ceils
   // 0 - floor; 1 - ceil;
@@ -316,7 +317,7 @@ void gld_PreprocessFakeSectors(void)
         {
           gld_PreprocessFakeSector(ceiling, &sectors[i], groupid);
           fakeplanes[groupid].ceiling = ceiling;
-          fakeplanes[groupid].list = malloc(fakeplanes[groupid].count * sizeof(sector_t*));
+          fakeplanes[groupid].list = Z_Malloc(fakeplanes[groupid].count * sizeof(sector_t*));
           for (j = 0, k = 0; k < fakeplanes[groupid].count; k++)
           {
             if (!(sectors2[k]->flags & no_texture_flag))
@@ -401,6 +402,73 @@ sector_t* GetBestFake(sector_t *sector, int ceiling, int validcount)
   return fakeplanes[groupid].sector;
 }
 
+//==========================================================================
+//
+// Flood gaps with the back side's ceiling/floor texture
+// This requires a stencil because the projected plane interferes with
+// the depth buffer
+//
+//==========================================================================
+
+#ifdef __3DS__
+void gld_SetupFloodStencil(GLWall *wall) {(void)wall;}
+void gld_ClearFloodStencil(GLWall *wall) {(void)wall;}
+#else
+void gld_SetupFloodStencil(GLWall *wall)
+{
+  int recursion = 0;
+
+  // Create stencil
+  glStencilFunc(GL_EQUAL, recursion, ~0); // create stencil
+  glStencilOp(GL_KEEP, GL_KEEP, GL_INCR); // increment stencil of valid pixels
+  glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE); // don't write to the graphics buffer
+  gld_EnableTexture2D(GL_TEXTURE0_ARB, false);
+  glColor3f(1, 1, 1);
+  glEnable(GL_DEPTH_TEST);
+  glDepthMask(true);
+
+  glBegin(GL_TRIANGLE_FAN);
+  glVertex3f(wall->glseg->x1, wall->ytop, wall->glseg->z1);
+  glVertex3f(wall->glseg->x1, wall->ybottom, wall->glseg->z1);
+  glVertex3f(wall->glseg->x2, wall->ybottom, wall->glseg->z2);
+  glVertex3f(wall->glseg->x2, wall->ytop, wall->glseg->z2);
+  glEnd();
+
+  glStencilFunc(GL_EQUAL, recursion+1, ~0); // draw sky into stencil
+  glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);   // this stage doesn't modify the stencil
+
+  glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE); // don't write to the graphics buffer
+  gld_EnableTexture2D(GL_TEXTURE0_ARB, true);
+  glDisable(GL_DEPTH_TEST);
+  glDepthMask(false);
+}
+
+void gld_ClearFloodStencil(GLWall *wall)
+{
+  int recursion = 0;
+
+  glStencilOp(GL_KEEP, GL_KEEP, GL_DECR);
+  gld_EnableTexture2D(GL_TEXTURE0_ARB, false);
+  glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE); // don't write to the graphics buffer
+  glColor3f(1, 1, 1);
+
+  glBegin(GL_TRIANGLE_FAN);
+  glVertex3f(wall->glseg->x1, wall->ytop, wall->glseg->z1);
+  glVertex3f(wall->glseg->x1, wall->ybottom, wall->glseg->z1);
+  glVertex3f(wall->glseg->x2, wall->ybottom, wall->glseg->z2);
+  glVertex3f(wall->glseg->x2, wall->ytop, wall->glseg->z2);
+  glEnd();
+
+  // restore old stencil op.
+  glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+  glStencilFunc(GL_EQUAL, recursion, ~0);
+  gld_EnableTexture2D(GL_TEXTURE0_ARB, true);
+  glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+  glEnable(GL_DEPTH_TEST);
+  glDepthMask(true);
+}
+#endif
+
 //
 // Calculation of the coordinates of the gap
 //
@@ -410,9 +478,18 @@ void gld_SetupFloodedPlaneCoords(GLWall *wall, gl_strip_coords_t *c)
   float k = 0.5f;
   float ytop, ybottom, planez;
 
-  ytop = wall->ytop;
-  ybottom = wall->ybottom;
-  planez = wall->ytop;
+  if (wall->flag == GLDWF_TOPFLUD)
+  {
+    ytop = wall->ybottom;
+    ybottom = wall->ytop;
+    planez = wall->ybottom;
+  }
+  else
+  {
+    ytop = wall->ytop;
+    ybottom = wall->ybottom;
+    planez = wall->ytop;
+  }
 
   prj_fac1 = (ytop - zCamera) / (ytop - zCamera);
   prj_fac2 = (ytop - zCamera) / (ybottom - zCamera);
@@ -459,5 +536,3 @@ void gld_SetupFloodedPlaneLight(GLWall *wall)
     gld_StaticLightAlpha(wall->light, wall->alpha);
   }
 }
-
-#endif
