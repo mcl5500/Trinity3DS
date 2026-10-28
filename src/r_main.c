@@ -466,23 +466,43 @@ static void R_InitLightTables (void)
       // the colormaps, otherwise the levels are staggered and become slightly
       // darker.
       int j, startmap = ((LIGHTLEVELS-LIGHTBRIGHT-i)*2)*NUMCOLORMAPS/LIGHTLEVELS;
+      int cur_level = -1;
       for (j=0; j<MAXLIGHTZ; j++)
         {
-    // CPhipps - use 320 here instead of SCREENWIDTH, otherwise hires is
-    //           brighter than normal res
+          // CPhipps - use 320 here instead of SCREENWIDTH, otherwise hires is
+          //           brighter than normal res
           int scale = FixedDiv ((320/2*FRACUNIT), (j+1)<<LIGHTZSHIFT);
-          int t, level = startmap - (scale >>= LIGHTSCALESHIFT)/DISTMAP;
+          scale >>= LIGHTSCALESHIFT;
+          if (scale >= MAXLIGHTSCALE)
+            scale = MAXLIGHTSCALE - 1;
+
+          int t, level = startmap - scale/DISTMAP;
 
           if (level < 0)
             level = 0;
+          else if (level >= NUMCOLORMAPS)
+            level = NUMCOLORMAPS-1;
+
+          // Smooth out floor light diminishing steps:
+          // In vanilla Doom, the 1/Z curve drops steeply near the player, causing
+          // the colormap to jump by 4-6 levels at once (skipping levels 3-7, etc.).
+          // On sharp LCDs and in 3D stereoscopy, this produces jarring dark bands.
+          // By limiting the rate of change to at most 1 colormap step per distance unit,
+          // the floor lighting transitions smoothly through every single level,
+          // matching wall light levels seamlessly without harsh banding.
+          if (cur_level == -1)
+            cur_level = level;
+          else if (level > cur_level + 1)
+            cur_level++;
+          else if (level < cur_level - 1)
+            cur_level--;
           else
-            if (level >= NUMCOLORMAPS)
-              level = NUMCOLORMAPS-1;
+            cur_level = level;
 
           // killough 3/20/98: Initialize multiple colormaps
-          level *= 256;
+          int level_offset = cur_level * 256;
           for (t=0; t<numcolormaps; t++)         // killough 4/4/98
-            c_zlight[t][i][j] = colormaps[t] + level;
+            c_zlight[t][i][j] = colormaps[t] + level_offset;
         }
     }
 }

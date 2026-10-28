@@ -58,14 +58,36 @@ static const u8 *s_playpal_data = NULL;
 
 void I_SetPalette(int pal)
 {
-    s_active_palette_idx = pal;
+    if (pal >= 0) {
+        s_active_palette_idx = pal;
+    } else if (s_active_palette_idx >= 0) {
+        pal = s_active_palette_idx;
+    } else {
+        pal = 0;
+    }
 
     int lump = W_CheckNumForName("PLAYPAL");
     if (lump >= 0) {
         s_playpal_data = (const u8 *)W_LockLumpNum(lump);
         int max_len = W_LumpLength(lump);
-        if (s_playpal_data && pal >= 0 && (pal * 768 + 768) <= max_len) {
-            memcpy(s_current_palette, s_playpal_data + (pal * 768), 768);
+        if (s_playpal_data && (pal * 768 + 768) <= max_len) {
+            const u8 *raw_pal = s_playpal_data + (pal * 768);
+            int g_lvl = usegamma;
+            if (g_lvl < 0) g_lvl = 0;
+            if (g_lvl > 4) g_lvl = 4;
+
+            int gtlump = W_CheckNumForName2("GAMMATBL", ns_prboom);
+            if (gtlump < 0)
+                gtlump = W_CheckNumForName("GAMMATBL");
+
+            if (gtlump >= 0 && g_lvl > 0) {
+                const u8 *gtbl = (const u8 *)W_LockLumpNum(gtlump) + (g_lvl * 256);
+                for (int i = 0; i < 768; i++) {
+                    s_current_palette[i] = gtbl[raw_pal[i]];
+                }
+            } else {
+                memcpy(s_current_palette, raw_pal, 768);
+            }
         }
     }
 }

@@ -1204,7 +1204,11 @@ dsda_config_t dsda_config[dsda_config_count] = {
   },
   [dsda_config_usegamma] = {
     "usegamma", dsda_config_usegamma,
+#ifdef __3DS__
+    dsda_config_int, 0, 4, { 1 }, &usegamma, NOT_STRICT, M_ChangeApplyPalette
+#else
     dsda_config_int, 0, 4, { 0 }, &usegamma, NOT_STRICT, M_ChangeApplyPalette
+#endif
   },
   [dsda_config_screenblocks] = {
     "screenblocks", dsda_config_screenblocks,
