@@ -55,6 +55,15 @@ static void Downloader_ExitNetwork(void)
     }
 }
 
+static void WD_SyncTopRightEye(void)
+{
+    u8 *top_l = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+    u8 *top_r = gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, NULL, NULL);
+    if (top_l && top_r) {
+        memcpy(top_r, top_l, 400 * 240 * 3);
+    }
+}
+
 #include "wad_catalog.h"
 // In-memory cache for installed status & cover availability (zero SD I/O during rendering)
 static bool s_installed[CATALOG_COUNT];
@@ -1009,6 +1018,7 @@ void Downloader_ShowDescriptionCustom(const char *title, const char *author, con
             WP_DrawCenteredText(bot_fb, 320, 20, 188, 280, 42, "[ B / X ]  BACK TO LIST", 255, 255, 255, 1);
         }
 
+        WD_SyncTopRightEye();
         gfxFlushBuffers();
         gfxSwapBuffers();
         gspWaitForVBlank();
@@ -1398,6 +1408,7 @@ static void Downloader_ShowModal(const char *title, const char *msg1, const char
             WP_DrawCenteredText(bot_fb, 320, 25, 150, 270, 18, "Press [A] or tap...", 255, 215, 0, 1);
         }
 
+        WD_SyncTopRightEye();
         gfxFlushBuffers();
         gfxSwapBuffers();
         gspWaitForVBlank();
@@ -1486,6 +1497,7 @@ static void Downloader_RenderCacheFrame(int progress_pct, const char *step_title
         }
     }
 
+    WD_SyncTopRightEye();
     gfxFlushBuffers();
     gfxSwapBuffers();
     gspWaitForVBlank();
@@ -1843,6 +1855,7 @@ bool WAD_Downloader_Run(void)
             Downloader_RenderBottomScreen(bot_fb, s_catalog, s_installed, count, selected_idx, scroll_offset);
         }
 
+        WD_SyncTopRightEye();
         gfxFlushBuffers();
         gfxSwapBuffers();
         gspWaitForVBlank();

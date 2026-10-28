@@ -70,6 +70,15 @@ static void WP_StopBGM(void)
     }
 }
 
+static void WP_SyncTopRightEye(void)
+{
+    u8 *top_l = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+    u8 *top_r = gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, NULL, NULL);
+    if (top_l && top_r) {
+        memcpy(top_r, top_l, 400 * 240 * 3);
+    }
+}
+
 #define MAX_WADS 512
 #define LAST_WAD_FILE "sdmc:/3ds/Trinity3DS/last_wad.txt"
 #define WAD_CACHE_FILE "sdmc:/3ds/Trinity3DS/wads_cache.bin"
@@ -1310,6 +1319,7 @@ static bool WP_ManageWadModal(int wad_idx)
             WP_DrawText(bot, 320, 24, 204, "* [X]: Delete WAD file from SD card", 255, 120, 120, 1);
         }
 
+        WP_SyncTopRightEye();
         gfxFlushBuffers();
         gfxSwapBuffers();
         gspWaitForVBlank();
@@ -1361,6 +1371,7 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
             WP_DrawText(top_fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
             WP_DrawText(top_fb, 400, 20, 100, "SCANNING WAD FILES...", 255, 215, 0, 2);
             WP_DrawText(top_fb, 400, 20, 130, "Please wait a moment...", 200, 200, 200, 1);
+            WP_SyncTopRightEye();
             gfxFlushBuffers();
             gfxSwapBuffers();
         }
@@ -1397,6 +1408,7 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
             WP_FillRect(bot_fb, 320, 0, 0, 320, 240, 16, 16, 18);
             WP_DrawText(bot_fb, 320, 20, 100, "Tap here or press [A]...", 200, 200, 200, 1);
         }
+        WP_SyncTopRightEye();
         gfxFlushBuffers();
         gfxSwapBuffers();
         gspWaitForVBlank();
@@ -1584,6 +1596,7 @@ bool WAD_Picker_Run(char *out_iwad, size_t iwad_len, char *out_pwad, size_t pwad
         if (top_fb) WP_RenderTopScreen(top_fb);
         if (bot_fb) WP_RenderBottomScreen(bot_fb);
 
+        WP_SyncTopRightEye();
         gfxFlushBuffers();
         gfxSwapBuffers();
         gspWaitForVBlank();

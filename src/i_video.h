@@ -48,7 +48,6 @@ struct player_s;
 void I_3D_RenderPlayerView(struct player_s *player, float slider);
 extern bool s_stereo_rendered_this_frame;
 extern u8 *s_right_eye_buffer;
-extern fixed_t s_weapon_stereo_offset;
 #else
 #include <SDL_opengl.h>
 #endif
