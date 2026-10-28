@@ -34,6 +34,7 @@ void doom_printf(const char *s, ...);
 #include <unistd.h>
 
 int ds_touch_weapon = wp_nochange;
+int ds_touch_artifact = 0;
 
 static int ds_map_zoom = 2; // Default 3x tactical zoom (much larger & clearer)
 static int ds_save_flash = 0;
@@ -237,14 +238,12 @@ static void DS_LoadPalette(void)
     }
 }
 
-// Draw an authentic Doom patch lump directly into the bottom framebuffer
-static void DS_DrawWadPatch(u8 *fb, int dest_x, int dest_y, const char *patch_name)
+// Draw an authentic patch lump directly into the bottom framebuffer
+static void DS_DrawLumpPatch(u8 *fb, int dest_x, int dest_y, int lump)
 {
+    if (lump < 0) return;
     if (!ds_pal_loaded) DS_LoadPalette();
     if (!ds_pal_loaded) return;
-
-    int lump = W_CheckNumForName(patch_name);
-    if (lump < 0) return;
 
     const u8 *data = (const u8 *)W_LockLumpNum(lump);
     if (!data) return;
@@ -255,7 +254,6 @@ static void DS_DrawWadPatch(u8 *fb, int dest_x, int dest_y, const char *patch_na
     short topoffset = *(const short *)(data + 6);
     const int *columnofs = (const int *)(data + 8);
 
-    // Apply Doom patch offsets so elements (like Doomguy face) center correctly
     dest_x -= leftoffset;
     dest_y -= topoffset;
 
@@ -283,6 +281,61 @@ static void DS_DrawWadPatch(u8 *fb, int dest_x, int dest_y, const char *patch_na
             }
             post++; // dummy byte
         }
+    }
+}
+
+// Draw a patch centered inside a bounding box (ignores internal sprite offsets)
+static void DS_DrawPatchCentered(u8 *fb, int box_x, int box_y, int box_w, int box_h, int lump)
+{
+    if (lump < 0) return;
+    if (!ds_pal_loaded) DS_LoadPalette();
+    if (!ds_pal_loaded) return;
+
+    const u8 *data = (const u8 *)W_LockLumpNum(lump);
+    if (!data) return;
+
+    short w = *(const short *)(data + 0);
+    short h = *(const short *)(data + 2);
+    if (w <= 0 || h <= 0 || w > 320 || h > 240) return;
+
+    const int *columnofs = (const int *)(data + 8);
+
+    int dest_x = box_x + (box_w - w) / 2;
+    int dest_y = box_y + (box_h - h) / 2;
+
+    for (int col = 0; col < w; col++) {
+        int sx = dest_x + col;
+        if (sx < box_x || sx >= box_x + box_w || sx < 0 || sx >= 320) continue;
+
+        int ofs = columnofs[col];
+        const u8 *post = data + ofs;
+        while (1) {
+            u8 topdelta = *post++;
+            if (topdelta == 0xFF) break;
+            u8 length = *post++;
+            post++; // dummy byte
+            int sy = dest_y + topdelta;
+            for (int row = 0; row < length; row++) {
+                int py = sy + row;
+                u8 pal_idx = *post++;
+                if (py >= box_y && py < box_y + box_h && py >= 0 && py < 240) {
+                    u8 r = ds_palette[pal_idx * 3 + 0];
+                    u8 g = ds_palette[pal_idx * 3 + 1];
+                    u8 b = ds_palette[pal_idx * 3 + 2];
+                    DS_DrawPixel(fb, sx, py, r, g, b);
+                }
+            }
+            post++; // dummy byte
+        }
+    }
+}
+
+// Draw an authentic patch by name
+static void DS_DrawWadPatch(u8 *fb, int dest_x, int dest_y, const char *patch_name)
+{
+    int lump = W_CheckNumForName(patch_name);
+    if (lump >= 0) {
+        DS_DrawLumpPatch(fb, dest_x, dest_y, lump);
     }
 }
 
@@ -474,17 +527,125 @@ static void DS_DrawAuthenticStatusBar(u8 *fb)
     else if (plr->cards[it_redcard]) DS_DrawWadPatch(fb, 239, ST_Y + 23, "STKEYS2");
 }
 
+// Render the authentic Heretic Status Bar at the bottom (Y: 208 to 239)
+static void DS_DrawHereticStatusBar(u8 *fb)
+{
+    player_t *plr = &players[consoleplayer];
+    if (!plr) return;
+
+    const int ST_Y = 208;
+
+    // 1. Base wood/stone bar
+    DS_DrawWadPatch(fb, 0, ST_Y, "BARBACK");
+
+    // 2. Gargoyle faces: left (LTFACE) and right (RTFACE)
+    DS_DrawWadPatch(fb, 0, ST_Y, "LTFACE");
+    DS_DrawWadPatch(fb, 290, ST_Y, "RTFACE");
+    if (plr->cheats & CF_GODMODE) {
+        DS_DrawWadPatch(fb, 16, ST_Y + 9, "GOD1");
+        DS_DrawWadPatch(fb, 287, ST_Y + 9, "GOD2");
+    }
+
+    // 3. Health: Gold Chain & Red Life Gem
+    DS_DrawWadPatch(fb, 28, ST_Y + 10, "CHAIN");
+    int hp = plr->health;
+    int clamped_hp = hp < 0 ? 0 : (hp > 100 ? 100 : hp);
+    int gem_x = 28 + (clamped_hp * 60) / 100;
+    DS_DrawWadPatch(fb, gem_x, ST_Y + 9, "LIFEGEM2");
+
+    // 4. Health Number
+    char hp_str[16];
+    snprintf(hp_str, sizeof(hp_str), "%d", hp);
+    DS_DrawString(fb, 98, ST_Y + 12, hp_str, 255, 215, 0, 1);
+
+    // 5. Active buffs (Tome of Power, Wings of Wrath)
+    if (plr->powers[pw_weaponlevel2]) {
+        DS_DrawString(fb, 126, ST_Y + 6, "[TOME OF POWER]", 255, 215, 40, 1);
+    }
+    if (plr->powers[pw_flight]) {
+        DS_DrawString(fb, 142, ST_Y + 18, "[WINGS]", 120, 220, 255, 1);
+    }
+
+    // 6. Ammo for ready weapon
+    ammotype_t amtype = weaponinfo[plr->readyweapon].ammo;
+    if (amtype != am_noammo) {
+        char ammo_str[16];
+        snprintf(ammo_str, sizeof(ammo_str), "AMMO:%d", plr->ammo[amtype]);
+        DS_DrawString(fb, 215, ST_Y + 12, ammo_str, 255, 215, 0, 1);
+    }
+
+    // 7. Keys: Yellow (KEY1), Green (KEY2), Blue (KEY3)
+    if (plr->cards[it_yellowcard]) DS_DrawWadPatch(fb, 268, ST_Y + 3, "KEY1");
+    if (plr->cards[it_redcard])    DS_DrawWadPatch(fb, 268, ST_Y + 12, "KEY2");
+    if (plr->cards[it_bluecard])   DS_DrawWadPatch(fb, 268, ST_Y + 21, "KEY3");
+}
+
+// Render the authentic Hexen Status Bar at the bottom (Y: 208 to 239)
+static void DS_DrawHexenStatusBar(u8 *fb)
+{
+    player_t *plr = &players[consoleplayer];
+    if (!plr) return;
+
+    const int ST_Y = 208;
+
+    // 1. Base stone bar
+    DS_DrawWadPatch(fb, 0, ST_Y, "H2BAR");
+
+    // 2. Class title & health
+    int pclass = PlayerClass[consoleplayer];
+    const char *c_title = "FIGHTER";
+    if (pclass == 2) c_title = "CLERIC";
+    else if (pclass == 3) c_title = "MAGE";
+
+    DS_DrawString(fb, 8, ST_Y + 4, c_title, 255, 215, 0, 1);
+
+    char hp_str[16];
+    snprintf(hp_str, sizeof(hp_str), "HP:%d", plr->health);
+    u8 hr = plr->health < 25 ? 255 : 240;
+    u8 hg = plr->health < 25 ? 60 : 220;
+    u8 hb = plr->health < 25 ? 60 : 180;
+    DS_DrawString(fb, 8, ST_Y + 16, hp_str, hr, hg, hb, 1);
+
+    // 3. Blue Mana (Vial + Count)
+    DS_DrawWadPatch(fb, 65, ST_Y + 6, plr->ammo[0] > 0 ? "MANABRT1" : "MANADIM1");
+    char m1_str[16];
+    snprintf(m1_str, sizeof(m1_str), "%d", plr->ammo[0]);
+    DS_DrawString(fb, 82, ST_Y + 12, m1_str, 100, 180, 255, 1);
+
+    // 4. Green Mana (Vial + Count)
+    DS_DrawWadPatch(fb, 115, ST_Y + 6, plr->ammo[1] > 0 ? "MANABRT2" : "MANADIM2");
+    char m2_str[16];
+    snprintf(m2_str, sizeof(m2_str), "%d", plr->ammo[1]);
+    DS_DrawString(fb, 132, ST_Y + 12, m2_str, 80, 240, 100, 1);
+
+    // 5. Total Armor Points (0..100)
+    int tot_armor = (plr->armorpoints[ARMOR_ARMOR]) / 5;
+    char arm_str[16];
+    snprintf(arm_str, sizeof(arm_str), "ARMOR:%d", tot_armor);
+    DS_DrawString(fb, 172, ST_Y + 12, arm_str, 200, 210, 225, 1);
+
+    // 6. Active powerups (Flight, Speed)
+    if (plr->powers[pw_flight]) {
+        DS_DrawString(fb, 240, ST_Y + 4, "[FLY]", 120, 220, 255, 1);
+    }
+    if (plr->powers[pw_speed]) {
+        DS_DrawString(fb, 240, ST_Y + 16, "[BOOTS]", 255, 200, 50, 1);
+    }
+}
+
 // Render the Wolfenstein-style Tactical Live-Automap (Y: 0 to 207, X: 0 to 267)
 static void DS_DrawTacticalAutomap(u8 *fb)
 {
+    int max_map_y = raven ? 174 : 205;
+
     // 1. Pure Black Background (authentic Wolfenstein style)
-    DS_FillRect(fb, 0, 0, 268, 208, 0, 0, 0);
+    DS_FillRect(fb, 0, 0, 268, max_map_y + 3, 0, 0, 0);
 
     // 2. Crisp Outer Border (Dark Slate Gray)
     DS_FillRect(fb, 0, 0, 268, 2, 50, 55, 65);
-    DS_FillRect(fb, 0, 206, 268, 2, 50, 55, 65);
-    DS_FillRect(fb, 0, 0, 2, 208, 50, 55, 65);
-    DS_FillRect(fb, 266, 0, 2, 208, 50, 55, 65);
+    DS_FillRect(fb, 0, max_map_y + 1, 268, 2, 50, 55, 65);
+    DS_FillRect(fb, 0, 0, 2, max_map_y + 3, 50, 55, 65);
+    DS_FillRect(fb, 266, 0, 2, max_map_y + 3, 50, 55, 65);
 
     player_t *plr = &players[consoleplayer];
     if (!plr || !plr->mo) return;
@@ -493,7 +654,7 @@ static void DS_DrawTacticalAutomap(u8 *fb)
     fixed_t py = plr->mo->y;
 
     const int center_x = 134;
-    const int center_y = 104;
+    const int center_y = raven ? 88 : 104;
     const int shift = FRACBITS + ds_map_zoom;
 
     // 3. Draw all visible map walls with authentic Wolfenstein styling
@@ -566,7 +727,7 @@ static void DS_DrawTacticalAutomap(u8 *fb)
             thick = 1;
         }
 
-        DS_DrawLine(fb, x0, y0, x1, y1, r, g, b, 2, 205, thick);
+        DS_DrawLine(fb, x0, y0, x1, y1, r, g, b, 2, max_map_y, thick);
     }
 
     // 4. Draw active enemies & pickups ONLY when in visual range (Wolfenstein-style line of sight)
@@ -583,7 +744,7 @@ static void DS_DrawTacticalAutomap(u8 *fb)
                 int mx = center_x + ((mo->x - px) >> shift);
                 int my = center_y - ((mo->y - py) >> shift);
 
-                if (mx >= 4 && mx < 264 && my >= 4 && my < 204) {
+                if (mx >= 4 && mx < 264 && my >= 4 && my < max_map_y) {
                     // 1. Active Alive Enemy: Bright 3x3 Red Blip
                     if ((mo->flags & MF_COUNTKILL) && mo->health > 0) {
                         DS_FillRect(fb, mx - 1, my - 1, 3, 3, 240, 30, 30);
@@ -812,6 +973,247 @@ static void DS_DrawWeaponSelector(u8 *fb)
     }
 }
 
+// Render the interactive 7-slot weapon selection panel for Heretic (X: 268 to 319, Y: 0 to 207)
+static void DS_DrawHereticWeaponSelector(u8 *fb)
+{
+    player_t *plr = &players[consoleplayer];
+    if (!plr) return;
+
+    // Divider border between map and weapon selector
+    DS_FillRect(fb, 267, 0, 1, 208, 50, 55, 65);
+
+    static const struct {
+        int slot;
+        weapontype_t wp;
+        weapontype_t alt_wp;
+        const char *name;
+    } slots[7] = {
+        { 1, wp_staff,      wp_gauntlets, "STAF" },
+        { 2, wp_goldwand,   wp_nochange,  "WAND" },
+        { 3, wp_crossbow,   wp_nochange,  "XBOW" },
+        { 4, wp_blaster,    wp_nochange,  "CLAW" },
+        { 5, wp_skullrod,   wp_nochange,  "HELL" },
+        { 6, wp_phoenixrod, wp_nochange,  "PHNX" },
+        { 7, wp_mace,       wp_nochange,  "MACE" },
+    };
+
+    static const int slot_y[7] = { 0, 29, 59, 89, 119, 148, 178 };
+    static const int slot_h[7] = { 29, 30, 30, 30, 29, 30, 30 };
+
+    for (int i = 0; i < 7; i++) {
+        int sy = slot_y[i];
+        int sh = slot_h[i];
+        int by = sy;
+        int bh = sh - 1;
+        int bx = 268;
+        int bw = 52;
+
+        bool owned = false;
+        bool active = false;
+        const char *label = slots[i].name;
+
+        if (i == 0) {
+            owned = true;
+            if (plr->weaponowned[wp_gauntlets]) {
+                label = (plr->readyweapon == wp_gauntlets) ? "GAUN" : "STAF";
+            }
+            active = (plr->readyweapon == wp_staff || plr->readyweapon == wp_gauntlets);
+        } else {
+            owned = plr->weaponowned[slots[i].wp];
+            active = (plr->readyweapon == slots[i].wp);
+        }
+
+        // Dark fantasy wood/stone background
+        DS_FillRect(fb, bx, by, bw, bh, 35, 26, 20);
+
+        // Beveled borders
+        DS_FillRect(fb, bx, by, bw, 1, 75, 55, 45);
+        DS_FillRect(fb, bx, by + 1, 1, bh - 1, 75, 55, 45);
+        DS_FillRect(fb, bx, by + bh - 1, bw, 1, 18, 12, 10);
+        DS_FillRect(fb, bx + bw - 1, by + 1, 1, bh - 1, 18, 12, 10);
+
+        // Active highlight: gold double border
+        if (active) {
+            DS_DrawRect(fb, bx, by, bw, bh, 255, 215, 0);
+            DS_DrawRect(fb, bx + 1, by + 1, bw - 2, bh - 2, 255, 215, 0);
+        }
+
+        // Slot number "1".."7"
+        char num_str[4];
+        snprintf(num_str, sizeof(num_str), "%d", slots[i].slot);
+        int num_x = bx + 6;
+        int num_y = by + (bh - 7) / 2;
+        if (owned) {
+            DS_DrawString(fb, num_x, num_y, num_str, 255, 215, 0, 1);
+        } else {
+            DS_DrawString(fb, num_x, num_y, num_str, 80, 70, 60, 1);
+        }
+
+        // Weapon name label
+        int tx = bx + 18;
+        int ty = by + (bh - 7) / 2;
+        if (active) {
+            DS_DrawString(fb, tx, ty, label, 255, 255, 255, 1);
+        } else if (owned) {
+            DS_DrawString(fb, tx, ty, label, 220, 200, 160, 1);
+        } else {
+            DS_DrawString(fb, tx, ty, label, 75, 70, 65, 1);
+        }
+    }
+}
+
+// Render the interactive 4-slot weapon selection panel for Hexen (X: 268 to 319, Y: 0 to 207)
+static void DS_DrawHexenWeaponSelector(u8 *fb)
+{
+    player_t *plr = &players[consoleplayer];
+    if (!plr) return;
+
+    // Divider border between map and weapon selector
+    DS_FillRect(fb, 267, 0, 1, 208, 50, 55, 65);
+
+    int pclass = PlayerClass[consoleplayer];
+    static const char *f_names[4] = { "FIST", "AXE",  "HAMR", "QUIET" };
+    static const char *c_names[4] = { "MACE", "STAF", "FIRE", "WRTH"  };
+    static const char *m_names[4] = { "WAND", "FRST", "ARC",  "BLOD"  };
+
+    const char **names = f_names;
+    if (pclass == 2) names = c_names;
+    else if (pclass == 3) names = m_names;
+
+    for (int i = 0; i < 4; i++) {
+        int by = i * 52;
+        int bh = 51;
+        int bx = 268;
+        int bw = 52;
+
+        bool owned = plr->weaponowned[i];
+        bool active = (plr->readyweapon == i);
+        const char *label = names[i];
+
+        // Dark gothic stone background
+        DS_FillRect(fb, bx, by, bw, bh, 24, 26, 32);
+
+        // Beveled borders
+        DS_FillRect(fb, bx, by, bw, 1, 60, 65, 75);
+        DS_FillRect(fb, bx, by + 1, 1, bh - 1, 60, 65, 75);
+        DS_FillRect(fb, bx, by + bh - 1, bw, 1, 14, 15, 18);
+        DS_FillRect(fb, bx + bw - 1, by + 1, 1, bh - 1, 14, 15, 18);
+
+        // Active highlight: pure white double border
+        if (active) {
+            DS_DrawRect(fb, bx, by, bw, bh, 255, 255, 255);
+            DS_DrawRect(fb, bx + 1, by + 1, bw - 2, bh - 2, 255, 255, 255);
+        }
+
+        // Slot number "1".."4"
+        char num_str[4];
+        snprintf(num_str, sizeof(num_str), "%d", i + 1);
+        if (owned) {
+            DS_DrawString(fb, bx + 6, by + 8, num_str, 100, 180, 255, 2);
+        } else {
+            DS_DrawString(fb, bx + 6, by + 8, num_str, 60, 70, 85, 2);
+        }
+
+        // Weapon name label
+        if (active) {
+            DS_DrawString(fb, bx + 20, by + 12, label, 255, 255, 255, 1);
+        } else if (owned) {
+            DS_DrawString(fb, bx + 20, by + 12, label, 180, 210, 240, 1);
+        } else {
+            DS_DrawString(fb, bx + 20, by + 12, label, 70, 75, 90, 1);
+        }
+
+        // For Slot 4: Weapon pieces indicator
+        if (i == 3) {
+            if (owned) {
+                DS_DrawString(fb, bx + 8, by + 34, "[READY]", 80, 240, 100, 1);
+            } else {
+                int pieces = plr->pieces;
+                char piece_buf[16];
+                snprintf(piece_buf, sizeof(piece_buf), "P:%s%s%s",
+                         (pieces & WPIECE1) ? "1" : "-",
+                         (pieces & WPIECE2) ? "2" : "-",
+                         (pieces & WPIECE3) ? "3" : "-");
+                DS_DrawString(fb, bx + 6, by + 34, piece_buf, 240, 180, 60, 1);
+            }
+        }
+    }
+}
+
+// Render the interactive 8-slot Artifact Tray for Heretic & Hexen (X: 0 to 267, Y: 176 to 207)
+static void DS_DrawArtifactTray(u8 *fb)
+{
+    player_t *plr = &players[consoleplayer];
+    if (!plr) return;
+
+    // Background tray bar
+    DS_FillRect(fb, 0, 176, 268, 32, 14, 16, 20);
+    DS_FillRect(fb, 0, 175, 268, 1, 50, 55, 65);
+
+    static const char *heretic_arti_sprites[] = {
+        "ARTIBOX", "ARTIINVU", "ARTIINVS", "ARTIPTN2", "ARTISPHL",
+        "ARTIPWBK", "ARTITRCH", "ARTIFBMB", "ARTIEGGC", "ARTISOAR", "ARTIATLP"
+    };
+
+    static const char *hexen_arti_sprites[] = {
+        "ARTIBOX", "ARTIINVU", "ARTIPTN2", "ARTISPHL", "ARTIHRAD",
+        "ARTISUMN", "ARTITRCH", "ARTIPORK", "ARTISOAR", "ARTIBLST",
+        "ARTIPSBG", "ARTITELO", "ARTISPED", "ARTIBMAN", "ARTIBRAC",
+        "ARTIATLP", "ARTISKLL", "ARTIBGEM", "ARTIGEMR", "ARTIGEMG",
+        "ARTIGMG2", "ARTIGEMB", "ARTIGMB2", "ARTIBOK1", "ARTIBOK2",
+        "ARTISKL2", "ARTIFWEP", "ARTICWEP", "ARTIMWEP", "ARTIGEAR",
+        "ARTIGER2", "ARTIGER3", "ARTIGER4"
+    };
+
+    for (int i = 0; i < 8; i++) {
+        int bx = 2 + i * 33;
+        int by = 177;
+        int bw = 32;
+        int bh = 30;
+
+        // Slot frame
+        DS_FillRect(fb, bx, by, bw, bh, 22, 25, 32);
+        DS_DrawRect(fb, bx, by, bw, bh, 45, 50, 62);
+
+        if (i < plr->inventorySlotNum && plr->inventory[i].type != arti_none && plr->inventory[i].count > 0) {
+            int type = plr->inventory[i].type;
+            int count = plr->inventory[i].count;
+
+            // Active/Ready artifact highlight
+            if (type == plr->readyArtifact) {
+                DS_DrawRect(fb, bx, by, bw, bh, 255, 215, 0);
+                DS_DrawRect(fb, bx + 1, by + 1, bw - 2, bh - 2, 255, 215, 0);
+            }
+
+            // Sprite lump lookup
+            const char *arti_name = NULL;
+            if (hexen) {
+                if (type >= 0 && type < (int)(sizeof(hexen_arti_sprites) / sizeof(hexen_arti_sprites[0]))) {
+                    arti_name = hexen_arti_sprites[type];
+                }
+            } else {
+                if (type >= 0 && type < (int)(sizeof(heretic_arti_sprites) / sizeof(heretic_arti_sprites[0]))) {
+                    arti_name = heretic_arti_sprites[type];
+                }
+            }
+
+            if (arti_name) {
+                int lump = W_CheckNumForName2(arti_name, ns_sprites);
+                if (lump >= 0) {
+                    DS_DrawPatchCentered(fb, bx + 1, by + 1, bw - 2, bh - 2, lump);
+                }
+            }
+
+            // Stack count
+            if (count > 1) {
+                char cnt_str[8];
+                snprintf(cnt_str, sizeof(cnt_str), "%d", count);
+                DS_DrawString(fb, bx + bw - 8, by + bh - 8, cnt_str, 255, 255, 255, 1);
+            }
+        }
+    }
+}
+
 // Draw Dashboard when in Menu or Title screen
 static void DS_DrawDashboard(u8 *fb)
 {
@@ -853,47 +1255,87 @@ void DS_SelectWeaponSlot(int slot)
 
     weapontype_t target = wp_nochange;
 
-    switch (slot) {
-        case 1:
-            // Slot 1: Fist / Chainsaw toggle
-            if (plr->weaponowned[wp_chainsaw] && plr->weaponowned[wp_fist]) {
-                target = (plr->readyweapon == wp_chainsaw) ? wp_fist : wp_chainsaw;
-            } else if (plr->weaponowned[wp_chainsaw]) {
-                target = wp_chainsaw;
-            } else if (plr->weaponowned[wp_fist]) {
-                target = wp_fist;
+    if (hexen) {
+        if (slot >= 1 && slot <= 4) {
+            int wp = slot - 1;
+            if (plr->weaponowned[wp]) {
+                target = (weapontype_t)wp;
             }
-            break;
-        case 2:
-            // Slot 2: Pistol
-            if (plr->weaponowned[wp_pistol]) target = wp_pistol;
-            break;
-        case 3:
-            // Slot 3: Shotgun / Super Shotgun toggle
-            if (plr->weaponowned[wp_supershotgun] && plr->weaponowned[wp_shotgun]) {
-                target = (plr->readyweapon == wp_supershotgun) ? wp_shotgun : wp_supershotgun;
-            } else if (plr->weaponowned[wp_supershotgun]) {
-                target = wp_supershotgun;
-            } else if (plr->weaponowned[wp_shotgun]) {
-                target = wp_shotgun;
-            }
-            break;
-        case 4:
-            // Slot 4: Chaingun
-            if (plr->weaponowned[wp_chaingun]) target = wp_chaingun;
-            break;
-        case 5:
-            // Slot 5: Rocket Launcher
-            if (plr->weaponowned[wp_missile]) target = wp_missile;
-            break;
-        case 6:
-            // Slot 6: Plasma Rifle
-            if (plr->weaponowned[wp_plasma] && gamemode != shareware) target = wp_plasma;
-            break;
-        case 7:
-            // Slot 7: BFG 9000
-            if (plr->weaponowned[wp_bfg] && gamemode != shareware) target = wp_bfg;
-            break;
+        }
+    } else if (heretic) {
+        switch (slot) {
+            case 1:
+                // Staff / Gauntlets toggle
+                if (plr->weaponowned[wp_gauntlets] && plr->weaponowned[wp_staff]) {
+                    target = (plr->readyweapon == wp_gauntlets) ? wp_staff : wp_gauntlets;
+                } else if (plr->weaponowned[wp_gauntlets]) {
+                    target = wp_gauntlets;
+                } else if (plr->weaponowned[wp_staff]) {
+                    target = wp_staff;
+                }
+                break;
+            case 2:
+                if (plr->weaponowned[wp_goldwand]) target = wp_goldwand;
+                break;
+            case 3:
+                if (plr->weaponowned[wp_crossbow]) target = wp_crossbow;
+                break;
+            case 4:
+                if (plr->weaponowned[wp_blaster]) target = wp_blaster;
+                break;
+            case 5:
+                if (plr->weaponowned[wp_skullrod]) target = wp_skullrod;
+                break;
+            case 6:
+                if (plr->weaponowned[wp_phoenixrod]) target = wp_phoenixrod;
+                break;
+            case 7:
+                if (plr->weaponowned[wp_mace]) target = wp_mace;
+                break;
+        }
+    } else {
+        switch (slot) {
+            case 1:
+                // Slot 1: Fist / Chainsaw toggle
+                if (plr->weaponowned[wp_chainsaw] && plr->weaponowned[wp_fist]) {
+                    target = (plr->readyweapon == wp_chainsaw) ? wp_fist : wp_chainsaw;
+                } else if (plr->weaponowned[wp_chainsaw]) {
+                    target = wp_chainsaw;
+                } else if (plr->weaponowned[wp_fist]) {
+                    target = wp_fist;
+                }
+                break;
+            case 2:
+                // Slot 2: Pistol
+                if (plr->weaponowned[wp_pistol]) target = wp_pistol;
+                break;
+            case 3:
+                // Slot 3: Shotgun / Super Shotgun toggle
+                if (plr->weaponowned[wp_supershotgun] && plr->weaponowned[wp_shotgun]) {
+                    target = (plr->readyweapon == wp_supershotgun) ? wp_shotgun : wp_supershotgun;
+                } else if (plr->weaponowned[wp_supershotgun]) {
+                    target = wp_supershotgun;
+                } else if (plr->weaponowned[wp_shotgun]) {
+                    target = wp_shotgun;
+                }
+                break;
+            case 4:
+                // Slot 4: Chaingun
+                if (plr->weaponowned[wp_chaingun]) target = wp_chaingun;
+                break;
+            case 5:
+                // Slot 5: Rocket Launcher
+                if (plr->weaponowned[wp_missile]) target = wp_missile;
+                break;
+            case 6:
+                // Slot 6: Plasma Rifle
+                if (plr->weaponowned[wp_plasma] && gamemode != shareware) target = wp_plasma;
+                break;
+            case 7:
+                // Slot 7: BFG 9000
+                if (plr->weaponowned[wp_bfg] && gamemode != shareware) target = wp_bfg;
+                break;
+        }
     }
 
     if (target != wp_nochange && plr->weaponowned[target]) {
@@ -905,19 +1347,34 @@ void DS_SelectWeaponSlot(int slot)
 void DS_HandleTouch(int touch_x, int touch_y)
 {
     if (gamestate == GS_LEVEL) {
+        player_t *plr = &players[consoleplayer];
+
+        // 1. Right-side Weapon Selector touch (Slots 1 to 4 in Hexen, 1 to 7 in Heretic/Doom)
         if (touch_x >= 268 && touch_y < 208) {
-            // Right-side Weapon Selector touch (Slots 1 to 7)
             int slot = 1;
-            if (touch_y < 29) slot = 1;
-            else if (touch_y < 59) slot = 2;
-            else if (touch_y < 89) slot = 3;
-            else if (touch_y < 119) slot = 4;
-            else if (touch_y < 148) slot = 5;
-            else if (touch_y < 178) slot = 6;
-            else slot = 7;
+            if (hexen) {
+                slot = (touch_y / 52) + 1;
+                if (slot > 4) slot = 4;
+            } else {
+                if (touch_y < 29) slot = 1;
+                else if (touch_y < 59) slot = 2;
+                else if (touch_y < 89) slot = 3;
+                else if (touch_y < 119) slot = 4;
+                else if (touch_y < 148) slot = 5;
+                else if (touch_y < 178) slot = 6;
+                else slot = 7;
+            }
             DS_SelectWeaponSlot(slot);
-        } else if (touch_y < 24) {
-            // Header bar action buttons (WADS / RESET, SAVE, LOAD, ZOOM)
+        }
+        // 2. Raven games: Artifact Tray touch (X: 0 to 267, Y: 176 to 207)
+        else if (raven && touch_y >= 176 && touch_y < 208 && touch_x < 268) {
+            int slot = (touch_x - 2) / 33;
+            if (plr && slot >= 0 && slot < plr->inventorySlotNum && plr->inventory[slot].count > 0) {
+                ds_touch_artifact = plr->inventory[slot].type;
+            }
+        }
+        // 3. Header bar action buttons (WADS / RESET, SAVE, LOAD, ZOOM)
+        else if (touch_y < 24) {
             if (touch_x >= 2 && touch_x <= 44) {
                 // Soft-reset back to WAD Manager
                 I_ResetToLauncher();
@@ -931,14 +1388,16 @@ void DS_HandleTouch(int touch_x, int touch_y)
                 ds_map_zoom++;
                 if (ds_map_zoom > 4) ds_map_zoom = 1;
             }
-        } else if (touch_y < 208) {
-            // Automap area (X: 0 to 267): toggle zoom
+        }
+        // 4. Automap area: toggle zoom
+        else if (touch_y < (raven ? 176 : 208)) {
             ds_map_zoom++;
             if (ds_map_zoom > 4) {
                 ds_map_zoom = 1;
             }
-        } else {
-            // Status bar touch (Y: 208..239)
+        }
+        // 5. Status bar touch (Y: 208..239)
+        else {
             // Tap Ammo, Health, or Face -> Quick Melee / Fist toggle
             if (touch_x >= 0 && touch_x <= 180) {
                 DS_SelectWeaponSlot(1);
@@ -954,8 +1413,18 @@ void DS_UpdateBottomScreen(void)
 
     if (gamestate == GS_LEVEL) {
         DS_DrawTacticalAutomap(framebuf);
-        DS_DrawWeaponSelector(framebuf);
-        DS_DrawAuthenticStatusBar(framebuf);
+        if (hexen) {
+            DS_DrawHexenWeaponSelector(framebuf);
+            DS_DrawArtifactTray(framebuf);
+            DS_DrawHexenStatusBar(framebuf);
+        } else if (heretic) {
+            DS_DrawHereticWeaponSelector(framebuf);
+            DS_DrawArtifactTray(framebuf);
+            DS_DrawHereticStatusBar(framebuf);
+        } else {
+            DS_DrawWeaponSelector(framebuf);
+            DS_DrawAuthenticStatusBar(framebuf);
+        }
     } else {
         DS_DrawDashboard(framebuf);
     }

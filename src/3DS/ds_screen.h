@@ -8,6 +8,7 @@ extern "C" {
 #include "doomtype.h"
 
 extern int ds_touch_weapon;
+extern int ds_touch_artifact;
 
 void DS_Init(void);
 void DS_UpdateBottomScreen(void);

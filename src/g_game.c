@@ -828,6 +828,15 @@ void G_BuildTiccmd(ticcmd_t* cmd)
       }
     }
 
+#ifdef __3DS__
+    extern int ds_touch_artifact;
+    if (ds_touch_artifact)
+    {
+      cmd->arti = (char)(ds_touch_artifact & AFLAG_MASK);
+      ds_touch_artifact = 0;
+    }
+#endif
+
     if (players[consoleplayer].playerstate == PST_LIVE && !dsda_FreeAim())
     {
         if (look < 0)
