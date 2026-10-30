@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5"><img src="https://img.shields.io/badge/Release-v1.5-blue.svg?style=flat-square" alt="Version 1.5"></a>
+  <a href="https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.1"><img src="https://img.shields.io/badge/Release-v1.5.1-blue.svg?style=flat-square" alt="Version 1.5.1"></a>
   <a href="https://github.com/mcl5500/Trinity3DS/blob/dsda/COPYING"><img src="https://img.shields.io/badge/License-GPLv2-green.svg?style=flat-square" alt="GPL-2.0 License"></a>
   <a href="https://github.com/mcl5500/Trinity3DS"><img src="https://img.shields.io/badge/Platform-Nintendo%203DS%20%7C%202DS-red.svg?style=flat-square" alt="Platform"></a>
   <a href="https://github.com/kraflab/dsda-doom"><img src="https://img.shields.io/badge/Engine-dsda--doom%20v0.27.5-orange.svg?style=flat-square" alt="dsda-doom"></a>
@@ -18,19 +18,31 @@
 
 ---
 
-## 📥 Downloads & Quick QR Code Installation (v1.5)
+## 📥 Downloads & Quick QR Code Installation (v1.5.1)
 
 You can install Trinity3DS directly onto your 3DS over WiFi using **FBI** (*Remote Install -> Scan QR Code*) or **3dsDL**:
 
 | **Installable CIA** (HOME Menu) | **Standalone 3DSX** (Homebrew Launcher) |
 | :---: | :---: |
 | ![Installable CIA QR Code](assets/qrcode_cia.png) | ![Standalone 3DSX QR Code](assets/qrcode_3dsx.png) |
-| [Download Trinity3DS.cia (v1.5)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.5/Trinity3DS.cia) | [Download Trinity3DS.3dsx (v1.5)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.5/Trinity3DS.3dsx) |
+| [Download Trinity3DS.cia (v1.5.1)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.5.1/Trinity3DS.cia) | [Download Trinity3DS.3dsx (v1.5.1)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.5.1/Trinity3DS.3dsx) |
 
 ---
 
-## 🚀 What's New in Version 1.5
+## 🚀 What's New in Version 1.5.1
 
+* **Super Mario 64 3DS-Calibrated Stereoscopic 3D**:
+  * Implemented an authentic **Zero Parallax (Convergence) Plane** with Horizontal Image Translation (HIT).
+  * The entire 3D world (rooms, corridors, monsters, outdoor vistas) sinks deep into the 3DS display, producing the beloved "window into the world / diorama" 3D depth effect.
+  * Near-field objects and charging demons pop out dynamically in front of the screen.
+  * The player's weapon is pre-compensated so it sits rock-solid at the screen glass (zero disparity, zero flicker, zero eye strain).
+* **In-Game 3D Depth Intensity Setting**:
+  * Added **Options $\rightarrow$ Video $\rightarrow$ 3D Depth Intensity** with 4 selectable presets:
+    * **Subtle (Low)**: Gentle depth for sensitive eyes.
+    * **Normal (SM64)**: Calibrated directly to match the popular Super Mario 64 3DS stereoscopic experience!
+    * **Deep (High)**: Extra pronounced spatial separation.
+    * **Extreme (Ultra)**: Maximum 3D pop and depth.
+  * Scales smoothly from 0% (2D) to 100% via the physical 3DS 3D depth slider.
 * **Modern Engine Migration (dsda-doom v0.27.5)**:
   * Upgraded from older PrBoom+ to modern **dsda-doom v0.27.5** engine standards.
   * Native support for **DOOM / DOOM II**, **Heretic: Shadow of the Serpent Riders**, and **Hexen: Beyond Heretic** in one unified binary!
@@ -114,7 +126,7 @@ You can install Trinity3DS directly onto your 3DS over WiFi using **FBI** (*Remo
 ---
 
 ### Method B: Manual CIA Installation via SD Card
-1. Download `Trinity3DS.cia` from the latest [GitHub Releases](https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5).
+1. Download `Trinity3DS.cia` from the latest [GitHub Releases](https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.1).
 2. Insert your 3DS SD card into your PC or connect via MicroSD Management / FTP.
 3. Copy `Trinity3DS.cia` to the `sdmc:/cias/` directory on your SD card.
 4. Insert the SD card back into your 3DS and launch **FBI**.
@@ -124,7 +136,7 @@ You can install Trinity3DS directly onto your 3DS over WiFi using **FBI** (*Remo
 ---
 
 ### Method C: Standalone Homebrew Launcher (.3dsx)
-1. Download `Trinity3DS.3dsx` from the latest [GitHub Releases](https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5).
+1. Download `Trinity3DS.3dsx` from the latest [GitHub Releases](https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.1).
 2. Copy `Trinity3DS.3dsx` to:  
    `sdmc:/3ds/Trinity3DS/Trinity3DS.3dsx`
 3. Launch the **Homebrew Launcher** and start **Trinity3DS** from the list.
