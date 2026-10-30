@@ -39,6 +39,7 @@
 #define MINZ        (FRACUNIT*4)
 
 extern int r_near_clip_plane;
+extern int s_weapon_stereo_shift;
 
 /* Constant arrays used for psprite clipping and initializing clipping. */
 

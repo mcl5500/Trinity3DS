@@ -29,6 +29,7 @@
 #include "3DS/ds_screen.h"
 #include "3DS/i_joy.h"
 #include "3DS/gl_wrapper.h"
+#include "dsda/configuration.h"
 #include "dsda/signal_context.h"
 
 #include <3ds.h>
@@ -212,7 +213,9 @@ void I_StartTic(void)
     }
 }
 
-static void I_BlitTopEye(u8 *dst, const u8 *src)
+static int s_stereo_screen_shift = 0;
+
+static void I_BlitTopEye(u8 *dst, const u8 *src, int shift_x)
 {
     if (!dst || !src) return;
 
@@ -222,7 +225,11 @@ static void I_BlitTopEye(u8 *dst, const u8 *src)
         const u8 *src_row = &src[y * 400];
         int dst_col_offset = (239 - y) * 3;
         for (int x = 0; x < 400; x++) {
-            u8 pal_idx = src_row[x];
+            int src_x = x - shift_x;
+            if (src_x < 0) src_x = 0;
+            else if (src_x >= 400) src_x = 399;
+
+            u8 pal_idx = src_row[src_x];
             const u8 *rgb = &s_current_palette[pal_idx * 3];
 
             int dst_idx = x * (240 * 3) + dst_col_offset;
@@ -242,11 +249,39 @@ void I_3D_RenderPlayerView(player_t *player, float slider)
     fixed_t orig_viewy = viewy;
     angle_t orig_viewangle = viewangle;
 
-    // Eye separation in Doom map units:
-    // 2.2 map units per eye gives a clear, immersive, and vivid 3D depth effect
-    // with parallel cameras (NO divergence, NO keystone distortion).
-    // The player's weapon and HUD stay rock-solid at disparity 0 with zero flicker!
-    fixed_t eye_offset = (fixed_t)(FRACUNIT * (2.2f * slider));
+    // Calibrated stereoscopy with Horizontal Image Translation (HIT / convergence)
+    // Matches the acclaimed Super Mario 64 3DS diorama depth effect:
+    // Screen plane is set at near-combat distance (~130 map units).
+    // The player's weapon is pre-compensated so it sits rock-solid at disparity 0.
+    // The entire 3D world (rooms, hallways, monsters, outdoors) sinks deep into the 3DS screen!
+    int depth_mode = dsda_IntConfig(dsda_config_stereo_depth);
+    float max_shift_px;
+    float max_eye_units;
+
+    switch (depth_mode) {
+        case 0: // Low (Subtle)
+            max_shift_px = 5.0f;
+            max_eye_units = 3.2f;
+            break;
+        case 2: // High (Deep)
+            max_shift_px = 10.0f;
+            max_eye_units = 6.5f;
+            break;
+        case 3: // Ultra (Extreme)
+            max_shift_px = 13.0f;
+            max_eye_units = 8.5f;
+            break;
+        case 1: // Medium (Normal - calibrated to Super Mario 64 3DS)
+        default:
+            max_shift_px = 8.0f;
+            max_eye_units = 5.2f;
+            break;
+    }
+
+    int shift_px = (int)(max_shift_px * slider + 0.5f);
+    s_stereo_screen_shift = shift_px;
+
+    fixed_t eye_offset = (fixed_t)(FRACUNIT * (max_eye_units * slider));
 
     // Perpendicular vector pointing Right in Doom's counter-clockwise coordinate system:
     // viewangle = 0 (East, +X) -> Right is South (-Y): dx = 0, dy = -FRACUNIT
@@ -258,10 +293,10 @@ void I_3D_RenderPlayerView(player_t *player, float slider)
 
     // === PASS 1: LEFT EYE ===
     // Left eye is shifted LEFT (-dx, +dy).
-    // Parallel cameras: viewangle is identical to player angle (NO ROTATION/TOE-IN!)
     viewx = orig_viewx - dx;
     viewy = orig_viewy + dy;
     viewangle = orig_viewangle;
+    s_weapon_stereo_shift = +shift_px;
 
     DSDA_ADD_CONTEXT(sf_player_view);
     R_RenderPlayerView(player);
@@ -276,6 +311,7 @@ void I_3D_RenderPlayerView(player_t *player, float slider)
     viewx = orig_viewx + dx;
     viewy = orig_viewy - dy;
     viewangle = orig_viewangle;
+    s_weapon_stereo_shift = -shift_px;
 
     DSDA_ADD_CONTEXT(sf_player_view);
     R_RenderPlayerView(player);
@@ -287,6 +323,7 @@ void I_3D_RenderPlayerView(player_t *player, float slider)
     viewx = orig_viewx;
     viewy = orig_viewy;
     viewangle = orig_viewangle;
+    s_weapon_stereo_shift = 0;
 
     s_stereo_rendered_this_frame = true;
 }
@@ -303,14 +340,16 @@ void I_FinishUpdate(void)
     float slider = osGet3DSliderState();
 
     if (slider > 0.01f && s_stereo_rendered_this_frame && s_right_eye_buffer) {
-        // True stereoscopic 3D: Left eye gets screens[0], Right eye gets s_right_eye_buffer
-        I_BlitTopEye(dst_l, screens[0].data);
-        I_BlitTopEye(dst_r, s_right_eye_buffer);
+        // True stereoscopic 3D with HIT convergence:
+        // Left eye shifted left (-s_stereo_screen_shift)
+        // Right eye shifted right (+s_stereo_screen_shift)
+        I_BlitTopEye(dst_l, screens[0].data, -s_stereo_screen_shift);
+        I_BlitTopEye(dst_r, s_right_eye_buffer, +s_stereo_screen_shift);
     } else {
         // 2D mode (or menus / intermission): both eyes get screens[0]
-        I_BlitTopEye(dst_l, screens[0].data);
+        I_BlitTopEye(dst_l, screens[0].data, 0);
         if (dst_r) {
-            I_BlitTopEye(dst_r, screens[0].data);
+            I_BlitTopEye(dst_r, screens[0].data, 0);
         }
     }
 

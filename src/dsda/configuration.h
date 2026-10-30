@@ -267,6 +267,7 @@ typedef enum {
   dsda_config_fps_limit,
   dsda_config_background_fps_limit,
   dsda_config_usegamma,
+  dsda_config_stereo_depth,
   dsda_config_screenblocks,
   dsda_config_sdl_video_window_pos,
   dsda_config_sdl_video_display_index,

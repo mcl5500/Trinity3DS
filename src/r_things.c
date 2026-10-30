@@ -73,6 +73,7 @@ static const lighttable_t **spritelights;        // killough 1/25/98 made static
 //e6y: added for GL
 float pspriteyscale_f;
 float pspritexscale_f;
+int s_weapon_stereo_shift = 0;
 
 typedef struct drawseg_xrange_item_s
 {
@@ -1122,13 +1123,13 @@ static void R_DrawPSprite (pspdef_t *psp)
     tx = psp_sx-160*FRACUNIT;
 
     tx -= patch->leftoffset<<FRACBITS;
-    x1 = (centerxfrac + FixedMul (tx,pspritexscale))>>FRACBITS;
+    x1 = ((centerxfrac + FixedMul (tx,pspritexscale))>>FRACBITS) + s_weapon_stereo_shift;
 
     // [AR] opengl weapon alignment
     gx1 = x1;
 
     tx += patch->width<<FRACBITS;
-    x2 = ((centerxfrac + FixedMul (tx, pspritexscale) ) >>FRACBITS) - 1;
+    x2 = (((centerxfrac + FixedMul (tx, pspritexscale) ) >>FRACBITS) - 1) + s_weapon_stereo_shift;
 
     width = patch->width;
     topoffset = patch->topoffset<<FRACBITS;
