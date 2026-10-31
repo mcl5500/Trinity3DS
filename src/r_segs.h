@@ -51,4 +51,7 @@ typedef enum
 
 extern fake_contrast_mode_t fake_contrast_mode;
 
+extern fixed_t s_min_wall_distance;
+extern fixed_t s_cur_min_wall_distance;
+
 #endif

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.1"><img src="https://img.shields.io/badge/Release-v1.5.1-blue.svg?style=flat-square" alt="Version 1.5.1"></a>
+  <a href="https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.2"><img src="https://img.shields.io/badge/Release-v1.5.2-blue.svg?style=flat-square" alt="Version 1.5.2"></a>
   <a href="https://github.com/mcl5500/Trinity3DS/blob/dsda/COPYING"><img src="https://img.shields.io/badge/License-GPLv2-green.svg?style=flat-square" alt="GPL-2.0 License"></a>
   <a href="https://github.com/mcl5500/Trinity3DS"><img src="https://img.shields.io/badge/Platform-Nintendo%203DS%20%7C%202DS-red.svg?style=flat-square" alt="Platform"></a>
   <a href="https://github.com/kraflab/dsda-doom"><img src="https://img.shields.io/badge/Engine-dsda--doom%20v0.27.5-orange.svg?style=flat-square" alt="dsda-doom"></a>
@@ -18,14 +18,28 @@
 
 ---
 
-## 📥 Downloads & Quick QR Code Installation (v1.5.1)
+## 📥 Downloads & Quick QR Code Installation (v1.5.2)
 
 You can install Trinity3DS directly onto your 3DS over WiFi using **FBI** (*Remote Install -> Scan QR Code*) or **3dsDL**:
 
 | **Installable CIA** (HOME Menu) | **Standalone 3DSX** (Homebrew Launcher) |
 | :---: | :---: |
 | ![Installable CIA QR Code](assets/qrcode_cia.png) | ![Standalone 3DSX QR Code](assets/qrcode_3dsx.png) |
-| [Download Trinity3DS.cia (v1.5.1)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.5.1/Trinity3DS.cia) | [Download Trinity3DS.3dsx (v1.5.1)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.5.1/Trinity3DS.3dsx) |
+| [Download Trinity3DS.cia (v1.5.2)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.5.2/Trinity3DS.cia) | [Download Trinity3DS.3dsx (v1.5.2)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.5.2/Trinity3DS.3dsx) |
+
+---
+
+## 🚀 What's New in Version 1.5.2
+
+* **Fixed Weapon Double Vision (Diplopia Elimination)**:
+  * Isolated the uncapped framerate weapon bobbing interpolation from stereoscopic pass rendering.
+  * Both left and right eyes now share the identical interpolated base coordinate before applying stereo offset, ensuring pixel-perfect 0-disparity on the screen plane.
+  * No more ghosting, double weapon sprites, or bobbing jitter!
+* **Dynamic Near-Wall Disparity Clamping**:
+  * Added active distance tracking of close geometry. When standing right against walls, pillars, or tight corners, eye separation dynamically clamps so crossed disparity never exceeds the human fusional limit ($\le 8\text{ px}$).
+  * Walking right next to walls is now 100% crisp and single-imaged while retaining full, rich diorama depth across rooms and background vistas.
+* **Calibrated Human Interocular Scale**:
+  * Recalibrated baseline camera separation to match Doomguy's 32-unit player body dimensions, creating perfectly natural 3D depth.
 
 ---
 
@@ -126,7 +140,7 @@ You can install Trinity3DS directly onto your 3DS over WiFi using **FBI** (*Remo
 ---
 
 ### Method B: Manual CIA Installation via SD Card
-1. Download `Trinity3DS.cia` from the latest [GitHub Releases](https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.1).
+1. Download `Trinity3DS.cia` from the latest [GitHub Releases](https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.2).
 2. Insert your 3DS SD card into your PC or connect via MicroSD Management / FTP.
 3. Copy `Trinity3DS.cia` to the `sdmc:/cias/` directory on your SD card.
 4. Insert the SD card back into your 3DS and launch **FBI**.
@@ -136,7 +150,7 @@ You can install Trinity3DS directly onto your 3DS over WiFi using **FBI** (*Remo
 ---
 
 ### Method C: Standalone Homebrew Launcher (.3dsx)
-1. Download `Trinity3DS.3dsx` from the latest [GitHub Releases](https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.1).
+1. Download `Trinity3DS.3dsx` from the latest [GitHub Releases](https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.2).
 2. Copy `Trinity3DS.3dsx` to:  
    `sdmc:/3ds/Trinity3DS/Trinity3DS.3dsx`
 3. Launch the **Homebrew Launcher** and start **Trinity3DS** from the list.

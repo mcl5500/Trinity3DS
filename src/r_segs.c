@@ -76,6 +76,8 @@ static fixed_t  toptexheight, midtexheight, bottomtexheight; // cph
 angle_t         rw_normalangle; // angle to line origin
 int             rw_angle1;
 fixed_t         rw_distance;
+fixed_t         s_min_wall_distance = 64 * FRACUNIT;
+fixed_t         s_cur_min_wall_distance = INT_MAX;
 const lighttable_t    **walllights;
 
 //
@@ -734,6 +736,9 @@ void R_StoreWallRange(const int start, const int stop)
 
   dist = (((dy * dx1 - dx * dy1) / len) << shift_bits);
   rw_distance = (fixed_t)BETWEEN(INT_MIN, INT_MAX, dist);
+
+  if (rw_distance > 0 && rw_distance < s_cur_min_wall_distance)
+    s_cur_min_wall_distance = rw_distance;
 
   ds_p->x1 = rw_x = start;
   ds_p->x2 = stop;

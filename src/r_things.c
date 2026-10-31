@@ -74,6 +74,7 @@ static const lighttable_t **spritelights;        // killough 1/25/98 made static
 float pspriteyscale_f;
 float pspritexscale_f;
 int s_weapon_stereo_shift = 0;
+int s_stereo_pass = 0;
 
 typedef struct drawseg_xrange_item_s
 {
@@ -1123,13 +1124,13 @@ static void R_DrawPSprite (pspdef_t *psp)
     tx = psp_sx-160*FRACUNIT;
 
     tx -= patch->leftoffset<<FRACBITS;
-    x1 = ((centerxfrac + FixedMul (tx,pspritexscale))>>FRACBITS) + s_weapon_stereo_shift;
+    x1 = ((centerxfrac + FixedMul (tx,pspritexscale))>>FRACBITS);
 
     // [AR] opengl weapon alignment
     gx1 = x1;
 
     tx += patch->width<<FRACBITS;
-    x2 = (((centerxfrac + FixedMul (tx, pspritexscale) ) >>FRACBITS) - 1) + s_weapon_stereo_shift;
+    x2 = (((centerxfrac + FixedMul (tx, pspritexscale) ) >>FRACBITS) - 1);
 
     width = patch->width;
     topoffset = patch->topoffset<<FRACBITS;
@@ -1224,53 +1225,88 @@ static void R_DrawPSprite (pspdef_t *psp)
 
   R_UpdateVisSpriteTranMap(vis, NULL);
 
-  //e6y: interpolation for weapon bobbing
-  if (movement_smooth)
+  int psp_idx = (int)(psp - viewplayer->psprites);
+  if (psp_idx < 0 || psp_idx >= NUMPSPRITES) psp_idx = 0;
+
+  static struct {
+    int x1, x2, gx1;
+    fixed_t texturemid;
+  } s_saved_psprite_base[NUMPSPRITES];
+
+  if (s_stereo_pass == 1)
   {
-    typedef struct interpolate_s
-    {
-      int x1;
-      int x1_prev;
-      int gx1;
-      int gx1_prev;
-      int texturemid;
-      int texturemid_prev;
-      int lump;
-    } psp_interpolate_t;
-
-    static psp_interpolate_t psp_inter;
-
-    if (realframe)
-    {
-      psp_inter.x1 = psp_inter.x1_prev;
-      psp_inter.gx1 = psp_inter.gx1_prev;
-      psp_inter.texturemid = psp_inter.texturemid_prev;
-    }
-
-    psp_inter.x1_prev = vis->x1;
-    psp_inter.gx1_prev = vis->gx1;
-    psp_inter.texturemid_prev = vis->texturemid;
-
-    // Do not interpolate on the first tic of the level
-    if (leveltime > 1)
-    {
-      if (lump == psp_inter.lump)
-      {
-        int deltax = vis->x2 - vis->x1;
-        vis->x1 = psp_inter.x1 + FixedMul (tic_vars.frac, (vis->x1 - psp_inter.x1));
-        vis->gx1 = psp_inter.gx1 + FixedMul(tic_vars.frac, (vis->gx1 - psp_inter.gx1));
-        vis->x2 = vis->x1 + deltax;
-        vis->texturemid = psp_inter.texturemid + FixedMul (tic_vars.frac, (vis->texturemid - psp_inter.texturemid));
-      }
-      else
-      {
-        psp_inter.x1 = vis->x1;
-        psp_inter.gx1 = vis->gx1;
-        psp_inter.texturemid = vis->texturemid;
-        psp_inter.lump=lump;
-      }
-    }
+    // Pass 2 (Right Eye): reuse the exact same interpolated base coordinates
+    // from Pass 1 so that movement_smooth interpolation is preserved!
+    vis->x1 = s_saved_psprite_base[psp_idx].x1;
+    vis->x2 = s_saved_psprite_base[psp_idx].x2;
+    vis->gx1 = s_saved_psprite_base[psp_idx].gx1;
+    vis->texturemid = s_saved_psprite_base[psp_idx].texturemid;
   }
+  else
+  {
+    // Pass 1 (Left Eye) or 2D mode:
+    // e6y: interpolation for weapon bobbing
+    if (movement_smooth)
+    {
+      typedef struct interpolate_s
+      {
+        int x1;
+        int x1_prev;
+        int gx1;
+        int gx1_prev;
+        int texturemid;
+        int texturemid_prev;
+        int lump;
+      } psp_interpolate_t;
+
+      static psp_interpolate_t psp_inter[NUMPSPRITES];
+
+      if (realframe)
+      {
+        psp_inter[psp_idx].x1 = psp_inter[psp_idx].x1_prev;
+        psp_inter[psp_idx].gx1 = psp_inter[psp_idx].gx1_prev;
+        psp_inter[psp_idx].texturemid = psp_inter[psp_idx].texturemid_prev;
+      }
+
+      psp_inter[psp_idx].x1_prev = vis->x1;
+      psp_inter[psp_idx].gx1_prev = vis->gx1;
+      psp_inter[psp_idx].texturemid_prev = vis->texturemid;
+
+      // Do not interpolate on the first tic of the level
+      if (leveltime > 1)
+      {
+        if (lump == psp_inter[psp_idx].lump)
+        {
+          int deltax = vis->x2 - vis->x1;
+          vis->x1 = psp_inter[psp_idx].x1 + FixedMul (tic_vars.frac, (vis->x1 - psp_inter[psp_idx].x1));
+          vis->gx1 = psp_inter[psp_idx].gx1 + FixedMul(tic_vars.frac, (vis->gx1 - psp_inter[psp_idx].gx1));
+          vis->x2 = vis->x1 + deltax;
+          vis->texturemid = psp_inter[psp_idx].texturemid + FixedMul (tic_vars.frac, (vis->texturemid - psp_inter[psp_idx].texturemid));
+        }
+        else
+        {
+          psp_inter[psp_idx].x1 = vis->x1;
+          psp_inter[psp_idx].gx1 = vis->gx1;
+          psp_inter[psp_idx].texturemid = vis->texturemid;
+          psp_inter[psp_idx].lump = lump;
+        }
+      }
+    }
+
+    // Save base coordinates for Pass 2 (Right Eye)
+    s_saved_psprite_base[psp_idx].x1 = vis->x1;
+    s_saved_psprite_base[psp_idx].x2 = vis->x2;
+    s_saved_psprite_base[psp_idx].gx1 = vis->gx1;
+    s_saved_psprite_base[psp_idx].texturemid = vis->texturemid;
+  }
+
+  // Apply stereo compensation so the weapon sits perfectly at 0 disparity on the 3DS screen!
+  vis->x1 += s_weapon_stereo_shift;
+  vis->x2 += s_weapon_stereo_shift;
+  vis->gx1 += s_weapon_stereo_shift;
+
+  if (vis->x1 < 0) vis->x1 = 0;
+  if (vis->x2 >= viewwidth) vis->x2 = viewwidth - 1;
 
   if (dsda_HideWeapon())
     return;

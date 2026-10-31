@@ -22,6 +22,7 @@
 #include "r_plane.h"
 #include "r_main.h"
 #include "r_state.h"
+#include "r_segs.h"
 #include "m_fixed.h"
 #include "f_wipe.h"
 #include "st_stuff.h"
@@ -250,32 +251,46 @@ void I_3D_RenderPlayerView(player_t *player, float slider)
     angle_t orig_viewangle = viewangle;
 
     // Calibrated stereoscopy with Horizontal Image Translation (HIT / convergence)
-    // Matches the acclaimed Super Mario 64 3DS diorama depth effect:
-    // Screen plane is set at near-combat distance (~130 map units).
-    // The player's weapon is pre-compensated so it sits rock-solid at disparity 0.
-    // The entire 3D world (rooms, hallways, monsters, outdoors) sinks deep into the 3DS screen!
+    // Matches true human interocular scale in Doom (Doomguy width = 32 map units):
+    // Human IPD ~6.3cm -> ~1.0 map units in Doom scale.
+    // Near-wall disparity safety: dynamic clamping guarantees that crossed disparity
+    // never exceeds 8.0 pixels, completely eliminating diplopia (double vision) on close walls!
     int depth_mode = dsda_IntConfig(dsda_config_stereo_depth);
     float max_shift_px;
     float max_eye_units;
 
     switch (depth_mode) {
         case 0: // Low (Subtle)
-            max_shift_px = 5.0f;
-            max_eye_units = 3.2f;
+            max_shift_px = 4.0f;
+            max_eye_units = 0.60f;
             break;
         case 2: // High (Deep)
-            max_shift_px = 10.0f;
-            max_eye_units = 6.5f;
+            max_shift_px = 6.0f;
+            max_eye_units = 1.10f;
             break;
         case 3: // Ultra (Extreme)
-            max_shift_px = 13.0f;
-            max_eye_units = 8.5f;
+            max_shift_px = 7.5f;
+            max_eye_units = 1.35f;
             break;
-        case 1: // Medium (Normal - calibrated to Super Mario 64 3DS)
+        case 1: // Medium (Normal - calibrated for comfortable depth & zero diplopia)
         default:
-            max_shift_px = 8.0f;
-            max_eye_units = 5.2f;
+            max_shift_px = 5.0f;
+            max_eye_units = 0.85f;
             break;
+    }
+
+    // Near-wall disparity safety:
+    // If the player is hugging a close wall or corner, limit eye separation
+    // so crossed disparity never exceeds 8.0 pixels (fusional limit).
+    // Formula: disparity = 2 * (160 * eye_units / Y_min - shift_px) <= 8
+    // -> eye_units <= (4.0 + shift_px) * Y_min / 160
+    if (s_min_wall_distance > 0 && s_min_wall_distance < (32 * FRACUNIT)) {
+        float min_y = (float)s_min_wall_distance / (float)FRACUNIT;
+        if (min_y < 4.0f) min_y = 4.0f;
+        float safe_eye_units = (4.0f + max_shift_px) * min_y / 160.0f;
+        if (max_eye_units > safe_eye_units) {
+            max_eye_units = safe_eye_units;
+        }
     }
 
     int shift_px = (int)(max_shift_px * slider + 0.5f);
@@ -293,6 +308,7 @@ void I_3D_RenderPlayerView(player_t *player, float slider)
 
     // === PASS 1: LEFT EYE ===
     // Left eye is shifted LEFT (-dx, +dy).
+    s_stereo_pass = 0;
     viewx = orig_viewx - dx;
     viewy = orig_viewy + dy;
     viewangle = orig_viewangle;
@@ -304,6 +320,7 @@ void I_3D_RenderPlayerView(player_t *player, float slider)
 
     // === PASS 2: RIGHT EYE ===
     // Right eye is shifted RIGHT (+dx, -dy).
+    s_stereo_pass = 1;
     u8 *orig_screen = screens[0].data;
     screens[0].data = s_right_eye_buffer;
     drawvars.topleft = s_right_eye_buffer;
@@ -324,6 +341,15 @@ void I_3D_RenderPlayerView(player_t *player, float slider)
     viewy = orig_viewy;
     viewangle = orig_viewangle;
     s_weapon_stereo_shift = 0;
+    s_stereo_pass = 0;
+
+    // Advance wall distance history for next frame
+    if (s_cur_min_wall_distance < INT_MAX) {
+        s_min_wall_distance = s_cur_min_wall_distance;
+    } else {
+        s_min_wall_distance = 64 * FRACUNIT;
+    }
+    s_cur_min_wall_distance = INT_MAX;
 
     s_stereo_rendered_this_frame = true;
 }
@@ -351,6 +377,8 @@ void I_FinishUpdate(void)
         if (dst_r) {
             I_BlitTopEye(dst_r, screens[0].data, 0);
         }
+        s_min_wall_distance = 64 * FRACUNIT;
+        s_cur_min_wall_distance = INT_MAX;
     }
 
     s_stereo_rendered_this_frame = false;
