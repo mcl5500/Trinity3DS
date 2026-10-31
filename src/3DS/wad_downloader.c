@@ -943,7 +943,7 @@ void Downloader_ShowDescriptionCustom(const char *title, const char *author, con
             // Crimson Header
             WP_FillRect(top_fb, 400, 0, 0, 400, 32, 130, 20, 20);
             WP_FillRect(top_fb, 400, 0, 30, 400, 2, 210, 40, 40);
-            WP_DrawText(top_fb, 400, 16, 8, title ? title : "WAD DETAILS", 255, 255, 255, 1);
+            WP_DrawClippedText(top_fb, 400, 16, 270, 16, 8, title ? title : "WAD DETAILS", 255, 255, 255, 1);
             WP_DrawText(top_fb, 400, 280, 10, "[DESCRIPTION]", 255, 215, 0, 1);
 
             // Sub-header metadata
@@ -952,7 +952,7 @@ void Downloader_ShowDescriptionCustom(const char *title, const char *author, con
                      (author && author[0]) ? author : "Unknown",
                      (base_iwad && base_iwad[0]) ? base_iwad : "DOOM2.WAD",
                      (size_str && size_str[0]) ? size_str : "-");
-            WP_DrawText(top_fb, 400, 16, 36, sub_str, 180, 210, 240, 1);
+            WP_DrawClippedText(top_fb, 400, 16, 380, 16, 36, sub_str, 180, 210, 240, 1);
 
             // Viewport Box (Y: 50 to 208, H: 158)
             WP_FillRect(top_fb, 400, 12, 50, 376, 158, 26, 28, 34);
@@ -1196,7 +1196,7 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, TRINITY3DS_VERSION_STR " WAD STORE", 255, 215, 0, 1);
+    WP_DrawClippedText(fb, 400, 240, 390, 260, 12, TRINITY3DS_VERSION_STR " WAD STORE", 255, 215, 0, 1);
 
     // WiFi signal
     int wifi = osGetWifiStrength();
@@ -1223,18 +1223,18 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     WP_FillRect(fb, 400, 12, 40, 376, 136, 30, 32, 38);
     WP_DrawRect(fb, 400, 12, 40, 376, 136, 70, 130, 200);
 
-    // LEFT SIDE: Metadata Info (X: 20 to 266)
+    // LEFT SIDE: Metadata Info (X: 20 to 266, clipped so it never touches cover at 274)
     // 1. Name
     if (strlen(cur->title) <= 17) {
-        WP_DrawText(fb, 400, 20, 46, cur->title, 255, 255, 255, 2);
+        WP_DrawClippedText(fb, 400, 20, 266, 20, 46, cur->title, 255, 255, 255, 2);
     } else {
-        WP_DrawText(fb, 400, 20, 48, cur->title, 255, 255, 255, 1);
+        WP_DrawClippedText(fb, 400, 20, 266, 20, 48, cur->title, 255, 255, 255, 1);
     }
 
     // 2. Author
     char author_str[64];
     snprintf(author_str, sizeof(author_str), "AUTHOR: %s", cur->author[0] ? cur->author : "Unknown");
-    WP_DrawText(fb, 400, 20, 66, author_str, 255, 215, 0, 1);
+    WP_DrawClippedText(fb, 400, 20, 266, 20, 66, author_str, 255, 215, 0, 1);
 
     // 3. Category
     if (cur->is_iwad) {
@@ -1248,12 +1248,12 @@ static void Downloader_RenderTopScreen(u8 *fb, const repo_item_t *cur, int sel_i
     // 4. Base
     char req_str[64];
     snprintf(req_str, sizeof(req_str), "BASE: %s", cur->base_iwad);
-    WP_DrawText(fb, 400, 20, 98, req_str, 180, 215, 245, 1);
+    WP_DrawClippedText(fb, 400, 20, 266, 20, 98, req_str, 180, 215, 245, 1);
 
     // 5. Size
     char sz_str[64];
     snprintf(sz_str, sizeof(sz_str), "SIZE: %s", cur->size_str);
-    WP_DrawText(fb, 400, 20, 112, sz_str, 200, 200, 200, 1);
+    WP_DrawClippedText(fb, 400, 20, 266, 20, 112, sz_str, 200, 200, 200, 1);
 
     // 6. Installation Status
     if (installed) {
@@ -1343,11 +1343,11 @@ static void Downloader_RenderBottomScreen(u8 *fb, const repo_item_t *items, cons
                 WP_DrawCenteredText(fb, 320, 26, y + 8, 28, 16, "[--]", 200, 200, 200, 1);
             }
 
-            // Name
-            WP_DrawText(fb, 320, 62, y + 12, item->title, sel ? 255 : 220, sel ? 255 : 220, sel ? 100 : 220, 1);
+            // Name (Clipped cleanly before size badge at 254)
+            WP_DrawClippedText(fb, 320, 62, 252, 62, y + 12, item->title, sel ? 255 : 220, sel ? 255 : 220, sel ? 100 : 220, 1);
 
             // Size badge
-            WP_DrawText(fb, 320, 260, y + 12, item->size_str, 160, 180, 200, 1);
+            WP_DrawClippedText(fb, 320, 256, 310, 258, y + 12, item->size_str, 160, 180, 200, 1);
         }
     }
 

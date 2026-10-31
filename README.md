@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.2"><img src="https://img.shields.io/badge/Release-v1.5.2-blue.svg?style=flat-square" alt="Version 1.5.2"></a>
+  <a href="https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.3"><img src="https://img.shields.io/badge/Release-v1.5.3-blue.svg?style=flat-square" alt="Version 1.5.3"></a>
   <a href="https://github.com/mcl5500/Trinity3DS/blob/dsda/COPYING"><img src="https://img.shields.io/badge/License-GPLv2-green.svg?style=flat-square" alt="GPL-2.0 License"></a>
   <a href="https://github.com/mcl5500/Trinity3DS"><img src="https://img.shields.io/badge/Platform-Nintendo%203DS%20%7C%202DS-red.svg?style=flat-square" alt="Platform"></a>
   <a href="https://github.com/kraflab/dsda-doom"><img src="https://img.shields.io/badge/Engine-dsda--doom%20v0.27.5-orange.svg?style=flat-square" alt="dsda-doom"></a>
@@ -18,14 +18,23 @@
 
 ---
 
-## 📥 Downloads & Quick QR Code Installation (v1.5.2)
+## 📥 Downloads & Quick QR Code Installation (v1.5.3)
 
 You can install Trinity3DS directly onto your 3DS over WiFi using **FBI** (*Remote Install -> Scan QR Code*) or **3dsDL**:
 
 | **Installable CIA** (HOME Menu) | **Standalone 3DSX** (Homebrew Launcher) |
 | :---: | :---: |
 | ![Installable CIA QR Code](assets/qrcode_cia.png) | ![Standalone 3DSX QR Code](assets/qrcode_3dsx.png) |
-| [Download Trinity3DS.cia (v1.5.2)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.5.2/Trinity3DS.cia) | [Download Trinity3DS.3dsx (v1.5.2)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.5.2/Trinity3DS.3dsx) |
+| [Download Trinity3DS.cia (v1.5.3)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.5.3/Trinity3DS.cia) | [Download Trinity3DS.3dsx (v1.5.3)](https://github.com/mcl5500/Trinity3DS/releases/download/v1.5.3/Trinity3DS.3dsx) |
+
+---
+
+## 🚀 What's New in Version 1.5.3
+
+* **Pixel-Perfect UI Text Bounding & Clipping**:
+  * Fixed text overflow where long strings in the **WAD Manager** and **WAD Store** protruded past their UI borders.
+  * Shortened and optimized the bottom controls help text (`A: Launch   X: Options   Y: Store   START: Resume`) to fit cleanly within the bounding frame with comfortable margins.
+  * Applied strict horizontal text clipping (`WP_DrawClippedText`) across all dynamic fields: WAD titles, filenames, author lines, and touchscreen list items. Long names now truncate cleanly before border lines instead of spilling over.
 
 ---
 
@@ -140,7 +149,7 @@ You can install Trinity3DS directly onto your 3DS over WiFi using **FBI** (*Remo
 ---
 
 ### Method B: Manual CIA Installation via SD Card
-1. Download `Trinity3DS.cia` from the latest [GitHub Releases](https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.2).
+1. Download `Trinity3DS.cia` from the latest [GitHub Releases](https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.3).
 2. Insert your 3DS SD card into your PC or connect via MicroSD Management / FTP.
 3. Copy `Trinity3DS.cia` to the `sdmc:/cias/` directory on your SD card.
 4. Insert the SD card back into your 3DS and launch **FBI**.
@@ -150,7 +159,7 @@ You can install Trinity3DS directly onto your 3DS over WiFi using **FBI** (*Remo
 ---
 
 ### Method C: Standalone Homebrew Launcher (.3dsx)
-1. Download `Trinity3DS.3dsx` from the latest [GitHub Releases](https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.2).
+1. Download `Trinity3DS.3dsx` from the latest [GitHub Releases](https://github.com/mcl5500/Trinity3DS/releases/tag/v1.5.3).
 2. Copy `Trinity3DS.3dsx` to:  
    `sdmc:/3ds/Trinity3DS/Trinity3DS.3dsx`
 3. Launch the **Homebrew Launcher** and start **Trinity3DS** from the list.

@@ -899,7 +899,7 @@ static void WP_RenderTopScreen(u8 *fb)
     WP_FillRect(fb, 400, 0, 0, 400, 32, 130, 20, 20);
     WP_FillRect(fb, 400, 0, 30, 400, 2, 210, 40, 40);
     WP_DrawText(fb, 400, 16, 8, "TRINITY3DS", 255, 255, 255, 2);
-    WP_DrawText(fb, 400, 280, 12, TRINITY3DS_VERSION_STR " WAD MANAGER", 255, 215, 0, 1);
+    WP_DrawClippedText(fb, 400, 240, 390, 260, 12, TRINITY3DS_VERSION_STR " WAD MANAGER", 255, 215, 0, 1);
 
     if (s_wad_count == 0) {
         WP_DrawText(fb, 400, 20, 100, "NO WAD FILES FOUND!", 255, 50, 50, 2);
@@ -934,14 +934,14 @@ static void WP_RenderTopScreen(u8 *fb)
         WP_DrawText(fb, 400, cover_x + 12, cover_y + 65, "COVER", 120, 120, 130, 2);
     }
 
-    // Info Section (Right of Cover: X=126)
+    // Info Section (Right of Cover: X=126, Box right border is at 388, max clip at 380)
     int info_x = 126;
 
     // Title (Scale 2 if short, Scale 1 if long)
-    if (strlen(cur->display_name) <= 20) {
-        WP_DrawText(fb, 400, info_x, 48, cur->display_name, 255, 255, 255, 2);
+    if (strlen(cur->display_name) <= 18) {
+        WP_DrawClippedText(fb, 400, info_x, 380, info_x, 48, cur->display_name, 255, 255, 255, 2);
     } else {
-        WP_DrawText(fb, 400, info_x, 48, cur->display_name, 255, 255, 255, 1);
+        WP_DrawClippedText(fb, 400, info_x, 380, info_x, 48, cur->display_name, 255, 255, 255, 1);
     }
 
     // Type Badge
@@ -957,12 +957,12 @@ static void WP_RenderTopScreen(u8 *fb)
     char size_buf[64];
     float mb = (float)cur->file_size / (1024.0f * 1024.0f);
     snprintf(size_buf, sizeof(size_buf), "SIZE: %.2f MB  (#%d/%d)", mb, s_selected_idx + 1, s_wad_count);
-    WP_DrawText(fb, 400, info_x, 92, size_buf, 200, 200, 200, 1);
+    WP_DrawClippedText(fb, 400, info_x, 380, info_x, 92, size_buf, 200, 200, 200, 1);
 
     // Path
     char path_buf[128];
     snprintf(path_buf, sizeof(path_buf), "FILE: %s", cur->filename);
-    WP_DrawText(fb, 400, info_x, 110, path_buf, 160, 210, 255, 1);
+    WP_DrawClippedText(fb, 400, info_x, 380, info_x, 110, path_buf, 160, 210, 255, 1);
 
     // Metadata snippet (Author & Description preview) - cached by index to avoid 60 FPS SD thrashing
     static char s_cached_auth[64] = "";
@@ -980,26 +980,26 @@ static void WP_RenderTopScreen(u8 *fb)
     if (s_cached_has_meta && s_cached_auth[0] && strcasecmp(s_cached_auth, "Unknown") != 0 && strcasecmp(s_cached_auth, "Unbekannt") != 0) {
         char auth_buf[64];
         snprintf(auth_buf, sizeof(auth_buf), "AUTHOR: %s", s_cached_auth);
-        WP_DrawText(fb, 400, info_x, 130, auth_buf, 255, 215, 0, 1);
+        WP_DrawClippedText(fb, 400, info_x, 380, info_x, 130, auth_buf, 255, 215, 0, 1);
     } else {
-        WP_DrawText(fb, 400, info_x, 130, cur->is_iwad ? "* STANDALONE GAME" : "* MEGAWAD / MOD", 100, 255, 120, 1);
+        WP_DrawClippedText(fb, 400, info_x, 380, info_x, 130, cur->is_iwad ? "* STANDALONE GAME" : "* MEGAWAD / MOD", 100, 255, 120, 1);
     }
 
     if (s_cached_has_meta && s_cached_desc[0]) {
         char short_desc[48];
         strncpy(short_desc, s_cached_desc, sizeof(short_desc) - 1);
         short_desc[sizeof(short_desc) - 1] = '\0';
-        WP_DrawText(fb, 400, info_x, 146, short_desc, 200, 200, 210, 1);
+        WP_DrawClippedText(fb, 400, info_x, 380, info_x, 146, short_desc, 200, 200, 210, 1);
     } else {
-        WP_DrawText(fb, 400, info_x, 146, cur->is_iwad ? "* DIRECT LAUNCH" : "* RUNS WITH DOOM II BASE", 200, 200, 200, 1);
+        WP_DrawClippedText(fb, 400, info_x, 380, info_x, 146, cur->is_iwad ? "* DIRECT LAUNCH" : "* RUNS WITH DOOM II BASE", 200, 200, 200, 1);
     }
 
-    // Controls Help Box (Bottom)
+    // Controls Help Box (Bottom, X=12..388)
     WP_FillRect(fb, 400, 12, 182, 376, 50, 24, 24, 28);
     WP_DrawRect(fb, 400, 12, 182, 376, 50, 70, 70, 80);
     WP_DrawText(fb, 400, 20, 189, "CONTROLS:", 255, 215, 0, 1);
-    WP_DrawText(fb, 400, 100, 189, "D-PAD: Scroll   L / R: A-Z Jump", 200, 200, 200, 1);
-    WP_DrawText(fb, 400, 20, 209, "A: Launch   X: Info & Options   Y: Store   START: Quick Resume", 100, 255, 120, 1);
+    WP_DrawClippedText(fb, 400, 95, 380, 95, 189, "D-PAD: Scroll   L / R: A-Z Jump", 200, 200, 200, 1);
+    WP_DrawClippedText(fb, 400, 20, 380, 20, 209, "A: Launch   X: Options   Y: Store   START: Resume", 100, 255, 120, 1);
 }
 
 static void WP_RenderBottomScreen(u8 *fb)
@@ -1047,8 +1047,8 @@ static void WP_RenderBottomScreen(u8 *fb)
                 WP_DrawText(fb, 320, 30, y + 12, "PWAD", 180, 230, 255, 1);
             }
 
-            // Name
-            WP_DrawText(fb, 320, 80, y + 12, w->display_name, sel ? 255 : 220, sel ? 255 : 220, sel ? 100 : 220, 1);
+            // Name (Clipped cleanly before right border 314)
+            WP_DrawClippedText(fb, 320, 80, 308, 80, y + 12, w->display_name, sel ? 255 : 220, sel ? 255 : 220, sel ? 100 : 220, 1);
         }
     }
 
@@ -1243,26 +1243,26 @@ static bool WP_ManageWadModal(int wad_idx)
                 WP_DrawText(top, 400, 26, 68, "COVER", 120, 120, 130, 1);
             }
 
-            // Info Section (Right of cover: X=84)
+            // Info Section (Right of cover: X=84, Box is X=12..388, clip at 380)
             int info_x = 84;
-            if (strlen(wad->display_name) <= 24) {
-                WP_DrawText(top, 400, info_x, 42, wad->display_name, 255, 215, 0, 2);
+            if (strlen(wad->display_name) <= 20) {
+                WP_DrawClippedText(top, 400, info_x, 380, info_x, 42, wad->display_name, 255, 215, 0, 2);
             } else {
-                WP_DrawText(top, 400, info_x, 44, wad->display_name, 255, 215, 0, 1);
+                WP_DrawClippedText(top, 400, info_x, 380, info_x, 44, wad->display_name, 255, 215, 0, 1);
             }
 
             char auth_buf[64];
             snprintf(auth_buf, sizeof(auth_buf), "AUTHOR: %s", meta_author);
-            WP_DrawText(top, 400, info_x, 66, auth_buf, 255, 255, 255, 1);
+            WP_DrawClippedText(top, 400, info_x, 380, info_x, 66, auth_buf, 255, 255, 255, 1);
 
             char sub_buf[96];
             float mb = (float)wad->file_size / (1024.0f * 1024.0f);
             snprintf(sub_buf, sizeof(sub_buf), "BASE: %s  |  %.2f MB", meta_base, mb);
-            WP_DrawText(top, 400, info_x, 82, sub_buf, 180, 220, 255, 1);
+            WP_DrawClippedText(top, 400, info_x, 380, info_x, 82, sub_buf, 180, 220, 255, 1);
 
             char file_buf[96];
             snprintf(file_buf, sizeof(file_buf), "FILE: %s", wad->filename);
-            WP_DrawText(top, 400, info_x, 98, file_buf, 160, 180, 200, 1);
+            WP_DrawClippedText(top, 400, info_x, 380, info_x, 98, file_buf, 160, 180, 200, 1);
 
             // Description Viewport Box: Y: 124, H: 108
             WP_FillRect(top, 400, 12, 124, 376, 108, 24, 26, 32);
